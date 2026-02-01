@@ -1,0 +1,69 @@
+{
+  "name": "node-express-typescript-boilerplate",
+  "version": "1.0.0",
+  "description": "Production-ready modular Node.js + Express + TypeScript boilerplate",
+  "type": "module",
+  "main": "dist/server.js",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "lint": "biome lint src tests",
+    "lint:fix": "biome lint --write src tests",
+    "format": "biome format --write src tests",
+    "format:check": "biome format src tests",
+    "check": "biome check src tests",
+    "check:fix": "biome check --write src tests",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "prepare": "husky"
+  },
+  "keywords": [
+    "node",
+    "express",
+    "typescript",
+    "boilerplate",
+    "modular",
+    "api"
+  ],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.0",
+    "express-rate-limit": "^7.4.0",
+    "helmet": "^7.1.0",
+    "http-status-codes": "^2.3.0",
+    "swagger-jsdoc": "^6.2.8",
+    "swagger-ui-express": "^5.0.1",
+    "winston": "^3.14.2",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.2",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.5.4",
+    "@types/supertest": "^6.0.2",
+    "@types/swagger-jsdoc": "^6.0.4",
+    "@types/swagger-ui-express": "^4.1.8",
+    "@vitest/coverage-v8": "^2.0.5",
+    "husky": "^9.1.6",
+    "lint-staged": "^15.2.10",
+    "supertest": "^7.0.0",
+    "tsx": "^4.19.1",
+    "typescript": "^5.6.2",
+    "vitest": "^2.0.5"
+  },
+  "lint-staged": {
+    "*.ts": [
+      "biome check --write"
+    ]
+  }
+}

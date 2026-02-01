@@ -1,0 +1,47 @@
+# Dependencies
+node_modules
+
+# Build output
+dist
+
+# Logs
+logs
+*.log
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# Git
+.git
+.gitignore
+
+# Tests
+tests
+coverage
+*.test.ts
+*.spec.ts
+
+# Development files
+*.md
+!README.md
+.husky
+biome.json
+tsconfig.json
+vitest.config.ts
+
+# Docker
+Dockerfile
+docker-compose*.yml
+.dockerignore
+
+# OS
+.DS_Store
+Thumbs.db
