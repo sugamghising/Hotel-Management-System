@@ -43,6 +43,6 @@
   },
   "files": {
     "include": ["src/**/*.ts", "tests/**/*.ts"],
-    "ignore": ["node_modules", "dist", "coverage"]
+    "ignore": ["node_modules", "dist", "coverage", "generated"]
   }
 }

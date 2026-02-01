@@ -1,0 +1,191 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Organization {
+  id         String   @id @db.Uuid
+  name       String
+  legalName  String?  @map("legal_name")
+  email      String?
+  phone      String?
+  status     String   @default("ACTIVE")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @default(now()) @map("updated_at")
+  deletedAt  DateTime? @map("deleted_at")
+
+  hotels     Hotel[]
+  users      User[]
+  roles      Role[]
+
+  @@index([status])
+  @@map("organizations")
+}
+
+
+
+model Hotel {
+  id             String   @id @db.Uuid
+  organizationId String   @db.Uuid @map("organization_id")
+  name           String
+  code           String   @unique
+  timezone       String
+  currency       String
+  status         String   @default("ACTIVE")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @default(now()) @map("updated_at")
+  deletedAt      DateTime? @map("deleted_at")
+
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  branches       HotelBranch[]
+  users          User[]
+  userRoles      UserRole[]
+
+  @@index([organizationId])
+  @@index([organizationId, status])
+  @@index([status])
+  @@map("hotels")
+}
+
+
+
+
+model HotelBranch {
+  id        String   @id @db.Uuid
+  hotelId   String   @db.Uuid @map("hotel_id")
+  name      String
+  address   String?
+  city      String?
+  country   String?
+  status    String   @default("ACTIVE")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  hotel     Hotel @relation(fields: [hotelId], references: [id])
+
+
+  @@index([hotelId])
+  @@index([city])
+  @@index([country])
+  @@map("hotel_branches")
+}
+
+
+model User {
+  id             String   @id @db.Uuid
+  organizationId String   @db.Uuid @map("organization_id")
+  hotelId        String?  @db.Uuid @map("hotel_id")
+  email          String   @unique
+  passwordHash   String   @map("password_hash")
+  firstName      String?  @map("first_name")
+  lastName       String?  @map("last_name")
+  phone          String?
+  userType       String   @map("user_type")
+  status         String   @default("ACTIVE")
+  lastLoginAt    DateTime? @map("last_login_at")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @default(now()) @map("updated_at")
+  deletedAt      DateTime? @map("deleted_at")
+
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  hotel          Hotel?        @relation(fields: [hotelId], references: [id])
+  roles          UserRole[]
+  sessions       AuthSession[]
+
+  @@index([organizationId])
+  @@index([hotelId])
+  @@index([status])
+  @@index([organizationId, status])
+  @@index([hotelId, status])
+  @@map("users")
+}
+
+
+model Role {
+  id             String   @id @db.Uuid
+  organizationId String   @db.Uuid @map("organization_id")
+  name           String
+  scope          String
+  description    String?
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @default(now()) @map("updated_at")
+  deletedAt      DateTime? @map("deleted_at")
+
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  permissions    RolePermission[]
+  users          UserRole[]
+
+  @@unique([organizationId, name])
+  @@index([scope])
+  @@map("roles")
+}
+
+
+model Permission {
+  id          String   @id @db.Uuid
+  key         String   @unique
+  description String?
+
+  roles       RolePermission[]
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  roleId       String @db.Uuid @map("role_id")
+  permissionId String @db.Uuid @map("permission_id")
+
+  role         Role       @relation(fields: [roleId], references: [id])
+  permission   Permission @relation(fields: [permissionId], references: [id])
+
+  @@id([roleId, permissionId])
+  @@index([permissionId])
+  @@map("role_permissions")
+}
+
+model UserRole {
+  userId  String @db.Uuid @map("user_id")
+  roleId  String @db.Uuid @map("role_id")
+  hotelId String @db.Uuid @map("hotel_id")
+
+  user    User  @relation(fields: [userId], references: [id])
+  role    Role  @relation(fields: [roleId], references: [id])
+  hotel   Hotel @relation(fields: [hotelId], references: [id])
+
+  @@id([userId, roleId, hotelId])
+   @@index([userId])
+  @@index([roleId])
+  @@index([hotelId])
+  @@index([userId, hotelId])
+  @@map("user_roles")
+}
+
+
+model AuthSession {
+  id               String   @id @db.Uuid
+  userId           String   @db.Uuid @map("user_id")
+  refreshTokenHash String   @map("refresh_token_hash")
+  userAgent        String?  @map("user_agent")
+  ipAddress        String?  @map("ip_address")
+  expiresAt        DateTime @map("expires_at")
+  revokedAt        DateTime? @map("revoked_at")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  user             User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@index([refreshTokenHash])
+  @@map("auth_sessions")
+}
