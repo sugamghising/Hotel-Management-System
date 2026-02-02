@@ -149,6 +149,9 @@ model Organization {
   userRoles  UserRole[] // 🔴 FIX #2: Direct relation
   auditLogs  AuditLog[]
 
+  changeLogs    ChangeLog[]
+  syncConflicts SyncConflict[]
+
   @@unique([code], name: "uq_org_code", map: "uq_org_code") // Partial index handled in migration
   @@index([subscriptionStatus], name: "idx_org_subscription_status")
   @@index([createdAt(sort: Desc)], name: "idx_org_created_at")
@@ -220,11 +223,13 @@ model Hotel {
   deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
   deletedBy String?   @map("deleted_by") @db.Uuid
   version   Int       @default(1)
+  lastModifiedByDevice String? @map("last_modified_by_device") @db.VarChar(255)
 
   // Relations
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   userRoles    UserRole[]
   auditLogs    AuditLog[]
+  changeLogs ChangeLog[]
 
   @@unique([organizationId, code], name: "uq_hotel_org_code") // Partial index in migration
   @@index([organizationId], name: "idx_hotel_org")
@@ -310,6 +315,13 @@ model User {
   userRoles      UserRole[]
   rolesGranted   UserRole[]     @relation("RoleGrantedBy")
   auditLogs      AuditLog[]
+
+
+  syncMetadata      SyncMetadata[]
+  changeLogs        ChangeLog[]
+  offlineWrites     OfflineWriteQueue[]
+  syncConflicts     SyncConflict[]      @relation("ConflictUser")
+  resolvedConflicts SyncConflict[]      @relation("ConflictResolver")
 
   @@unique([organizationId, email], name: "uq_user_email_org") // Case-insensitive in migration
   @@index([organizationId], name: "idx_user_org")
@@ -544,4 +556,159 @@ view VUserPermission {
   roleLevel          Int     @map("role_level")
 
   @@map("v_user_permissions")
+}
+
+
+
+// ============================================
+// OFFLINE SYNC MODELS
+// ============================================
+
+model SyncMetadata {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  deviceId       String   @map("device_id") @db.VarChar(255)
+  resourceType   String   @map("resource_type") @db.VarChar(100)
+  lastSyncedAt   DateTime @default(now()) @map("last_synced_at") @db.Timestamptz(6)
+  lastSyncVersion BigInt   @default(0) @map("last_sync_version")
+
+  // Device info
+  deviceName     String? @map("device_name") @db.VarChar(200)
+  devicePlatform String? @map("device_platform") @db.VarChar(50)
+  appVersion     String? @map("app_version") @db.VarChar(50)
+
+  // Status
+  syncStatus   String    @default("IDLE") @map("sync_status") @db.VarChar(50)
+  lastError    String?   @map("last_error") @db.Text
+  lastErrorAt  DateTime? @map("last_error_at") @db.Timestamptz(6)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, deviceId, resourceType], name: "uq_user_device_resource")
+  @@index([userId, deviceId], name: "idx_sync_meta_user_device")
+  @@index([resourceType, lastSyncedAt], name: "idx_sync_meta_resource")
+  @@map("sync_metadata")
+}
+
+
+
+model ChangeLog {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  globalVersion BigInt   @default(autoincrement()) @map("global_version")
+
+  // What changed
+  organizationId String  @map("organization_id") @db.Uuid
+  hotelId        String? @map("hotel_id") @db.Uuid
+  resourceType   String  @map("resource_type") @db.VarChar(100)
+  resourceId     String  @map("resource_id") @db.Uuid
+  operation      String  @db.VarChar(20) // CREATE, UPDATE, DELETE
+
+  // Who changed it
+  userId String? @map("user_id") @db.Uuid
+
+  // When
+  timestamp DateTime @default(now()) @db.Timestamptz(6)
+
+  // Payload
+  payload Json @db.JsonB
+
+  // Client tracking
+  clientId        String?   @map("client_id") @db.VarChar(255)
+  clientTimestamp DateTime? @map("client_timestamp") @db.Timestamptz(6)
+
+  // Metadata
+  metadata Json @default("{}") @db.JsonB
+
+  // Relations
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  hotel        Hotel?       @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  user         User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([globalVersion], name: "idx_change_log_version")
+  @@index([organizationId, globalVersion], name: "idx_change_log_org_version")
+  @@index([resourceType, resourceId], name: "idx_change_log_resource")
+  @@index([timestamp(sort: Desc)], name: "idx_change_log_timestamp")
+  @@map("change_log")
+}
+
+
+
+
+model OfflineWriteQueue {
+  id              String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId          String @map("user_id") @db.Uuid
+  deviceId        String @map("device_id") @db.VarChar(255)
+  clientRequestId String @map("client_request_id") @db.Uuid
+
+  // Command
+  operation      String @map("operation") @db.VarChar(50)
+  resourceType   String @map("resource_type") @db.VarChar(100)
+  resourceId     String? @map("resource_id") @db.Uuid
+  commandPayload Json   @map("command_payload") @db.JsonB
+
+  // Timing
+  clientTimestamp DateTime @map("client_timestamp") @db.Timestamptz(6)
+  receivedAt      DateTime @default(now()) @map("received_at") @db.Timestamptz(6)
+  processedAt     DateTime? @map("processed_at") @db.Timestamptz(6)
+
+  // Status
+  status             String  @default("PENDING") @db.VarChar(50)
+  errorMessage       String? @map("error_message") @db.Text
+  conflictResolution Json?   @map("conflict_resolution") @db.JsonB
+
+  // Result
+  serverResourceId String? @map("server_resource_id") @db.Uuid
+  serverVersion    Int?    @map("server_version")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, clientRequestId], name: "uq_client_request_id")
+  @@index([userId, status], name: "idx_offline_queue_user")
+  @@index([deviceId, status], name: "idx_offline_queue_device")
+  @@index([status, receivedAt], name: "idx_offline_queue_status")
+  @@map("offline_write_queue")
+}
+
+
+
+model SyncConflict {
+  id             String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String  @map("organization_id") @db.Uuid
+  resourceType   String  @map("resource_type") @db.VarChar(100)
+  resourceId     String  @map("resource_id") @db.Uuid
+  userId         String? @map("user_id") @db.Uuid
+  deviceId       String? @map("device_id") @db.VarChar(255)
+
+  // Conflict details
+  conflictType String @map("conflict_type") @db.VarChar(50)
+
+  // States
+  clientState   Json  @map("client_state") @db.JsonB
+  serverState   Json  @map("server_state") @db.JsonB
+  resolvedState Json? @map("resolved_state") @db.JsonB
+
+  // Resolution
+  resolutionStrategy String?   @map("resolution_strategy") @db.VarChar(50)
+  resolvedBy         String?   @map("resolved_by") @db.Uuid
+  resolvedAt         DateTime? @map("resolved_at") @db.Timestamptz(6)
+
+  detectedAt DateTime @default(now()) @map("detected_at") @db.Timestamptz(6)
+  metadata   Json     @default("{}") @db.JsonB
+
+  // Relations
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User?        @relation("ConflictUser", fields: [userId], references: [id], onDelete: SetNull)
+  resolver     User?        @relation("ConflictResolver", fields: [resolvedBy], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, detectedAt(sort: Desc)], name: "idx_conflict_org")
+  @@index([resourceType, resourceId], name: "idx_conflict_resource")
+  @@map("sync_conflicts")
 }
