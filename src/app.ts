@@ -1,11 +1,11 @@
+import { errorHandler, notFoundHandler, rateLimiter, requestLogger } from '@/core/index';
+import { routes } from '@/routes/registerRoutes';
 import cors from 'cors';
 import express, { type Application } from 'express';
 import helmet from 'helmet';
 import swaggerUi from 'swagger-ui-express';
-import { config } from './config/index';
+import { config } from './config';
 import { swaggerSpec } from './config/swagger';
-import { errorHandler, notFoundHandler, rateLimiter, requestLogger } from './core/index';
-import { routes } from './routes';
 
 export const createApp = (): Application => {
   const app = express();

@@ -1,6 +1,6 @@
+import { healthRoutes, userRoutes } from '@api/index';
+import { config } from '@config/index';
 import { Router } from 'express';
-import { healthRoutes, userRoutes } from './api/index';
-import { config } from './config/index';
 
 const router = Router();
 
