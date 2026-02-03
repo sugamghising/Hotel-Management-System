@@ -1,11 +1,10 @@
+import { openAPIRouter } from '@/api-docs/openAPIRouter';
 import { errorHandler, notFoundHandler, rateLimiter, requestLogger } from '@/core/index';
 import { routes } from '@/routes/registerRoutes';
 import cors from 'cors';
 import express, { type Application } from 'express';
 import helmet from 'helmet';
-import swaggerUi from 'swagger-ui-express';
 import { config } from './config';
-import { swaggerSpec } from './config/swagger';
 
 export const createApp = (): Application => {
   const app = express();
@@ -29,12 +28,8 @@ export const createApp = (): Application => {
   // Request logging
   app.use(requestLogger);
 
-  // API Documentation
-  app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
-  app.get('/api-docs.json', (_req, res) => {
-    res.setHeader('Content-Type', 'application/json');
-    res.send(swaggerSpec);
-  });
+  // API Documentation (zod-to-openapi)
+  app.use('/api-docs', openAPIRouter);
 
   // Routes
   app.use(routes);

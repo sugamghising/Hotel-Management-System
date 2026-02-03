@@ -1,60 +1,55 @@
+import { ServiceResponse, paginatedResponse } from '@/common/models/serviceResponse';
+import { handleServiceResponse } from '@/common/utils/httpHandlers';
 import type { Request, Response } from 'express';
 import { StatusCodes } from 'http-status-codes';
 import { userService } from './user.service';
-import type { DeleteResponse, UserResponse, UsersResponse } from './user.types';
+import type { User } from './user.types';
 
 export const userController = {
-  async list(req: Request, res: Response<UsersResponse>): Promise<void> {
+  async list(req: Request, res: Response): Promise<void> {
     const page = Number(req.query['page']) || 1;
     const limit = Number(req.query['limit']) || 10;
     const { users, total } = await userService.findAll(page, limit);
 
-    res.status(StatusCodes.OK).json({
-      success: true,
-      data: users,
-      meta: {
-        total,
-        page,
-        limit,
-      },
-    });
+    const serviceResponse = paginatedResponse<User>(
+      users,
+      total,
+      page,
+      limit,
+      'Users retrieved successfully'
+    );
+    handleServiceResponse(serviceResponse, res);
   },
 
-  async getById(req: Request, res: Response<UserResponse>): Promise<void> {
+  async getById(req: Request, res: Response): Promise<void> {
     const user = await userService.findById(req.params['id'] as string);
 
-    res.status(StatusCodes.OK).json({
-      success: true,
-      data: user,
-    });
+    const serviceResponse = ServiceResponse.success(user, 'User retrieved successfully');
+    handleServiceResponse(serviceResponse, res);
   },
 
-  async create(req: Request, res: Response<UserResponse>): Promise<void> {
+  async create(req: Request, res: Response): Promise<void> {
     const user = await userService.create(req.body);
 
-    res.status(StatusCodes.CREATED).json({
-      success: true,
-      data: user,
-    });
+    const serviceResponse = ServiceResponse.success(
+      user,
+      'User created successfully',
+      StatusCodes.CREATED
+    );
+    handleServiceResponse(serviceResponse, res);
   },
 
-  async update(req: Request, res: Response<UserResponse>): Promise<void> {
+  async update(req: Request, res: Response): Promise<void> {
     const user = await userService.update(req.params['id'] as string, req.body);
 
-    res.status(StatusCodes.OK).json({
-      success: true,
-      data: user,
-    });
+    const serviceResponse = ServiceResponse.success(user, 'User updated successfully');
+    handleServiceResponse(serviceResponse, res);
   },
 
-  async delete(req: Request, res: Response<DeleteResponse>): Promise<void> {
+  async delete(req: Request, res: Response): Promise<void> {
     await userService.delete(req.params['id'] as string);
 
-    res.status(StatusCodes.OK).json({
-      success: true,
-      data: {
-        message: 'User deleted successfully',
-      },
-    });
+    const serviceResponse = ServiceResponse.success({ deleted: true }, 'User deleted successfully');
+    handleServiceResponse(serviceResponse, res);
   },
 };

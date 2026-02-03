@@ -1,3 +1,5 @@
+import type { PaginatedData, ServiceResponseType } from '@/common/models/serviceResponse';
+
 export interface User {
   id: string;
   email: string;
@@ -16,24 +18,7 @@ export interface UpdateUserDTO {
   name?: string;
 }
 
-export interface UserResponse {
-  success: true;
-  data: User;
-}
-
-export interface UsersResponse {
-  success: true;
-  data: User[];
-  meta: {
-    total: number;
-    page: number;
-    limit: number;
-  };
-}
-
-export interface DeleteResponse {
-  success: true;
-  data: {
-    message: string;
-  };
-}
+// ServiceResponse-based types
+export type UserResponse = ServiceResponseType<User>;
+export type UsersResponse = ServiceResponseType<PaginatedData<User>>;
+export type DeleteResponse = ServiceResponseType<{ deleted: boolean }>;

@@ -28,7 +28,8 @@
       "@config/*": ["src/config/*"],
       "@core/*": ["src/core/*"],
       "@api/*": ["src/api/*"],
-      "@types/*": ["src/types/*"]
+      "@types/*": ["src/types/*"],
+      "@common/*": ["src/common/*"]
     }
   },
   "include": ["src/**/*"],
