@@ -1,4 +1,3 @@
-// src/features/organizations/organization.routes.ts
 import { Router } from 'express';
 import { validate } from '../../core/middleware/validate';
 import { OrganizationController } from './organization.controller';
