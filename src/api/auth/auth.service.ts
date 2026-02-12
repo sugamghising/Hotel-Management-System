@@ -1,7 +1,7 @@
 import jwt from 'jsonwebtoken';
 import speakeasy from 'speakeasy';
 import { config } from '../../config';
-import { ConflictError, UnauthorizedError, logger } from '../../core';
+import { ConflictError, NotFoundError, UnauthorizedError, logger } from '../../core';
 import {
   generateRandomToken,
   hashPassword,
@@ -13,7 +13,9 @@ import { type AuthRepository, authRepository } from './auth.repository';
 import type { LoginInput } from './auth.schema';
 import type {
   AccessTokenPayload,
+  ChangePasswordInput,
   MfaTempPayload,
+  PasswordResetInput,
   RefreshTokenPayload,
   RegisterInput,
   TokenPair,
@@ -282,6 +284,70 @@ export class AuthService {
     }
 
     await this.authRepo.revokeAllUserTokens(userId, exceptId);
+  }
+
+  // ============================================================================
+  // PASSWORD MANAGEMENT
+  // ============================================================================
+
+  async changePassword(userId: string, input: ChangePasswordInput): Promise<void> {
+    const user = await this.authRepo.findUserById(userId);
+
+    if (!user) {
+      throw new NotFoundError('User Not Found');
+    }
+
+    const valid = await verifyPassword(input.currentPassword, user.passwordHash);
+    if (!valid) {
+      throw new UnauthorizedError('Current Password is incorrect');
+    }
+
+    const newHash = await hashPassword(input.newPassword);
+    await this.authRepo.updatePassword(userId, newHash);
+
+    // Revoke all tokens except current session (optional security measure)
+    // await this.authRepo.revokeAllUserTokens(userId);
+  }
+
+  async forgotPassword(email: string, organizationCode: string): Promise<void> {
+    const org = await this.orgService.findByCode(organizationCode);
+    if (!org) {
+      //DO NOT reveal org doesn't exist
+      return;
+    }
+
+    const user = await this.authRepo.findUserByEmail(email, org.id);
+    if (!user) {
+      //DO NOT reveal user doesn't exists
+      return;
+    }
+
+    //Genereate Reset token
+    const resetToken = generateRandomToken(32);
+    const resetHash = hashToken(resetToken);
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
+
+    await this.authRepo.setPasswordResetToken(user.id, resetHash, expiresAt);
+    // TODO: Send email with resetToken
+
+    logger.info(`Password reset requested: ${user.email}`, { userId: user.id });
+  }
+
+  async resetPassword(input: PasswordResetInput): Promise<void> {
+    const tokenHash = hashToken(input.token);
+
+    //Find user with valid token
+    const user = await this.authRepo.findUserByResetToken(tokenHash);
+    if (!user) {
+      throw new NotFoundError('User not Found');
+    }
+
+    const newHash = await hashPassword(input.newPassword);
+    await this.authRepo.updatePassword(user.id, newHash);
+
+    await this.authRepo.revokeAllUserTokens(user.id);
+
+    logger.info(`Password reset completed: ${user.email}`, { userId: user.id });
   }
 
   private async handleFailedLogin(user: User): Promise<void> {

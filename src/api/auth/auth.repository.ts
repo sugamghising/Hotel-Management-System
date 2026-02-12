@@ -193,6 +193,16 @@ export class AuthRepository {
     });
   }
 
+  async findUserByResetToken(tokenHash: string): Promise<User | null> {
+    return prisma.user.findFirst({
+      where: {
+        passwordResetToken: tokenHash,
+        passwordResetExpires: { gt: new Date() },
+        deletedAt: null,
+      },
+    }) as Promise<User | null>;
+  }
+
   // ============================================================================
   // PERMISSIONS (via view or direct query)
   // ============================================================================
