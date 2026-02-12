@@ -235,6 +235,28 @@ export interface MfaSetupResult {
   backupCodes: string[];
 }
 
+export interface DetailedUser {
+  id: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  fullName: string;
+  status: UserStatus;
+  emailVerified: boolean;
+  phone: string | null;
+  department: string | null;
+  jobTitle: string | null;
+  lastLoginAt: Date | null;
+  createdAt: Date;
+  roles?: Array<{
+    id: string;
+    roleCode: string;
+    roleName: string;
+    hotelId: string | null;
+    hotelName: string | undefined;
+  }> | null;
+}
+
 // ============================================================================
 // SESSION/CONTEXT
 // ============================================================================

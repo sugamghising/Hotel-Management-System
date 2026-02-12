@@ -1,4 +1,5 @@
 import jwt from 'jsonwebtoken';
+import QRCode from 'qrcode';
 import speakeasy from 'speakeasy';
 import { config } from '../../config';
 import { ConflictError, NotFoundError, UnauthorizedError, logger } from '../../core';
@@ -14,12 +15,15 @@ import type { LoginInput } from './auth.schema';
 import type {
   AccessTokenPayload,
   ChangePasswordInput,
+  DetailedUser,
+  MfaSetupResult,
   MfaTempPayload,
   PasswordResetInput,
   RefreshTokenPayload,
   RegisterInput,
   TokenPair,
   User,
+  UserWithRoles,
 } from './auth.types';
 
 export class AuthService {
@@ -350,6 +354,90 @@ export class AuthService {
     logger.info(`Password reset completed: ${user.email}`, { userId: user.id });
   }
 
+  // ============================================================================
+  // MFA
+  // ============================================================================
+
+  async setupMfa(userId: string): Promise<MfaSetupResult> {
+    const user = await this.authRepo.findUserById(userId);
+    if (!user) {
+      throw new NotFoundError('User not Found.');
+    }
+
+    if (user.mfaEnabled) {
+      throw new ConflictError('MFA is already enabled.');
+    }
+
+    const secret = speakeasy.generateSecret({
+      length: 32,
+      name: `HMS:${user.email}`,
+    });
+
+    if (!secret.otpauth_url) {
+      throw new Error('Failed to generate MFA secret');
+    }
+
+    const qrCodeUrl = await QRCode.toDataURL(secret.otpauth_url);
+    const backupCodes = Array.from({ length: 10 }, () => generateRandomToken(4).toUpperCase());
+
+    // Store secret temporarily (verify first before enabling)
+    // In production: store in temporary cache or separate field
+
+    return {
+      secret: secret.base32,
+      qrCodeUrl,
+      backupCodes,
+    };
+  }
+
+  async verifyAndEnableMfa(userId: string, code: string, secret: string): Promise<void> {
+    const verified = speakeasy.totp.verify({
+      secret,
+      encoding: 'base32',
+      token: code,
+      window: 1,
+    });
+
+    if (!verified) {
+      throw new UnauthorizedError('Invalid MFA code');
+    }
+
+    const backupCodes = Array.from({ length: 10 }, () => generateRandomToken(4).toUpperCase());
+
+    await this.authRepo.enableMfa(userId, secret, backupCodes);
+  }
+
+  async disableMfa(userId: string, password: string): Promise<void> {
+    const user = await this.authRepo.findUserById(userId);
+    if (!user) {
+      throw new NotFoundError('User');
+    }
+
+    const valid = await verifyPassword(password, user.passwordHash);
+    if (!valid) {
+      throw new UnauthorizedError('Password is incorrect');
+    }
+
+    await this.authRepo.disableMfa(userId);
+  }
+
+  // ============================================================================
+  // CURRENT USER
+  // ============================================================================
+
+  async getCurrentUser(userId: string): Promise<DetailedUser> {
+    const user = await this.authRepo.findUserWithRoles(userId);
+    if (!user) {
+      throw new NotFoundError('User');
+    }
+
+    return this.mapToDetailedUser(user);
+  }
+
+  // ============================================================================
+  // PRIVATE HELPERS
+  // ============================================================================
+
   private async handleFailedLogin(user: User): Promise<void> {
     const attempts = user.failedLoginAttempts + 1;
     const lockedUntil =
@@ -468,6 +556,30 @@ export class AuthService {
       accessToken,
       refreshToken: `${refreshJwt}.${refreshTokenValue}`,
       expiresIn: 900,
+    };
+  }
+
+  private mapToDetailedUser(user: UserWithRoles): DetailedUser {
+    return {
+      id: user.id,
+      email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      fullName: `${user.firstName} ${user.lastName}`,
+      status: user.status,
+      emailVerified: user.emailVerified,
+      phone: user.phone,
+      department: user.department,
+      jobTitle: user.jobTitle,
+      lastLoginAt: user.lastLoginAt,
+      createdAt: user.createdAt,
+      roles: user.userRoles?.map((ur) => ({
+        id: ur.id,
+        roleCode: ur.role.code,
+        roleName: ur.role.name,
+        hotelId: ur.hotelId,
+        hotelName: ur.hotel?.name,
+      })),
     };
   }
 }

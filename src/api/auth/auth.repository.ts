@@ -1,6 +1,6 @@
 import { prisma } from '../../database/prisma';
 import { Prisma, type RefreshToken, type UserStatus } from '../../generated/prisma';
-import type { User } from './auth.types';
+import type { User, UserWithRoles } from '../auth/auth.types';
 
 export type UserCreateInput = Prisma.UserCreateInput;
 export type UserUpdateInput = Prisma.UserUpdateInput;
@@ -27,7 +27,7 @@ export class AuthRepository {
     }) as Promise<User | null>;
   }
 
-  async findUserWithRoles(userId: string): Promise<User | null> {
+  async findUserWithRoles(userId: string): Promise<UserWithRoles | null> {
     return prisma.user.findUnique({
       where: { id: userId },
       include: {
@@ -45,7 +45,7 @@ export class AuthRepository {
           },
         },
       },
-    }) as Promise<User | null>;
+    }) as Promise<UserWithRoles | null>;
   }
 
   async createUser(data: UserCreateInput): Promise<User> {
