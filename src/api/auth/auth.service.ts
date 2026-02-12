@@ -192,6 +192,98 @@ export class AuthService {
     return user;
   }
 
+  // ============================================================================
+  // TOKEN MANAGEMENT
+  // ============================================================================
+  async refreshToken(refreshToken: string, deviceFingerprint?: string): Promise<TokenPair> {
+    //split composite token
+    const [jwtPart, opaquePart] = refreshToken.split('.');
+    if (!jwtPart || !opaquePart) {
+      logger.warn('Invalid refresh token format.');
+      throw new UnauthorizedError('Invalid refresh token format.');
+    }
+
+    let payload: RefreshTokenPayload;
+    try {
+      payload = jwt.verify(jwtPart, config.jwt.refreshSecret) as RefreshTokenPayload;
+    } catch {
+      throw new UnauthorizedError('Invalid Refresh token');
+    }
+
+    if (payload.type !== 'refresh') {
+      throw new UnauthorizedError('Invalid token type');
+    }
+
+    //find in database
+    const tokenHash = hashToken(opaquePart);
+    const storedToken = await this.authRepo.findRefreshTokenByHash(tokenHash);
+
+    if (!storedToken) {
+      throw new UnauthorizedError('Refresh Token not found or Expired.');
+    }
+
+    // Security: Check device fingerprint if provided
+    if (deviceFingerprint && storedToken.deviceFingerprint !== deviceFingerprint) {
+      // Potential token theft - revoke all tokens
+      await this.authRepo.revokeAllUserTokens(payload.sub);
+      throw new UnauthorizedError('Security violation detected. Please login again.');
+    }
+
+    // Get user and org
+    const user = await this.authRepo.findUserById(payload.sub);
+    if (!user || user.deletedAt) {
+      throw new UnauthorizedError('User not found');
+    }
+
+    // Generate new pair
+    const org = await this.orgService.findById(payload.orgId);
+    if (!org) {
+      throw new UnauthorizedError('Organization not found');
+    }
+
+    const tokens = await this.generateTokenPair(
+      user,
+      org.id,
+      org.code,
+      org.subscriptionTier,
+      undefined,
+      undefined,
+      deviceFingerprint
+    );
+
+    // Revoke old token
+    await this.authRepo.revokeRefreshToken(storedToken.id);
+
+    return tokens;
+  }
+
+  async logout(refreshToken: string): Promise<void> {
+    const [, opaquePart] = refreshToken.split('.');
+    if (!opaquePart) return;
+
+    const tokenHash = hashToken(opaquePart);
+    const storedToken = await this.authRepo.findRefreshTokenByHash(tokenHash);
+
+    if (storedToken) {
+      await this.authRepo.revokeRefreshToken(storedToken.id);
+    }
+  }
+
+  async logoutAll(userId: string, exceptCurrentToken?: string): Promise<void> {
+    let exceptId: string | undefined;
+
+    if (exceptCurrentToken) {
+      const [, opaquePart] = exceptCurrentToken.split('.');
+      if (opaquePart) {
+        const tokenHash = hashToken(opaquePart);
+        const stored = await this.authRepo.findRefreshTokenByHash(tokenHash);
+        exceptId = stored?.id;
+      }
+    }
+
+    await this.authRepo.revokeAllUserTokens(userId, exceptId);
+  }
+
   private async handleFailedLogin(user: User): Promise<void> {
     const attempts = user.failedLoginAttempts + 1;
     const lockedUntil =
