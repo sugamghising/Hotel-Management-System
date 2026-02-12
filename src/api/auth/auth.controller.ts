@@ -2,7 +2,7 @@ import type { Request, Response } from 'express';
 import { ServiceResponse, handleServiceResponse } from '../../common';
 import { asyncHandler } from '../../core';
 import { authService } from './auth.service';
-import type { LoginInput } from './auth.types';
+import type { LoginInput, RegisterInput } from './auth.types';
 
 export class AuthController {
   /**
@@ -34,6 +34,18 @@ export class AuthController {
         },
         'Login successful'
       ),
+      res
+    );
+  });
+
+  /**
+   * POST: /auth/register
+   */
+  register = asyncHandler(async (req: Request, res: Response) => {
+    const input = req.body as RegisterInput;
+    const result = await authService.register(input);
+    handleServiceResponse(
+      ServiceResponse.success({ data: result }, 'Registration Successful'),
       res
     );
   });

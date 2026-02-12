@@ -1,7 +1,7 @@
 import jwt from 'jsonwebtoken';
 import speakeasy from 'speakeasy';
 import { config } from '../../config';
-import { UnauthorizedError, logger } from '../../core';
+import { ConflictError, UnauthorizedError, logger } from '../../core';
 import {
   generateRandomToken,
   hashPassword,
@@ -15,6 +15,7 @@ import type {
   AccessTokenPayload,
   MfaTempPayload,
   RefreshTokenPayload,
+  RegisterInput,
   TokenPair,
   User,
 } from './auth.types';
@@ -135,6 +136,60 @@ export class AuthService {
       user: this.mapToPublicUser(user),
       tokens,
     };
+  }
+
+  async register(input: RegisterInput): Promise<User> {
+    //Validate organization existence
+    const org = await this.orgService.findById(input.organizationId);
+
+    const limitCheck = await this.orgService.validateLimits(org.id, 'user');
+    if (!limitCheck.valid) {
+      logger.warn(
+        `Registration attempt failed due to organization limits: ${input.organizationId}`
+      );
+      throw new UnauthorizedError('Organization user limit reached. Please contact support.');
+    }
+
+    //check email uniqueness
+    const existing = await this.authRepo.findUserByEmail(input.email, org.id);
+    if (existing) {
+      logger.warn(`Email already exists in the organiation: ${input.email}`);
+      throw new ConflictError('Email already Exists.');
+    }
+
+    //Hash Password
+    const passwordHash = await hashPassword(input.password);
+
+    //Create User
+    const user = await this.authRepo.createUser({
+      organization: { connect: { id: org.id } },
+      email: input.email.toLowerCase(),
+      passwordHash,
+      firstName: input.firstName,
+      lastName: input.lastName,
+      middleName: input.middleName || null,
+      phone: input.phone || null,
+      employeeId: input.employeeId || null,
+      department: input.department || null,
+      jobTitle: input.jobTitle || null,
+      employmentType: input.employmentType || null,
+      status: 'PENDING_VERIFICATION',
+      emailVerified: false,
+      phoneVerified: false,
+      mfaEnabled: false,
+      failedLoginAttempts: 0,
+      passwordChangedAt: new Date(),
+      languageCode: 'en',
+      timezone: 'UTC',
+      preferences: {},
+      isSuperAdmin: false,
+      version: 1,
+    });
+
+    //TODO: SEND VERIFICATION MAIL
+    logger.info(`User registered: ${user.email}`, { userId: user.id, orgId: input.organizationId });
+
+    return user;
   }
 
   private async handleFailedLogin(user: User): Promise<void> {
