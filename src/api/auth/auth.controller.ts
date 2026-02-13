@@ -1,4 +1,4 @@
-import type { Request, Response } from 'express';
+import type { NextFunction, Request, Response } from 'express';
 import { ServiceResponse, handleServiceResponse } from '../../common';
 import { UnauthorizedError, asyncHandler } from '../../core';
 import type {
@@ -14,7 +14,7 @@ export class AuthController {
   /**
    * POST /auth/login
    */
-  login = asyncHandler(async (req: Request, res: Response) => {
+  login = asyncHandler(async (req: Request, res: Response, _next: NextFunction) => {
     const input = req.body as LoginInput;
     const result = await authService.login(input, req.ip, req.get('User-Agent'));
     if (result.mfaRequired) {
@@ -47,7 +47,7 @@ export class AuthController {
   /**
    * POST: /auth/register
    */
-  register = asyncHandler(async (req: Request, res: Response) => {
+  register = asyncHandler(async (req: Request, res: Response, _next: NextFunction) => {
     const input = req.body as RegisterInput;
     const result = await authService.register(input);
     handleServiceResponse(
@@ -59,7 +59,7 @@ export class AuthController {
   /**
    * POST /auth/refresh
    */
-  refresh = asyncHandler(async (req: Request, res: Response) => {
+  refresh = asyncHandler(async (req: Request, res: Response, _next: NextFunction) => {
     const input = req.body as RefreshTokenInput;
     const tokens = await authService.refreshToken(input.refreshToken, input.deviceFingerprint);
     handleServiceResponse(
@@ -71,7 +71,7 @@ export class AuthController {
   /**
    * POST /auth/logout
    */
-  logout = asyncHandler(async (req: Request, res: Response) => {
+  logout = asyncHandler(async (req: Request, res: Response, _next: NextFunction) => {
     const { refreshToken } = req.body;
     await authService.logout(refreshToken);
     handleServiceResponse(
@@ -83,7 +83,7 @@ export class AuthController {
   /**
    *  POST /auth/logout-all
    */
-  logoutAll = asyncHandler(async (req: Request, res: Response) => {
+  logoutAll = asyncHandler(async (req: Request, res: Response, _next: NextFunction) => {
     const { refreshToken } = req.body;
     if (!req.user) {
       throw new UnauthorizedError('User not authenticated');
@@ -103,7 +103,7 @@ export class AuthController {
   /**
    * POST /auth/change-password
    */
-  changePassword = asyncHandler(async (req: Request, res: Response) => {
+  changePassword = asyncHandler(async (req: Request, res: Response, _next: NextFunction) => {
     const input = req.body as ChangePasswordInput;
     if (!req.user) {
       throw new UnauthorizedError('User not authenticated');
@@ -118,7 +118,7 @@ export class AuthController {
   /**
    *  POST /auth/forgot-password
    */
-  forgotPassword = asyncHandler(async (req: Request, res: Response) => {
+  forgotPassword = asyncHandler(async (req: Request, res: Response, _next: NextFunction) => {
     const input = req.body as ForgotPasswordInput;
     await authService.forgotPassword(input.email, input.organizationCode);
     handleServiceResponse(
@@ -130,7 +130,7 @@ export class AuthController {
   /**
    *  POST /auth/reset-password
    */
-  resetPassword = asyncHandler(async (req: Request, res: Response) => {
+  resetPassword = asyncHandler(async (req: Request, res: Response, _next: NextFunction) => {
     const input = req.body as ResetPasswordInput;
     await authService.resetPassword(input);
     handleServiceResponse(ServiceResponse.success({ message: 'Password Reset Successfully' }), res);
@@ -139,7 +139,7 @@ export class AuthController {
   /**
    * POST /auth/mfa/setup
    */
-  setupMfa = asyncHandler(async (req: Request, res: Response) => {
+  setupMfa = asyncHandler(async (req: Request, res: Response, _next: NextFunction) => {
     if (!req.user) {
       throw new UnauthorizedError('User not authenticated');
     }
@@ -157,7 +157,7 @@ export class AuthController {
   /**
    * POST /auth/mfa/verify
    */
-  verifyMfa = asyncHandler(async (req: Request, res: Response) => {
+  verifyMfa = asyncHandler(async (req: Request, res: Response, _next: NextFunction) => {
     const { code, secret } = req.body as VerifyMfaInput & { secret: string };
     if (!req.user) {
       throw new UnauthorizedError('User not authenticated');
@@ -170,7 +170,7 @@ export class AuthController {
   /**
    * POST /auth/mfa/disable
    */
-  disableMfa = asyncHandler(async (req: Request, res: Response) => {
+  disableMfa = asyncHandler(async (req: Request, res: Response, _next: NextFunction) => {
     const { password } = req.body;
     if (!req.user) {
       throw new UnauthorizedError('User not authenticated');
@@ -188,7 +188,7 @@ export class AuthController {
   /**
    * GET /auth/me
    */
-  me = asyncHandler(async (req: Request, res: Response) => {
+  me = asyncHandler(async (req: Request, res: Response, _next: NextFunction) => {
     if (!req.user) {
       throw new UnauthorizedError('User not authenticated');
     }
