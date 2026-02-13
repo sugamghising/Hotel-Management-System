@@ -2,6 +2,7 @@ export { AuthController } from './auth.controller';
 export { AuthService, authService } from './auth.service';
 export { authRepository, AuthRepository } from './auth.repository';
 export { default as authRoutes } from './auth.routes';
+export { authRegistry } from './auth.registry';
 
 // Types
 export type {

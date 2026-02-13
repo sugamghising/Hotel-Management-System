@@ -2,6 +2,7 @@ export { OrganizationService, organizationService } from './organization.service
 export { OrganizationController } from './organization.controller';
 export { OrganizationRepository, organizationRepository } from './organization.repository';
 export { default as organizationRoutes } from './organization.routes';
+export { organizationRegistry } from './organization.registry';
 
 export type {
   // Enum types

@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { createRateLimiter, validate } from '../../core';
+import { authMiddleware } from '../../core/middleware/auth';
 import { AuthController } from './auth.controller';
 import {
   ChangePasswordSchema,
@@ -25,15 +26,9 @@ const loginRateLimiter = createRateLimiter({
 router.post('/login', loginRateLimiter, validate({ body: LoginSchema }), controller.login);
 router.post('/register', validate({ body: RegisterSchema }), controller.register);
 router.post('/logout', controller.logout);
-router.post('/logout-all', controller.logoutAll);
 
 router.post('/refresh', validate({ body: RefreshTokenSchema }), controller.refresh);
 
-router.post(
-  '/change-password',
-  validate({ body: ChangePasswordSchema }),
-  controller.changePassword
-);
 router.post(
   '/forgot-password',
   validate({ body: ForgotPasswordSchema }),
@@ -41,6 +36,15 @@ router.post(
 );
 router.post('/reset-password', validate({ body: ResetPasswordSchema }), controller.resetPassword);
 
+// Protected routes
+router.use(authMiddleware);
+
+router.post(
+  '/change-password',
+  validate({ body: ChangePasswordSchema }),
+  controller.changePassword
+);
+router.post('/logout-all', controller.logoutAll);
 router.post('/mfa/set-up', controller.setupMfa);
 router.post('/mfa/verify', validate({ body: VerifyMfaSchema }), controller.verifyMfa);
 router.post('/mfa/disable', controller.disableMfa);
