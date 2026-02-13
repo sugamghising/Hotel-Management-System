@@ -2,7 +2,14 @@ import jwt from 'jsonwebtoken';
 import QRCode from 'qrcode';
 import speakeasy from 'speakeasy';
 import { config } from '../../config';
-import { ConflictError, NotFoundError, UnauthorizedError, logger } from '../../core';
+import {
+  ConflictError,
+  ForbiddenError,
+  InternalServerError,
+  NotFoundError,
+  UnauthorizedError,
+  logger,
+} from '../../core';
 import {
   generateRandomToken,
   hashPassword,
@@ -48,7 +55,7 @@ export class AuthService {
 
     if (org.subscriptionStatus !== 'ACTIVE') {
       logger.warn(`Login attempt with inactive subscription: ${input.organizationCode}`);
-      throw new UnauthorizedError('Organization subscription is not active');
+      throw new ForbiddenError('Organization subscription is not active');
     }
 
     //Find user
@@ -66,21 +73,21 @@ export class AuthService {
       logger.warn(
         `Login attempt for suspended account: ${input.email} in organization: ${input.organizationCode}`
       );
-      throw new UnauthorizedError('Account is suspended');
+      throw new ForbiddenError('Account is suspended');
     }
 
     if (user.status === 'INACTIVE') {
       logger.warn(
         `Login attempt for inactive account: ${input.email} in organization: ${input.organizationCode}`
       );
-      throw new UnauthorizedError('Account is inactive');
+      throw new ForbiddenError('Account is inactive');
     }
 
     if (user.lockedUntil && user.lockedUntil > new Date()) {
       logger.warn(
         `Login attempt for locked account: ${input.email} in organization: ${input.organizationCode}. Locked until: ${user.lockedUntil.toISOString()}`
       );
-      throw new UnauthorizedError(`Account is locked until ${user.lockedUntil.toISOString()}`);
+      throw new ForbiddenError(`Account is locked until ${user.lockedUntil.toISOString()}`);
     }
 
     // 4. Verify password
@@ -104,7 +111,8 @@ export class AuthService {
       }
 
       if (!user.mfaSecret) {
-        throw new UnauthorizedError('MFA secret not configured');
+        logger.error(`MFA enabled but secret not configured for user: ${user.id}`);
+        throw new InternalServerError('MFA secret not configured');
       }
 
       const verified = speakeasy.totp.verify({
@@ -153,7 +161,7 @@ export class AuthService {
       logger.warn(
         `Registration attempt failed due to organization limits: ${input.organizationId}`
       );
-      throw new UnauthorizedError('Organization user limit reached. Please contact support.');
+      throw new ForbiddenError('Organization user limit reached. Please contact support.');
     }
 
     //check email uniqueness
@@ -212,11 +220,13 @@ export class AuthService {
     let payload: RefreshTokenPayload;
     try {
       payload = jwt.verify(jwtPart, config.jwt.refreshSecret) as RefreshTokenPayload;
-    } catch {
+    } catch (error) {
+      logger.warn('Invalid refresh token JWT', { error });
       throw new UnauthorizedError('Invalid Refresh token');
     }
 
     if (payload.type !== 'refresh') {
+      logger.warn(`Invalid token type: ${payload.type}`);
       throw new UnauthorizedError('Invalid token type');
     }
 
@@ -225,12 +235,14 @@ export class AuthService {
     const storedToken = await this.authRepo.findRefreshTokenByHash(tokenHash);
 
     if (!storedToken) {
+      logger.warn('Refresh token not found in database', { userId: payload.sub });
       throw new UnauthorizedError('Refresh Token not found or Expired.');
     }
 
     // Security: Check device fingerprint if provided
     if (deviceFingerprint && storedToken.deviceFingerprint !== deviceFingerprint) {
       // Potential token theft - revoke all tokens
+      logger.error(`Security violation: Device fingerprint mismatch for user ${payload.sub}`);
       await this.authRepo.revokeAllUserTokens(payload.sub);
       throw new UnauthorizedError('Security violation detected. Please login again.');
     }
@@ -238,12 +250,14 @@ export class AuthService {
     // Get user and org
     const user = await this.authRepo.findUserById(payload.sub);
     if (!user || user.deletedAt) {
+      logger.warn(`User not found or deleted during token refresh: ${payload.sub}`);
       throw new UnauthorizedError('User not found');
     }
 
     // Generate new pair
     const org = await this.orgService.findById(payload.orgId);
     if (!org) {
+      logger.warn(`Organization not found during token refresh: ${payload.orgId}`);
       throw new UnauthorizedError('Organization not found');
     }
 
@@ -298,11 +312,13 @@ export class AuthService {
     const user = await this.authRepo.findUserById(userId);
 
     if (!user) {
+      logger.error(`User not found when changing password: ${userId}`);
       throw new NotFoundError('User Not Found');
     }
 
     const valid = await verifyPassword(input.currentPassword, user.passwordHash);
     if (!valid) {
+      logger.warn(`Incorrect current password attempt for user: ${userId}`);
       throw new UnauthorizedError('Current Password is incorrect');
     }
 
@@ -343,6 +359,7 @@ export class AuthService {
     //Find user with valid token
     const user = await this.authRepo.findUserByResetToken(tokenHash);
     if (!user) {
+      logger.warn('Invalid or expired password reset token');
       throw new NotFoundError('User not Found');
     }
 
@@ -361,10 +378,12 @@ export class AuthService {
   async setupMfa(userId: string): Promise<MfaSetupResult> {
     const user = await this.authRepo.findUserById(userId);
     if (!user) {
+      logger.error(`User not found when setting up MFA: ${userId}`);
       throw new NotFoundError('User not Found.');
     }
 
     if (user.mfaEnabled) {
+      logger.warn(`MFA setup attempted for user with MFA already enabled: ${userId}`);
       throw new ConflictError('MFA is already enabled.');
     }
 
@@ -374,7 +393,8 @@ export class AuthService {
     });
 
     if (!secret.otpauth_url) {
-      throw new Error('Failed to generate MFA secret');
+      logger.error(`Failed to generate MFA secret for user: ${userId}`);
+      throw new InternalServerError('Failed to generate MFA secret');
     }
 
     const qrCodeUrl = await QRCode.toDataURL(secret.otpauth_url);
@@ -399,6 +419,7 @@ export class AuthService {
     });
 
     if (!verified) {
+      logger.warn(`Invalid MFA code during verification for user: ${userId}`);
       throw new UnauthorizedError('Invalid MFA code');
     }
 
@@ -410,11 +431,13 @@ export class AuthService {
   async disableMfa(userId: string, password: string): Promise<void> {
     const user = await this.authRepo.findUserById(userId);
     if (!user) {
+      logger.error(`User not found when disabling MFA: ${userId}`);
       throw new NotFoundError('User');
     }
 
     const valid = await verifyPassword(password, user.passwordHash);
     if (!valid) {
+      logger.warn(`Incorrect password when disabling MFA for user: ${userId}`);
       throw new UnauthorizedError('Password is incorrect');
     }
 
@@ -428,6 +451,7 @@ export class AuthService {
   async getCurrentUser(userId: string): Promise<DetailedUser> {
     const user = await this.authRepo.findUserWithRoles(userId);
     if (!user) {
+      logger.error(`User not found when getting current user: ${userId}`);
       throw new NotFoundError('User');
     }
 
