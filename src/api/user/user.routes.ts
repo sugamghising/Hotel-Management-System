@@ -6,7 +6,7 @@ import {
   listUsersQuerySchema,
   updateUserSchema,
   userIdParamSchema,
-} from './user.validation';
+} from './user.schema';
 
 const router = Router();
 
