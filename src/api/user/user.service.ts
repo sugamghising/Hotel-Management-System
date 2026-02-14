@@ -1,9 +1,10 @@
 import { BadRequestError, ConflictError, NotFoundError, logger } from '../../core';
 import { hashPassword } from '../../core/utils/crypto';
+import type { Prisma } from '../../generated/prisma';
 import { type OrganizationService, organizationService } from '../organizations';
 import { type UserRepository, userRepository } from './user.repository';
 import type { CreateUserInput } from './user.schema';
-import type { UserWithRoles } from './user.types';
+import type { UserFilters, UserListResult, UserWithRoles } from './user.types';
 
 export class UserService {
   private userRepo: UserRepository;
@@ -98,6 +99,49 @@ export class UserService {
       user: userWithRoles,
       temporaryPassword,
     };
+  }
+
+  async findAll(organizationId: string, filters: UserFilters): Promise<UserListResult> {
+    const where: Prisma.UserWhereInput = {
+      organizationId,
+    };
+
+    if (filters.search) {
+      where.OR = [
+        { firstName: { contains: filters.search, mode: 'insensitive' } },
+        { lastName: { contains: filters.search, mode: 'insensitive' } },
+        { email: { contains: filters.search, mode: 'insensitive' } },
+        { employeeId: { contains: filters.search, mode: 'insensitive' } },
+      ];
+    }
+
+    if (filters.status) {
+      where.status = filters.status;
+    }
+
+    if (filters.department) {
+      where.department = filters.department;
+    }
+
+    if (filters.jobTitle) {
+      where.jobTitle = filters.jobTitle;
+    }
+
+    if (filters.managerId) {
+      where.managerId = filters.managerId;
+    }
+
+    const [data, total] = await Promise.all([
+      this.userRepo.findMany({
+        where,
+        skip: filters.skip || 0,
+        take: filters.take || 10,
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.userRepo.count(where),
+    ]);
+
+    return { data, total };
   }
 
   // ============================================================================
