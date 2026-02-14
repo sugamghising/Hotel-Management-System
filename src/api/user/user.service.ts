@@ -114,3 +114,5 @@ export class UserService {
     return password;
   }
 }
+
+export const userService = new UserService();
