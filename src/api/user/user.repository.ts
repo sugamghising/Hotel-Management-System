@@ -1,7 +1,7 @@
 import { prisma } from '../../database/prisma';
-import type { Prisma } from '../../generated/prisma';
+import type { Prisma, UserRole } from '../../generated/prisma';
 import type { UserCreateInput, UserUpdateInput } from '../auth/auth.repository';
-import type { User, UserWithRoles } from './user.types';
+import type { User, UserRoleWithRelations, UserWithRoles } from './user.types';
 
 export class UserRepository {
   // ============================================================================
@@ -14,7 +14,7 @@ export class UserRepository {
     })) as User | null;
   }
 
-  async findWithRoles(id: string): Promise<User | null> {
+  async findWithRoles(id: string): Promise<UserWithRoles | null> {
     return (await prisma.user.findUnique({
       where: { id, deletedAt: null },
       include: {
@@ -43,7 +43,7 @@ export class UserRepository {
           },
         },
       },
-    })) as User | null;
+    })) as UserWithRoles | null;
   }
 
   async findByEmail(email: string, organizationId: string): Promise<User | null> {
@@ -115,4 +115,120 @@ export class UserRepository {
       },
     });
   }
+
+  // ============================================================================
+  // ROLE ASSIGNMENTS
+  // ============================================================================
+
+  async assignRole(data: {
+    userId: string;
+    roleId: string;
+    organizationId: string;
+    hotelId?: string;
+    assignedBy: string;
+    expiresAt?: Date;
+  }): Promise<UserRole> {
+    return prisma.userRole.create({
+      data: {
+        id: crypto.randomUUID(),
+        userId: data.userId,
+        roleId: data.roleId,
+        organizationId: data.organizationId,
+        hotelId: data.hotelId || null,
+        assignedBy: data.assignedBy,
+        assignedAt: new Date(),
+        expiresAt: data.expiresAt || null,
+      },
+    }) as Promise<UserRole>;
+  }
+
+  async removeRole(roleAssignmentId: string): Promise<void> {
+    await prisma.userRole.delete({
+      where: {
+        id: roleAssignmentId,
+      },
+    });
+  }
+
+  async findUserRole(userId: string): Promise<UserRoleWithRelations[]> {
+    return prisma.userRole.findMany({
+      where: {
+        userId,
+        expiresAt: null,
+      },
+      include: {
+        role: {
+          include: {
+            permissions: {
+              include: {
+                permission: true,
+              },
+            },
+          },
+        },
+        hotel: true,
+      },
+    });
+  }
+
+  // ============================================================================
+  // MANAGER HIERARCHY
+  // ============================================================================
+
+  async findSubordinates(managerId: string): Promise<User[]> {
+    return prisma.user.findMany({
+      where: {
+        managerId,
+        deletedAt: null,
+      },
+    }) as Promise<User[]>;
+  }
+
+  async updateManager(userId: string, managerId: string | null): Promise<void> {
+    await prisma.user.update({
+      where: {
+        id: userId,
+      },
+      data: {
+        managerId,
+      },
+    });
+  }
+
+  // ============================================================================
+  // PERMISSIONS (via view)
+  // ============================================================================
+
+  async getUserPermissions(userId: string): Promise<string[]> {
+    const result = await prisma.$queryRaw<{ permission_code: string }[]>`
+      SELECT DISTINCT permission_code 
+      FROM v_user_permissions 
+      WHERE user_id = ${userId}::uuid
+    `;
+    return result.map((r) => r.permission_code);
+  }
+
+  // ============================================================================
+  // EXISTS CHECKS
+  // ============================================================================
+
+  async existsByEmail(email: string, organizationId: string): Promise<boolean> {
+    const count = await prisma.user.count({
+      where: {
+        email: email.toLowerCase(),
+        organizationId,
+        deletedAt: null,
+      },
+    });
+    return count > 0;
+  }
+
+  async existsById(id: string): Promise<boolean> {
+    const count = await prisma.user.count({
+      where: { id, deletedAt: null },
+    });
+    return count > 0;
+  }
 }
+
+export const userRepository = new UserRepository();

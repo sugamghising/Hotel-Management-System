@@ -1,84 +1,116 @@
-import { randomUUID } from 'node:crypto';
-import { ConflictError, NotFoundError } from '../../core/errors/index';
-import type { CreateUserDTO, UpdateUserDTO, User } from './user.types';
+import { BadRequestError, ConflictError, NotFoundError, logger } from '../../core';
+import { hashPassword } from '../../core/utils/crypto';
+import { type OrganizationService, organizationService } from '../organizations';
+import { type UserRepository, userRepository } from './user.repository';
+import type { CreateUserInput } from './user.schema';
+import type { UserWithRoles } from './user.types';
 
-// In-memory store for demo purposes
-// In production, replace with actual database
-const users = new Map<string, User>();
+export class UserService {
+  private userRepo: UserRepository;
+  private orgService: OrganizationService;
 
-export const userService = {
-  async findAll(page = 1, limit = 10): Promise<{ users: User[]; total: number }> {
-    const allUsers = Array.from(users.values());
-    const total = allUsers.length;
-    const startIndex = (page - 1) * limit;
-    const paginatedUsers = allUsers.slice(startIndex, startIndex + limit);
+  constructor(
+    userRepo: UserRepository = userRepository,
+    orgService: OrganizationService = organizationService
+  ) {
+    this.userRepo = userRepo;
+    this.orgService = orgService;
+  }
 
-    return { users: paginatedUsers, total };
-  },
+  // ============================================================================
+  // USER CRUD
+  // ============================================================================
 
-  async findById(id: string): Promise<User> {
-    const user = users.get(id);
-    if (!user) {
-      throw new NotFoundError(`User with ID ${id} not found`);
-    }
-    return user;
-  },
-
-  async findByEmail(email: string): Promise<User | undefined> {
-    return Array.from(users.values()).find((user) => user.email === email);
-  },
-
-  async create(dto: CreateUserDTO): Promise<User> {
-    // Check for duplicate email
-    const existingUser = await this.findByEmail(dto.email);
-    if (existingUser) {
-      throw new ConflictError(`User with email ${dto.email} already exists`);
+  async createUser(
+    organizationId: string,
+    createdByUserId: string,
+    input: CreateUserInput
+  ): Promise<{ user: UserWithRoles; temporaryPassword: string }> {
+    //Check Organization Capacity
+    const limitCheck = await this.orgService.validateLimits(organizationId, 'user', 1);
+    if (!limitCheck.valid) {
+      throw new BadRequestError(limitCheck.message || 'Organization user limit exceeded');
     }
 
-    const now = new Date();
-    const user: User = {
-      id: randomUUID(),
-      email: dto.email,
-      name: dto.name,
-      createdAt: now,
-      updatedAt: now,
-    };
+    // Check email uniqueness
+    const exists = await this.userRepo.existsByEmail(input.email, organizationId);
+    if (exists) {
+      throw new ConflictError(
+        `User with email '${input.email}' already exists in this organization`
+      );
+    }
 
-    users.set(user.id, user);
-    return user;
-  },
-
-  async update(id: string, dto: UpdateUserDTO): Promise<User> {
-    const user = await this.findById(id);
-
-    // Check for email conflict if updating email
-    if (dto.email && dto.email !== user.email) {
-      const existingUser = await this.findByEmail(dto.email);
-      if (existingUser) {
-        throw new ConflictError(`User with email ${dto.email} already exists`);
+    // Validate manager if provided
+    if (input.managerId) {
+      const managerExists = await this.userRepo.existsById(input.managerId);
+      if (!managerExists) {
+        throw new NotFoundError('Manager not Found');
       }
     }
 
-    const updatedUser: User = {
-      ...user,
-      ...dto,
-      updatedAt: new Date(),
-    };
+    //Generate Temporary Password
+    const temporaryPassword = this.generateTemporaryPassword();
+    const passwordHash = await hashPassword(temporaryPassword);
 
-    users.set(id, updatedUser);
-    return updatedUser;
-  },
+    //Create User
+    const user = await this.userRepo.create({
+      organization: { connect: { id: organizationId } },
+      email: input.email.toLowerCase(),
+      passwordHash,
+      firstName: input.firstName,
+      lastName: input.lastName,
+      middleName: input.middleName || null,
+      phone: input.phone || null,
+      employeeId: input.employeeId || null,
+      department: input.department || null,
+      jobTitle: input.jobTitle || null,
+      employmentType: input.employmentType || null,
+      hireDate: input.hireDate || null,
+      ...(input.managerId && { manager: { connect: { id: input.managerId } } }),
+      status: 'PENDING_VERIFICATION',
+      emailVerified: false,
+      phoneVerified: false,
+      mfaEnabled: false,
+      failedLoginAttempts: 0,
+      passwordChangedAt: new Date(),
+      languageCode: input.languageCode || 'en',
+      timezone: input.timezone || 'UTC',
+      preferences: {},
+      isSuperAdmin: false,
+      version: 1,
+    });
 
-  async delete(id: string): Promise<void> {
-    const user = users.get(id);
-    if (!user) {
-      throw new NotFoundError(`User with ID ${id} not found`);
+    //Fetch with Roles
+    const userWithRoles = await this.userRepo.findWithRoles(user.id);
+    if (!userWithRoles) {
+      throw new NotFoundError('Failed to retrieve user after creation');
     }
-    users.delete(id);
-  },
 
-  // Utility method for testing
-  _clear(): void {
-    users.clear();
-  },
-};
+    // TODO: Send welcome email with temporary password
+
+    logger.info(`User created: ${user.email}`, {
+      userId: user.id,
+      orgId: organizationId,
+      createdBy: createdByUserId,
+    });
+
+    return {
+      user: userWithRoles,
+      temporaryPassword,
+    };
+  }
+
+  // ============================================================================
+  // PRIVATE HELPERS
+  // ============================================================================
+
+  private generateTemporaryPassword(): string {
+    // Generate pronounceable temporary password
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
+    let password = '';
+    for (let i = 0; i < 12; i++) {
+      password += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return password;
+  }
+}

@@ -77,6 +77,21 @@ export type UserWithOrganization = Prisma.UserGetPayload<{
   };
 }>;
 
+export type UserRoleWithRelations = Prisma.UserRoleGetPayload<{
+  include: {
+    role: {
+      include: {
+        permissions: {
+          include: {
+            permission: true;
+          };
+        };
+      };
+    };
+    hotel: true;
+  };
+}>;
+
 // ============================================================================
 // ROLE ASSIGNMENT
 // ============================================================================
