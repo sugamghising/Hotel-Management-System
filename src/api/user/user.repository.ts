@@ -229,6 +229,34 @@ export class UserRepository {
     });
     return count > 0;
   }
+
+  async getDepartments(organizationId: string): Promise<string[]> {
+    const users = await prisma.user.findMany({
+      where: { organizationId, deletedAt: null },
+      select: { department: true },
+    });
+
+    const departments = new Set<string>();
+    users.forEach((u) => {
+      if (u.department) departments.add(u.department);
+    });
+
+    return Array.from(departments).sort();
+  }
+
+  async getJobTitles(organizationId: string): Promise<string[]> {
+    const users = await prisma.user.findMany({
+      where: { organizationId, deletedAt: null },
+      select: { jobTitle: true },
+    });
+
+    const titles = new Set<string>();
+    users.forEach((u) => {
+      if (u.jobTitle) titles.add(u.jobTitle);
+    });
+
+    return Array.from(titles).sort();
+  }
 }
 
 export const userRepository = new UserRepository();
