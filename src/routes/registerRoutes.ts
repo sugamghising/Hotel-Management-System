@@ -16,9 +16,9 @@ router.use('/health', healthRoutes);
 
 // API v1 routes
 const v1Router = Router();
-v1Router.use('api/v1/users', userRoutes);
-v1Router.use('api/v1/organizations', organizationRoutes);
-v1Router.use('api/v1/auth', authRoutes);
+v1Router.use('/users', userRoutes);
+v1Router.use('/organizations', organizationRoutes);
+v1Router.use('/auth', authRoutes);
 
 // Mount versioned routes
 router.use(config.api.fullPrefix, v1Router);
