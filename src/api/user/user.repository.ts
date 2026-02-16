@@ -20,7 +20,7 @@ export class UserRepository {
       include: {
         userRoles: {
           where: {
-            expiresAt: null,
+            OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
           },
           include: {
             role: true,
@@ -70,7 +70,9 @@ export class UserRepository {
       ...(orderBy && { orderBy }),
       include: include || {
         userRoles: {
-          where: { expiresAt: null },
+          where: {
+            OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+          },
           include: {
             role: true,
             hotel: true,
@@ -154,7 +156,7 @@ export class UserRepository {
     return prisma.userRole.findMany({
       where: {
         userId,
-        expiresAt: null,
+        OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
       },
       include: {
         role: {

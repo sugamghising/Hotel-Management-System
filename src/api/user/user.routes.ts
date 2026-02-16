@@ -1,74 +1,69 @@
 import { Router } from 'express';
 import { validate } from '../../core/index';
 import { authMiddleware } from '../../core/middleware/auth';
-import { userController } from './user.controller';
-import { UserQuerySchema } from './user.schema';
+import { UserController } from './user.controller';
+import {
+  AssignRoleSchema,
+  CreateUserSchema,
+  UpdateUserSchema,
+  UserIdParamSchema,
+  UserQuerySchema,
+} from './user.schema';
 
 const router = Router();
+const userController = new UserController();
+// All routes require USER.READ permission
+// router.use(requirePermission('USER.READ'));
 
 // All user routes require authentication
 router.use(authMiddleware);
 
-/**
- * @swagger
- * /api/v1/users:
- *   get:
- *     summary: Get all users
- *     description: Retrieve a paginated list of all users
- *     tags: [Users]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: query
- *         name: page
- *         schema:
- *           type: integer
- *           minimum: 1
- *           default: 1
- *         description: Page number
- *       - in: query
- *         name: limit
- *         schema:
- *           type: integer
- *           minimum: 1
- *           maximum: 100
- *           default: 10
- *         description: Number of items per page
- *       - in: query
- *         name: search
- *         schema:
- *           type: string
- *         description: Search term for name, email, or employee ID
- *       - in: query
- *         name: status
- *         schema:
- *           type: string
- *           enum: [PENDING_VERIFICATION, ACTIVE, INACTIVE, SUSPENDED]
- *         description: Filter by user status
- *       - in: query
- *         name: department
- *         schema:
- *           type: string
- *         description: Filter by department
- *       - in: query
- *         name: jobTitle
- *         schema:
- *           type: string
- *         description: Filter by job title
- *       - in: query
- *         name: managerId
- *         schema:
- *           type: string
- *           format: uuid
- *         description: Filter by manager ID
- *     responses:
- *       200:
- *         description: List of users
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/UsersResponse'
- */
 router.get('/', validate({ query: UserQuerySchema }), userController.getAll);
+
+// Metadata
+router.get('/departments', userController.getDepartments);
+router.get('/job-titles', userController.getJobTitles);
+
+// Individual user
+router.get('/:id', validate({ params: UserIdParamSchema }), userController.getById);
+router.get('/:id/profile', validate({ params: UserIdParamSchema }), userController.getProfile);
+
+// Create (requires USER.CREATE)
+router.post(
+  '/',
+  //   requirePermission('USER.CREATE'),
+  validate({ body: CreateUserSchema }),
+  userController.create
+);
+
+// Update (requires USER.UPDATE)
+router.patch(
+  '/:id',
+  // requirePermission('USER.UPDATE'),
+  validate({ params: UserIdParamSchema, body: UpdateUserSchema }),
+  userController.update
+);
+
+// Delete (requires USER.DELETE)
+router.delete(
+  '/:id',
+  //   requirePermission('USER.DELETE'),
+  validate({ params: UserIdParamSchema }),
+  userController.delete
+);
+
+// Role management (requires ROLE.ASSIGN)
+router.post(
+  '/:id/roles',
+  //   requirePermission('ROLE.ASSIGN'),
+  validate({ params: UserIdParamSchema, body: AssignRoleSchema }),
+  userController.assignRole
+);
+
+router.delete(
+  '/:id/roles/:roleAssignmentId',
+  //   requirePermission('ROLE.ASSIGN'),
+  userController.removeRole
+);
 
 export { router as userRoutes };

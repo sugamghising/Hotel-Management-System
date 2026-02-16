@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import { BadRequestError, ConflictError, NotFoundError, logger } from '../../core';
 import { hashPassword } from '../../core/utils/crypto';
 import type { Prisma } from '../../generated/prisma';
@@ -167,17 +168,17 @@ export class UserService {
     //Verify user exists and belongs to the organizations
     const user = await this.userRepo.findById(id);
     if (!user || user.deletedAt) {
-      throw new Error('User does not exist.');
+      throw new NotFoundError('User does not exist.');
     }
 
     if (user.organizationId !== organizationId) {
-      throw new Error('User doesnot  belong to the organizations.');
+      throw new NotFoundError('User does not  belong to the organizations.');
     }
 
     //Validate manager  if changing
     if (input.managerId !== undefined && input.managerId !== user.managerId) {
-      if (user.managerId === id) {
-        throw new NotFoundError('User cannnot be their own manager.');
+      if (input.managerId === id) {
+        throw new NotFoundError('User cannot be their own manager.');
       }
 
       if (user.managerId) {
@@ -186,7 +187,8 @@ export class UserService {
           throw new NotFoundError('Manager doesnot exists.');
         }
 
-        const wouldCreateCycle = await this.checkManagerCycle(id, user.managerId);
+        // Prevent circular reporting (A reports to B, B reports to A)
+        const wouldCreateCycle = await this.checkManagerCycle(id, input.managerId);
         if (wouldCreateCycle) {
           throw new BadRequestError('This manager assignment would create a reporting cycle.');
         }
@@ -234,10 +236,10 @@ export class UserService {
     }
 
     if (user.organizationId !== organizationId) {
-      throw new BadRequestError('User doesnot belong to the organizations.');
+      throw new BadRequestError('User does not belong to the organizations.');
     }
 
-    //check if the user has subbordinates
+    //check if the user has subordinates
     const subordinates = await this.userRepo.findSubordinates(id);
     if (subordinates.length > 0) {
       throw new ConflictError(
@@ -266,11 +268,11 @@ export class UserService {
     //Verify user exists and belongs to the organizations
     const user = await this.userRepo.findById(userId);
     if (!user || user.deletedAt) {
-      throw new NotFoundError('User doesnot exists.');
+      throw new NotFoundError('User does not exists.');
     }
 
     if (user.organizationId !== organizationId) {
-      throw new BadRequestError('User doesnot belong to the organization.');
+      throw new BadRequestError('User does not belong to the organization.');
     }
 
     // Verify role exists (would need role repository)
@@ -358,11 +360,11 @@ export class UserService {
   // ============================================================================
 
   private generateTemporaryPassword(): string {
-    // Generate pronounceable temporary password
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
+    const bytes = crypto.randomBytes(12);
     let password = '';
     for (let i = 0; i < 12; i++) {
-      password += chars.charAt(Math.floor(Math.random() * chars.length));
+      password += chars.charAt(bytes.readUInt8(i) % chars.length);
     }
     return password;
   }
