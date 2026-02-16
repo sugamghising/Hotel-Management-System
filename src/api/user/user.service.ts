@@ -154,7 +154,7 @@ export class UserService {
   async findById(id: string): Promise<UserWithRoles> {
     const user = await this.userRepo.findById(id);
     if (!user || user.deletedAt) {
-      logger.warn('User doesnot exist');
+      logger.warn('User does not exist');
       throw new NotFoundError('User does not Exists.');
     }
     return user as UserWithRoles;

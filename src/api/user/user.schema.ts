@@ -12,7 +12,7 @@ export const NameSchema = z
   .max(100, 'Name must not exceed 100 characters')
   .trim();
 
-export const PhoneSchema = z.string().max(50, 'Phone number too long').optional();
+export const PhoneSchema = z.string().max(50, 'Phone number too long');
 
 export const UserStatusSchema = z.enum(['PENDING_VERIFICATION', 'ACTIVE', 'INACTIVE', 'SUSPENDED']);
 
@@ -26,7 +26,7 @@ export const CreateUserSchema = z.object({
   firstName: NameSchema,
   lastName: NameSchema,
   middleName: z.string().max(100).optional(),
-  phone: PhoneSchema,
+  phone: PhoneSchema.optional(),
   employeeId: z.string().max(50).optional(),
   department: z.string().max(100).optional(),
   jobTitle: z.string().max(100).optional(),
@@ -41,7 +41,7 @@ export const UpdateUserSchema = z.object({
   firstName: NameSchema.optional(),
   lastName: NameSchema.optional(),
   middleName: z.string().max(100).optional(),
-  phone: PhoneSchema,
+  phone: PhoneSchema.optional(),
   employeeId: z.string().max(50).optional(),
   department: z.string().max(100).optional(),
   jobTitle: z.string().max(100).optional(),
