@@ -12,7 +12,7 @@ export class UserController {
    */
   getAll = asyncHandler(async (req: Request, res: Response, _next: NextFunction) => {
     const query = req.query as unknown as UserQueryInput;
-    const organizationId = req.user?.organizationId;
+    const organizationId = req.user?.org.id;
 
     if (!organizationId) {
       throw new BadRequestError('Organization ID not found in request');
@@ -75,8 +75,8 @@ export class UserController {
    */
   create = asyncHandler(async (req: Request, res: Response, _next: NextFunction) => {
     const input: CreateUserInput = req.body as CreateUserInput;
-    const organizationId = req.user?.organizationId;
-    const createdBy = req.user?.userId;
+    const organizationId = req.user?.org.id;
+    const createdBy = req.user?.user.id;
 
     if (!organizationId || !createdBy) {
       throw new BadRequestError('Organization ID and User ID are required');
@@ -93,7 +93,7 @@ export class UserController {
    */
   update = asyncHandler(async (req: Request, res: Response, _next: NextFunction) => {
     const { id } = req.params;
-    const organizationId = req.user?.organizationId;
+    const organizationId = req.user?.org.id;
     const input = req.body as UpdateUserInput;
 
     if (!organizationId || !id) {
@@ -111,7 +111,7 @@ export class UserController {
    */
   delete = asyncHandler(async (req: Request, res: Response, _next: NextFunction) => {
     const { id } = req.params;
-    const organizationId = req.user?.organizationId;
+    const organizationId = req.user?.org.id;
 
     if (!id || !organizationId) {
       throw new BadRequestError('User id and organization id is required.');
@@ -127,8 +127,8 @@ export class UserController {
    */
   assignRole = asyncHandler(async (req: Request, res: Response, _next: NextFunction) => {
     const { id } = req.params;
-    const organizationId = req.user?.organizationId;
-    const assignedBy = req.user?.userId;
+    const organizationId = req.user?.org.id;
+    const assignedBy = req.user?.user.id;
 
     if (!id || !organizationId || !assignedBy) {
       throw new BadRequestError('User id, organization id, and assigned by user id are required.');
@@ -145,7 +145,7 @@ export class UserController {
    */
   removeRole = asyncHandler(async (req: Request, res: Response, _next: NextFunction) => {
     const { roleAssignmentId } = req.params;
-    const organizationId = req.user?.organizationId;
+    const organizationId = req.user?.org.id;
     if (!roleAssignmentId || !organizationId) {
       throw new BadRequestError('Role assignment ID and organization ID are required');
     }
@@ -159,7 +159,7 @@ export class UserController {
    * GET /users/departments
    */
   getDepartments = asyncHandler(async (req: Request, res: Response, _next: NextFunction) => {
-    const organizationId = req.user?.organizationId;
+    const organizationId = req.user?.org.id;
     if (!organizationId) {
       throw new BadRequestError('Organization ID is required');
     }
@@ -173,7 +173,7 @@ export class UserController {
    * GET /users/job-titles
    */
   getJobTitles = asyncHandler(async (req: Request, res: Response, _next: NextFunction) => {
-    const organizationId = req.user?.organizationId;
+    const organizationId = req.user?.org.id;
     if (!organizationId) {
       throw new BadRequestError('Organization ID is required');
     }
