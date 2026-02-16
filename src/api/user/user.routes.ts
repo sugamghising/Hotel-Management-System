@@ -1,190 +1,69 @@
 import { Router } from 'express';
-import { asyncHandler, validate } from '../../core/index';
-import { userController } from './user.controller';
+import { validate } from '../../core/index';
+import { authMiddleware } from '../../core/middleware/auth';
+import { UserController } from './user.controller';
 import {
-  createUserSchema,
-  listUsersQuerySchema,
-  updateUserSchema,
-  userIdParamSchema,
-} from './user.validation';
+  AssignRoleSchema,
+  CreateUserSchema,
+  UpdateUserSchema,
+  UserIdParamSchema,
+  UserQuerySchema,
+} from './user.schema';
 
 const router = Router();
+const userController = new UserController();
+// All routes require USER.READ permission
+// router.use(requirePermission('USER.READ'));
 
-/**
- * @swagger
- * /api/v1/users:
- *   get:
- *     summary: Get all users
- *     description: Retrieve a paginated list of all users
- *     tags: [Users]
- *     parameters:
- *       - in: query
- *         name: page
- *         schema:
- *           type: integer
- *           minimum: 1
- *           default: 1
- *         description: Page number
- *       - in: query
- *         name: limit
- *         schema:
- *           type: integer
- *           minimum: 1
- *           maximum: 100
- *           default: 10
- *         description: Number of items per page
- *     responses:
- *       200:
- *         description: List of users
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/UsersResponse'
- */
-router.get('/', validate({ query: listUsersQuerySchema }), asyncHandler(userController.list));
+// All user routes require authentication
+router.use(authMiddleware);
 
-/**
- * @swagger
- * /api/v1/users/{id}:
- *   get:
- *     summary: Get user by ID
- *     description: Retrieve a single user by their ID
- *     tags: [Users]
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *           format: uuid
- *         description: User ID
- *     responses:
- *       200:
- *         description: User found
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/UserResponse'
- *       404:
- *         description: User not found
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
- */
-router.get('/:id', validate({ params: userIdParamSchema }), asyncHandler(userController.getById));
+router.get('/', validate({ query: UserQuerySchema }), userController.getAll);
 
-/**
- * @swagger
- * /api/v1/users:
- *   post:
- *     summary: Create a new user
- *     description: Create a new user with email and name
- *     tags: [Users]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             $ref: '#/components/schemas/CreateUserDTO'
- *     responses:
- *       201:
- *         description: User created successfully
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/UserResponse'
- *       400:
- *         description: Validation error
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ValidationErrorResponse'
- *       409:
- *         description: User with email already exists
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
- */
-router.post('/', validate({ body: createUserSchema }), asyncHandler(userController.create));
+// Metadata
+router.get('/departments', userController.getDepartments);
+router.get('/job-titles', userController.getJobTitles);
 
-/**
- * @swagger
- * /api/v1/users/{id}:
- *   patch:
- *     summary: Update a user
- *     description: Update an existing user's email or name
- *     tags: [Users]
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *           format: uuid
- *         description: User ID
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             $ref: '#/components/schemas/UpdateUserDTO'
- *     responses:
- *       200:
- *         description: User updated successfully
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/UserResponse'
- *       400:
- *         description: Validation error
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ValidationErrorResponse'
- *       404:
- *         description: User not found
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
- */
-router.patch(
-  '/:id',
-  validate({ params: userIdParamSchema, body: updateUserSchema }),
-  asyncHandler(userController.update)
+// Individual user
+router.get('/:id', validate({ params: UserIdParamSchema }), userController.getById);
+router.get('/:id/profile', validate({ params: UserIdParamSchema }), userController.getProfile);
+
+// Create (requires USER.CREATE)
+router.post(
+  '/',
+  //   requirePermission('USER.CREATE'),
+  validate({ body: CreateUserSchema }),
+  userController.create
 );
 
-/**
- * @swagger
- * /api/v1/users/{id}:
- *   delete:
- *     summary: Delete a user
- *     description: Delete an existing user by ID
- *     tags: [Users]
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *           format: uuid
- *         description: User ID
- *     responses:
- *       200:
- *         description: User deleted successfully
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/DeleteResponse'
- *       404:
- *         description: User not found
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
- */
-router.delete('/:id', validate({ params: userIdParamSchema }), asyncHandler(userController.delete));
+// Update (requires USER.UPDATE)
+router.patch(
+  '/:id',
+  // requirePermission('USER.UPDATE'),
+  validate({ params: UserIdParamSchema, body: UpdateUserSchema }),
+  userController.update
+);
+
+// Delete (requires USER.DELETE)
+router.delete(
+  '/:id',
+  //   requirePermission('USER.DELETE'),
+  validate({ params: UserIdParamSchema }),
+  userController.delete
+);
+
+// Role management (requires ROLE.ASSIGN)
+router.post(
+  '/:id/roles',
+  //   requirePermission('ROLE.ASSIGN'),
+  validate({ params: UserIdParamSchema, body: AssignRoleSchema }),
+  userController.assignRole
+);
+
+router.delete(
+  '/:id/roles/:roleAssignmentId',
+  //   requirePermission('ROLE.ASSIGN'),
+  userController.removeRole
+);
 
 export { router as userRoutes };

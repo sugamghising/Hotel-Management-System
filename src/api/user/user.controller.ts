@@ -1,55 +1,187 @@
-import { ServiceResponse, paginatedResponse } from '@/common/models/serviceResponse';
-import { handleServiceResponse } from '@/common/utils/httpHandlers';
-import type { Request, Response } from 'express';
-import { StatusCodes } from 'http-status-codes';
+import type { NextFunction, Request, Response } from 'express';
+import { ServiceResponse, handleServiceResponse, paginatedResponse } from '../../common';
+import { BadRequestError, asyncHandler } from '../../core';
+import type { AssignRoleInput, CreateUserInput, UserQueryInput } from './user.schema';
 import { userService } from './user.service';
-import type { User } from './user.types';
+import type { UpdateUserInput } from './user.types';
 
-export const userController = {
-  async list(req: Request, res: Response): Promise<void> {
-    const page = Number(req.query['page']) || 1;
-    const limit = Number(req.query['limit']) || 10;
-    const { users, total } = await userService.findAll(page, limit);
+export class UserController {
+  /**
+   * Get All Users
+   * GET /users
+   */
+  getAll = asyncHandler(async (req: Request, res: Response, _next: NextFunction) => {
+    const query = req.query as unknown as UserQueryInput;
+    const organizationId = req.user?.organizationId;
 
-    const serviceResponse = paginatedResponse<User>(
-      users,
-      total,
-      page,
-      limit,
+    if (!organizationId) {
+      throw new BadRequestError('Organization ID not found in request');
+    }
+
+    const result = await userService.findAll(organizationId, {
+      skip: (query.page - 1) * query.limit,
+      take: query.limit,
+      ...(query.search && { search: query.search }),
+      ...(query.status && { status: query.status }),
+      ...(query.department && { department: query.department }),
+      ...(query.jobTitle && { jobTitle: query.jobTitle }),
+      ...(query.managerId && { managerId: query.managerId }),
+    });
+
+    const serviceResponse = paginatedResponse(
+      result.data,
+      result.total,
+      query.page,
+      query.limit,
       'Users retrieved successfully'
     );
+
     handleServiceResponse(serviceResponse, res);
-  },
+  });
 
-  async getById(req: Request, res: Response): Promise<void> {
-    const user = await userService.findById(req.params['id'] as string);
+  /**
+   * Get By Id
+   * GET /users/:id
+   */
+  getById = asyncHandler(async (req: Request, res: Response, _next: NextFunction) => {
+    const { id } = req.params;
+    if (!id) {
+      throw new BadRequestError('User ID is required');
+    }
+    const user = await userService.findById(id);
 
-    const serviceResponse = ServiceResponse.success(user, 'User retrieved successfully');
-    handleServiceResponse(serviceResponse, res);
-  },
+    const response = ServiceResponse.success(user, 'User retrieved successfully.');
+    handleServiceResponse(response, res);
+  });
 
-  async create(req: Request, res: Response): Promise<void> {
-    const user = await userService.create(req.body);
+  /**
+   * Get user profiles
+   * GET /users/:id/profile
+   */
+  getProfile = asyncHandler(async (req: Request, res: Response, _next: NextFunction) => {
+    const { id } = req.params;
+    if (!id) {
+      throw new BadRequestError('User ID is required');
+    }
 
-    const serviceResponse = ServiceResponse.success(
-      user,
-      'User created successfully',
-      StatusCodes.CREATED
-    );
-    handleServiceResponse(serviceResponse, res);
-  },
+    const result = await userService.getUserProfile(id);
+    const response = ServiceResponse.success(result, 'User Profile fetched successfully');
+    handleServiceResponse(response, res);
+  });
 
-  async update(req: Request, res: Response): Promise<void> {
-    const user = await userService.update(req.params['id'] as string, req.body);
+  /**
+   * Create User
+   * POST /users
+   */
+  create = asyncHandler(async (req: Request, res: Response, _next: NextFunction) => {
+    const input: CreateUserInput = req.body as CreateUserInput;
+    const organizationId = req.user?.organizationId;
+    const createdBy = req.user?.userId;
 
-    const serviceResponse = ServiceResponse.success(user, 'User updated successfully');
-    handleServiceResponse(serviceResponse, res);
-  },
+    if (!organizationId || !createdBy) {
+      throw new BadRequestError('Organization ID and User ID are required');
+    }
 
-  async delete(req: Request, res: Response): Promise<void> {
-    await userService.delete(req.params['id'] as string);
+    const result = await userService.createUser(organizationId, createdBy, input);
+    const response = ServiceResponse.success(result, 'User created Successfully.');
+    handleServiceResponse(response, res);
+  });
 
-    const serviceResponse = ServiceResponse.success({ deleted: true }, 'User deleted successfully');
-    handleServiceResponse(serviceResponse, res);
-  },
-};
+  /**
+   * Update user
+   * PATCH /users/:id
+   */
+  update = asyncHandler(async (req: Request, res: Response, _next: NextFunction) => {
+    const { id } = req.params;
+    const organizationId = req.user?.organizationId;
+    const input = req.body as UpdateUserInput;
+
+    if (!organizationId || !id) {
+      throw new BadRequestError('Organization ID and userId are required');
+    }
+
+    const result = await userService.updateUser(id, organizationId, input);
+    const response = ServiceResponse.success(result, 'User updated Successfully.');
+    handleServiceResponse(response, res);
+  });
+
+  /**
+   * Delete User
+   * DELETE /users/:id
+   */
+  delete = asyncHandler(async (req: Request, res: Response, _next: NextFunction) => {
+    const { id } = req.params;
+    const organizationId = req.user?.organizationId;
+
+    if (!id || !organizationId) {
+      throw new BadRequestError('User id and organization id is required.');
+    }
+    const result = await userService.deleteUser(id, organizationId);
+    const response = ServiceResponse.success(result, 'User deleted successfully');
+    handleServiceResponse(response, res);
+  });
+
+  /**
+   * Assign Role
+   * POST /users/:id/roles
+   */
+  assignRole = asyncHandler(async (req: Request, res: Response, _next: NextFunction) => {
+    const { id } = req.params;
+    const organizationId = req.user?.organizationId;
+    const assignedBy = req.user?.userId;
+
+    if (!id || !organizationId || !assignedBy) {
+      throw new BadRequestError('User id, organization id, and assigned by user id are required.');
+    }
+    const input = req.body as AssignRoleInput;
+    const result = await userService.assignRole(id, organizationId, assignedBy, input);
+    const response = ServiceResponse.success(result, 'Role Assigned Successfully.');
+    handleServiceResponse(response, res);
+  });
+
+  /**
+   * Remove Role
+   * DELETE /users/:id/roles/:roleAssignmentId
+   */
+  removeRole = asyncHandler(async (req: Request, res: Response, _next: NextFunction) => {
+    const { roleAssignmentId } = req.params;
+    const organizationId = req.user?.organizationId;
+    if (!roleAssignmentId || !organizationId) {
+      throw new BadRequestError('Role assignment ID and organization ID are required');
+    }
+    const result = await userService.removeRole(roleAssignmentId, organizationId);
+    const response = ServiceResponse.success(result, 'Role Removed Successfully');
+    handleServiceResponse(response, res);
+  });
+
+  /**
+   * Get User Departments
+   * GET /users/departments
+   */
+  getDepartments = asyncHandler(async (req: Request, res: Response, _next: NextFunction) => {
+    const organizationId = req.user?.organizationId;
+    if (!organizationId) {
+      throw new BadRequestError('Organization ID is required');
+    }
+    const result = await userService.getDepartments(organizationId);
+    const response = ServiceResponse.success(result, 'Departments Retrived.');
+    handleServiceResponse(response, res);
+  });
+
+  /**
+   * Get user job titles
+   * GET /users/job-titles
+   */
+  getJobTitles = asyncHandler(async (req: Request, res: Response, _next: NextFunction) => {
+    const organizationId = req.user?.organizationId;
+    if (!organizationId) {
+      throw new BadRequestError('Organization ID is required');
+    }
+
+    const result = await userService.getJobTitles(organizationId);
+    const response = ServiceResponse.success(result, 'Job Titles fetched successfully');
+    handleServiceResponse(response, res);
+  });
+}
+
+export const userController = new UserController();
