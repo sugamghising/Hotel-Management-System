@@ -42,7 +42,7 @@ router.post(
 // Update (requires USER.UPDATE)
 router.patch(
   '/:id',
-  requirePermission(PERMISSIONS.USER.UPDATE),
+  requirePermission(PERMISSIONS.USER.UPDATE, PERMISSIONS.USER.MANAGE),
   validate({ params: UserIdParamSchema, body: UpdateUserSchema }),
   userController.update
 );
