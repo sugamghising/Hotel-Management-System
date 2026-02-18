@@ -88,7 +88,7 @@ export class AuthController {
     if (!req.user) {
       throw new UnauthorizedError('User not authenticated');
     }
-    await authService.logoutAll(req.user.userId, refreshToken);
+    await authService.logoutAll(req.user.user.id, refreshToken);
     handleServiceResponse(
       ServiceResponse.success(
         {
@@ -108,7 +108,7 @@ export class AuthController {
     if (!req.user) {
       throw new UnauthorizedError('User not authenticated');
     }
-    await authService.changePassword(req.user.userId, input);
+    await authService.changePassword(req.user.user.id, input);
     handleServiceResponse(
       ServiceResponse.success({ message: 'Password changed successfully' }),
       res
@@ -143,7 +143,7 @@ export class AuthController {
     if (!req.user) {
       throw new UnauthorizedError('User not authenticated');
     }
-    const result = await authService.setupMfa(req.user.userId);
+    const result = await authService.setupMfa(req.user.user.id);
 
     handleServiceResponse(
       ServiceResponse.success({
@@ -162,7 +162,7 @@ export class AuthController {
     if (!req.user) {
       throw new UnauthorizedError('User not authenticated');
     }
-    await authService.verifyAndEnableMfa(req.user.userId, code, secret);
+    await authService.verifyAndEnableMfa(req.user.user.id, code, secret);
 
     handleServiceResponse(ServiceResponse.success({ message: 'MFA enabled successfully' }), res);
   });
@@ -175,7 +175,7 @@ export class AuthController {
     if (!req.user) {
       throw new UnauthorizedError('User not authenticated');
     }
-    await authService.disableMfa(req.user.userId, password);
+    await authService.disableMfa(req.user.user.id, password);
 
     handleServiceResponse(
       ServiceResponse.success({
@@ -192,7 +192,7 @@ export class AuthController {
     if (!req.user) {
       throw new UnauthorizedError('User not authenticated');
     }
-    const user = await authService.getCurrentUser(req.user.userId);
+    const user = await authService.getCurrentUser(req.user.user.id);
 
     handleServiceResponse(
       ServiceResponse.success({

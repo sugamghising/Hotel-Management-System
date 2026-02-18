@@ -1,6 +1,8 @@
 import { Router } from 'express';
+import { PERMISSIONS } from '../../core/constants/permission';
 import { validate } from '../../core/index';
 import { authMiddleware } from '../../core/middleware/auth';
+import { requirePermission } from '../../core/middleware/requirePermission';
 import { UserController } from './user.controller';
 import {
   AssignRoleSchema,
@@ -12,11 +14,12 @@ import {
 
 const router = Router();
 const userController = new UserController();
-// All routes require USER.READ permission
-// router.use(requirePermission('USER.READ'));
 
 // All user routes require authentication
 router.use(authMiddleware);
+
+// All routes require USER.READ permission
+router.use(requirePermission('USER.READ'));
 
 router.get('/', validate({ query: UserQuerySchema }), userController.getAll);
 
@@ -31,7 +34,7 @@ router.get('/:id/profile', validate({ params: UserIdParamSchema }), userControll
 // Create (requires USER.CREATE)
 router.post(
   '/',
-  //   requirePermission('USER.CREATE'),
+  requirePermission(PERMISSIONS.USER.CREATE),
   validate({ body: CreateUserSchema }),
   userController.create
 );
@@ -39,7 +42,7 @@ router.post(
 // Update (requires USER.UPDATE)
 router.patch(
   '/:id',
-  // requirePermission('USER.UPDATE'),
+  requirePermission(PERMISSIONS.USER.UPDATE, PERMISSIONS.USER.MANAGE),
   validate({ params: UserIdParamSchema, body: UpdateUserSchema }),
   userController.update
 );
@@ -47,7 +50,7 @@ router.patch(
 // Delete (requires USER.DELETE)
 router.delete(
   '/:id',
-  //   requirePermission('USER.DELETE'),
+  requirePermission(PERMISSIONS.USER.DELETE),
   validate({ params: UserIdParamSchema }),
   userController.delete
 );
@@ -55,14 +58,14 @@ router.delete(
 // Role management (requires ROLE.ASSIGN)
 router.post(
   '/:id/roles',
-  //   requirePermission('ROLE.ASSIGN'),
+  requirePermission(PERMISSIONS.ROLE.ASSIGN),
   validate({ params: UserIdParamSchema, body: AssignRoleSchema }),
   userController.assignRole
 );
 
 router.delete(
   '/:id/roles/:roleAssignmentId',
-  //   requirePermission('ROLE.ASSIGN'),
+  requirePermission(PERMISSIONS.ROLE.ASSIGN),
   userController.removeRole
 );
 
