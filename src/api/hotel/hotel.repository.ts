@@ -377,3 +377,5 @@ export class HotelRepostiory {
     });
   }
 }
+
+export const hotelRepository = new HotelRepostiory();
