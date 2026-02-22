@@ -1,12 +1,15 @@
 import { BadRequestError, ConflictError, ForbiddenError, NotFoundError, logger } from '../../core';
 import type { Prisma } from '../../generated/prisma';
 import { type OrganizationService, organizationService } from '../organizations';
-import type { HotelListResponse } from './hotel.dto';
-import { type HotelRepostiory, hotelRepository } from './hotel.repository';
 import type {
+  CloneHotelInput,
   CreateHotelInput,
+  HotelListResponse,
+  UpdateHotelInput,
+} from './hotel.dto';
+import { type HotelRepository, hotelRepository } from './hotel.repository';
+import type {
   Hotel,
-  HotelCloneInput,
   HotelDashboardData,
   HotelOperationalSettings,
   HotelPolicies,
@@ -14,14 +17,13 @@ import type {
   HotelResponse,
   HotelStats,
   RoomStatusSummary,
-  UpdateHotelInput,
 } from './hotel.types';
 
 export class HotelService {
-  private hotelRepo: HotelRepostiory;
+  private hotelRepo: HotelRepository;
   private orgService: OrganizationService;
   constructor(
-    hotelRepo: HotelRepostiory = hotelRepository,
+    hotelRepo: HotelRepository = hotelRepository,
     orgService: OrganizationService = organizationService
   ) {
     this.hotelRepo = hotelRepo;
@@ -395,7 +397,7 @@ export class HotelService {
   async clone(
     sourceHotelId: string,
     organizationId: string,
-    input: HotelCloneInput,
+    input: CloneHotelInput,
     createdBy?: string
   ): Promise<HotelResponse> {
     const source = await this.hotelRepo.findById(sourceHotelId);
@@ -718,3 +720,5 @@ export class HotelService {
     };
   }
 }
+
+export const hotelService = new HotelService();

@@ -6,7 +6,7 @@ export type HotelWhereInput = Prisma.HotelWhereInput;
 export type HotelCreateInput = Prisma.HotelCreateInput;
 export type HotelUpdateInput = Prisma.HotelUpdateInput;
 
-export class HotelRepostiory {
+export class HotelRepository {
   // ============================================================================
   // CRUD OPERATIONS
   // ============================================================================
@@ -378,4 +378,4 @@ export class HotelRepostiory {
   }
 }
 
-export const hotelRepository = new HotelRepostiory();
+export const hotelRepository = new HotelRepository();
