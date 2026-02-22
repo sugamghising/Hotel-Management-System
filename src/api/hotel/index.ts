@@ -5,6 +5,7 @@ export { HotelController, hotelController } from './hotel.controller';
 export { HotelService, hotelService } from './hotel.service';
 export { HotelRepository, hotelRepository } from './hotel.repository';
 export { default as hotelsRoutes } from './hotel.routes';
+export { hotelRegistry } from './hotel.registry';
 
 // Types
 export type {
