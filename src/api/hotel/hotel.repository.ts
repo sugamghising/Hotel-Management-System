@@ -264,6 +264,11 @@ export class HotelRepository {
       copySettings: boolean;
     }
   ): Promise<Hotel> {
+    if (options.copyRatePlans) {
+      throw new Error(
+        'The copyRatePlans option is not supported for hotel cloning. Rate plans must be created separately after cloning.'
+      );
+    }
     return prisma.$transaction(async (tx) => {
       // Get source hotel
       const source = await tx.hotel.findUnique({

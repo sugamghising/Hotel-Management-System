@@ -187,6 +187,12 @@ export const AvailabilityCalendarQuerySchema = z.object({
   roomTypeId: z.string().uuid().optional(),
 });
 
+export const UpdateHotelSettingsSchema = z.object({
+  operational: z.record(z.any()).optional(),
+  policies: z.record(z.any()).optional(),
+  amenities: z.array(z.string()).optional(),
+});
+
 // ============================================================================
 // TYPE EXPORTS
 // ============================================================================

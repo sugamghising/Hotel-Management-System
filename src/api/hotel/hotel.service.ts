@@ -293,10 +293,10 @@ export class HotelService {
     const hotel = await this.findById(hotelId, organizationId, true);
 
     const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const utcToday = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
 
     const [todayStats, roomStatus] = await Promise.all([
-      this.hotelRepo.getTodayStats(hotelId, today),
+      this.hotelRepo.getTodayStats(hotelId, utcToday),
       this.hotelRepo.getRoomStatusCount(hotelId),
     ]);
 
@@ -336,7 +336,7 @@ export class HotelService {
     return {
       hotel,
       today: {
-        date: today.toISOString().split('T')[0] as string,
+        date: utcToday.toISOString().split('T')[0] as string,
         ...todayStats,
         occupancyPercent,
       },
@@ -578,8 +578,8 @@ export class HotelService {
   }
 
   private async getHotelStats(hotelId: string): Promise<HotelStats> {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const now = new Date();
+    const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
 
     const [roomTypesCount, roomsCount, activeRoomsCount, oooRoomsCount, todayStats] =
       await Promise.all([
@@ -636,13 +636,13 @@ export class HotelService {
 
   private parseTimeString(timeStr: string): Date {
     const [hours, minutes] = timeStr.split(':').map(Number);
-    const date = new Date();
-    date.setHours(hours ?? 0, minutes ?? 0, 0, 0);
-    return date;
+    return new Date(Date.UTC(1970, 0, 1, hours ?? 0, minutes ?? 0, 0, 0));
   }
 
   private formatTimeString(date: Date): string {
-    return date.toTimeString().slice(0, 5);
+    const hours = date.getUTCHours().toString().padStart(2, '0');
+    const minutes = date.getUTCMinutes().toString().padStart(2, '0');
+    return `${hours}:${minutes}`;
   }
 
   private mapToResponse(hotel: Hotel, stats?: HotelStats): HotelResponse {

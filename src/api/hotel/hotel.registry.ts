@@ -52,33 +52,60 @@ export const HotelResponseSchema = z
     brand: z.string().nullable(),
     starRating: z.number().nullable(),
     propertyType: PropertyTypeSchema,
-    email: z.string().email(),
-    phone: z.string(),
-    fax: z.string().nullable(),
-    website: z.string().url().nullable(),
-    addressLine1: z.string(),
-    addressLine2: z.string().nullable(),
-    city: z.string(),
-    stateProvince: z.string().nullable(),
-    postalCode: z.string(),
-    countryCode: z.string(),
-    latitude: z.number().nullable(),
-    longitude: z.number().nullable(),
-    timezone: z.string(),
-    checkInTime: z.string().datetime(),
-    checkOutTime: z.string().datetime(),
-    currencyCode: z.string(),
-    defaultLanguage: z.string(),
-    totalRooms: z.number().int(),
-    totalFloors: z.number().int().nullable(),
-    operationalSettings: HotelOperationalSettingsSchema,
-    amenities: z.array(z.string()),
-    policies: HotelPoliciesSchema,
+    contact: z.object({
+      email: z.string().email(),
+      phone: z.string(),
+      fax: z.string().nullable(),
+      website: z.string().url().nullable(),
+    }),
+    address: z.object({
+      line1: z.string(),
+      line2: z.string().nullable(),
+      city: z.string(),
+      stateProvince: z.string().nullable(),
+      postalCode: z.string(),
+      countryCode: z.string(),
+      fullAddress: z.string(),
+    }),
+    location: z.object({
+      latitude: z.number().nullable(),
+      longitude: z.number().nullable(),
+      timezone: z.string(),
+    }),
+    operations: z.object({
+      checkInTime: z.string().regex(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/, 'HH:MM format'),
+      checkOutTime: z.string().regex(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/, 'HH:MM format'),
+      currencyCode: z.string(),
+      defaultLanguage: z.string(),
+    }),
+    capacity: z.object({
+      totalRooms: z.number().int(),
+      totalFloors: z.number().int().nullable(),
+    }),
+    configuration: z.object({
+      amenities: z.array(z.string()),
+      operationalSettings: HotelOperationalSettingsSchema,
+      policies: HotelPoliciesSchema,
+    }),
     status: HotelStatusSchema,
-    openingDate: z.string().datetime().nullable(),
-    closingDate: z.string().datetime().nullable(),
-    createdAt: z.string().datetime(),
-    updatedAt: z.string().datetime(),
+    dates: z.object({
+      openingDate: z.string().datetime().nullable(),
+      closingDate: z.string().datetime().nullable(),
+      createdAt: z.string().datetime(),
+      updatedAt: z.string().datetime(),
+    }),
+    stats: z
+      .object({
+        roomTypesCount: z.number().int(),
+        roomsCount: z.number().int(),
+        activeRoomsCount: z.number().int(),
+        oooRoomsCount: z.number().int(),
+        todayArrivals: z.number().int(),
+        todayDepartures: z.number().int(),
+        inHouseGuests: z.number().int(),
+        occupancyRate: z.number(),
+      })
+      .optional(),
   })
   .openapi('HotelResponse');
 
@@ -142,8 +169,28 @@ export const HotelStatsSchema = z
 export const HotelDashboardResponseSchema = z
   .object({
     hotel: HotelResponseSchema,
-    stats: HotelStatsSchema,
-    roomStatus: RoomStatusSummarySchema,
+    today: z.object({
+      date: z.string().date(),
+      arrivals: z.number().int(),
+      departures: z.number().int(),
+      inHouse: z.number().int(),
+      occupancyPercent: z.number(),
+    }),
+    roomStatus: z.object({
+      vacantClean: z.number().int(),
+      vacantDirty: z.number().int(),
+      occupiedClean: z.number().int(),
+      occupiedDirty: z.number().int(),
+      outOfOrder: z.number().int(),
+    }),
+    alerts: z.array(
+      z.object({
+        type: z.enum(['WARNING', 'CRITICAL', 'INFO']),
+        message: z.string(),
+        entityType: z.string().optional(),
+        entityId: z.string().optional(),
+      })
+    ),
   })
   .openapi('HotelDashboardResponse');
 
@@ -168,8 +215,13 @@ export const RoomAvailabilitySchema = z
     available: z.number().int(),
     outOfOrder: z.number().int(),
     blocked: z.number().int(),
+    overbookingLimit: z.number().int(),
+    stopSell: z.boolean(),
+    minStay: z.number().int().nullable(),
+    maxStay: z.number().int().nullable(),
+    closedToArrival: z.boolean(),
+    closedToDeparture: z.boolean(),
     rateOverride: z.number().nullable(),
-    restrictions: AvailabilityRestrictionsSchema,
   })
   .openapi('RoomAvailability');
 
@@ -183,8 +235,9 @@ export const AvailabilityCalendarResponseSchema = z
 
 export const HotelSettingsResponseSchema = z
   .object({
-    operationalSettings: HotelOperationalSettingsSchema,
+    operational: HotelOperationalSettingsSchema,
     policies: HotelPoliciesSchema,
+    amenities: z.array(z.string()),
   })
   .openapi('HotelSettingsResponse');
 
@@ -294,7 +347,11 @@ hotelRegistry.registerPath({
   request: {
     params: OrganizationIdParamSchema.merge(HotelIdParamSchema),
   },
-  responses: createApiResponse(DeleteResponseSchema, 'Hotel deleted successfully'),
+  responses: {
+    204: {
+      description: 'Hotel deleted successfully',
+    },
+  },
 });
 
 // ============ GET /api/v1/organizations/{organizationId}/hotels/{hotelId}/dashboard ============
@@ -308,7 +365,7 @@ hotelRegistry.registerPath({
     params: OrganizationIdParamSchema.merge(HotelIdParamSchema),
   },
   responses: createApiResponse(
-    HotelDashboardResponseSchema,
+    z.object({ dashboard: HotelDashboardResponseSchema }),
     'Dashboard data retrieved successfully'
   ),
 });
@@ -372,8 +429,9 @@ hotelRegistry.registerPath({
       content: {
         'application/json': {
           schema: z.object({
-            operationalSettings: HotelOperationalSettingsSchema.partial().optional(),
+            operational: HotelOperationalSettingsSchema.partial().optional(),
             policies: HotelPoliciesSchema.partial().optional(),
+            amenities: z.array(z.string()).optional(),
           }),
         },
       },
