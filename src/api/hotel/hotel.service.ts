@@ -40,11 +40,7 @@ export class HotelService {
     createdBy?: string
   ): Promise<HotelResponse> {
     //Check Organization exists and has capacity
-    const org = await this.orgService.findById(organizationId);
-    if (!org) {
-      logger.warn(`Organization doesn't exist with id ${organizationId}. `);
-      throw new BadRequestError(`Organization doesn't exist with id ${organizationId}. `);
-    }
+    await this.orgService.findById(organizationId);
 
     // TODO: Implement limit checking when checkLimits method is available
     // const limitCheck = await this.orgService.checkLimits(organizationId);
@@ -630,7 +626,7 @@ export class HotelService {
 
   private async countActiveReservations(_hotelId: string): Promise<number> {
     // Would use reservation repository in full implementation
-    return 0; // Placeholder
+    throw new Error('countActiveReservations is not implemented');
   }
 
   private async countOverdueCheckouts(_hotelId: string): Promise<number> {
