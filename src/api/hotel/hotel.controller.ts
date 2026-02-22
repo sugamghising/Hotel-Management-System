@@ -112,16 +112,16 @@ export class HotelController {
   getAvailability = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId } = req.params as { organizationId: string; hotelId: string };
     const { startDate, endDate, roomTypeId } = req.query as {
-      startDate: string;
-      endDate: string;
+      startDate: Date;
+      endDate: Date;
       roomTypeId?: string;
     };
 
     const calendar = await hotelService.getAvailabilityCalendar(
       hotelId,
       organizationId,
-      new Date(startDate),
-      new Date(endDate),
+      startDate,
+      endDate,
       roomTypeId
     );
 

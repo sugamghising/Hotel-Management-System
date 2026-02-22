@@ -4,6 +4,7 @@ export {
   CloneHotelSchema,
   HotelQuerySchema,
   AvailabilityCalendarQuerySchema,
+  UpdateHotelSettingsSchema,
   HotelIdParamSchema,
   OrganizationIdParamSchema,
   HotelCodeSchema,

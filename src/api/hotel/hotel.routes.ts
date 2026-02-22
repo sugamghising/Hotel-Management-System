@@ -14,6 +14,7 @@ import {
   HotelQuerySchema,
   OrganizationIdParamSchema,
   UpdateHotelSchema,
+  UpdateHotelSettingsSchema,
 } from './hotel.dto';
 
 const router = Router({ mergeParams: true });
@@ -98,7 +99,7 @@ router.get(
 
 router.get(
   '/:hotelId/rooms/availability',
-  requirePermission('RATE.READ'),
+  requirePermission('ROOM.READ'),
   validate({
     params: OrganizationIdParamSchema.merge(HotelIdParamSchema),
     query: AvailabilityCalendarQuerySchema,
@@ -112,7 +113,7 @@ router.get(
 
 router.get(
   '/:hotelId/settings',
-  requirePermission('HOTEL.SETTINGS.READ'),
+  requirePermission('HOTEL.READ'),
   validate({
     params: OrganizationIdParamSchema.merge(HotelIdParamSchema),
   }),
@@ -121,9 +122,10 @@ router.get(
 
 router.patch(
   '/:hotelId/settings',
-  requirePermission('HOTEL.SETTINGS.UPDATE'),
+  requirePermission('HOTEL.UPDATE'),
   validate({
     params: OrganizationIdParamSchema.merge(HotelIdParamSchema),
+    body: UpdateHotelSettingsSchema,
   }),
   hotelController.updateSettings
 );
