@@ -111,7 +111,7 @@ export class HotelController {
    */
   getAvailability = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId } = req.params as { organizationId: string; hotelId: string };
-    const { startDate, endDate, roomTypeId } = req.query as {
+    const { startDate, endDate, roomTypeId } = req.query as unknown as {
       startDate: Date;
       endDate: Date;
       roomTypeId?: string;

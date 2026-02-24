@@ -2,6 +2,7 @@ import { authRegistry } from '@/api/auth/auth.registry';
 import { healthRegistry } from '@/api/health/health.registry';
 import { hotelRegistry } from '@/api/hotel/hotel.registry';
 import { organizationRegistry } from '@/api/organizations/organization.registry';
+import { roomTypesRegistry } from '@/api/roomTypes/roomTypes.registry';
 import { userRegistry } from '@/api/user/user.registry';
 import { config } from '@/config/index';
 import { OpenAPIRegistry, OpenApiGeneratorV3 } from '@asteasolutions/zod-to-openapi';
@@ -15,6 +16,7 @@ export function generateOpenAPIDocument(): OpenAPIDocument {
     authRegistry,
     organizationRegistry,
     hotelRegistry,
+    roomTypesRegistry,
   ]);
   const generator = new OpenApiGeneratorV3(registry.definitions);
 
