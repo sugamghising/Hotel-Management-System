@@ -225,3 +225,5 @@ export class RoomTypesController {
     handleServiceResponse(response, res);
   });
 }
+
+export const roomTypesController = new RoomTypesController();
