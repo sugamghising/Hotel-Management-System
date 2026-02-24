@@ -1,4 +1,4 @@
-// src/features/room-types/room-types.repository.ts
+// src/api/roomTypes/roomTypes.repository.ts
 
 import { prisma } from '../../database/prisma';
 import type { Prisma } from '../../generated/prisma';
