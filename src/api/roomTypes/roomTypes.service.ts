@@ -6,27 +6,31 @@ import {
   UnprocessableEntityError,
   logger,
 } from '../../core';
-import type { HotelRepository } from '../hotel';
-import type {
-  InventoryCalendarResponse,
-  RoomTypeInventoryBulkInput,
-  RoomTypeListResponse,
-} from './roomTypes.dto';
-import type { RoomTypesRepository } from './roomTypes.repository';
+import { type HotelRepository, hotelRepository } from '../hotel';
 import type {
   CreateRoomTypeInput,
+  InventoryCalendarResponse,
+  RoomTypeInventoryBulkInput,
+  RoomTypeInventoryInput,
+  RoomTypeListResponse,
+  UpdateRoomTypeInput,
+} from './roomTypes.dto';
+import { type RoomTypesRepository, roomTypesRepository } from './roomTypes.repository';
+import type {
   RoomType,
   RoomTypeImage,
-  RoomTypeInventoryInput,
+  RoomTypeInventoryInput as RoomTypeInventoryInputInterface,
   RoomTypeQueryFilters,
   RoomTypeResponse,
-  UpdateRoomTypeInput,
 } from './roomTypes.types';
 
-export class roomTypesService {
+export class RoomTypesService {
   private roomTypesRepo: RoomTypesRepository;
   private hotelRepo: HotelRepository;
-  constructor(roomTypesRepo: RoomTypesRepository, hotelRepo: HotelRepository) {
+  constructor(
+    roomTypesRepo: RoomTypesRepository = roomTypesRepository,
+    hotelRepo: HotelRepository = hotelRepository
+  ) {
     this.roomTypesRepo = roomTypesRepo;
     this.hotelRepo = hotelRepo;
   }
@@ -51,7 +55,14 @@ export class roomTypesService {
     }
 
     // Validate image orders
-    const images = this.processImages(input.images || []);
+    const images = this.processImages(
+      (input.images || []) as Array<{
+        url: string;
+        caption?: string;
+        order?: number;
+        isPrimary?: boolean;
+      }>
+    );
 
     const roomType = await this.roomTypesRepo.create({
       organization: {
@@ -196,7 +207,7 @@ export class roomTypesService {
     }
 
     const updated = await this.roomTypesRepo.update(id, {
-      ...input,
+      ...(input as unknown as Prisma.RoomTypeUpdateInput),
       updatedAt: new Date(),
     });
 
@@ -389,7 +400,10 @@ export class roomTypesService {
       throw new ForbiddenError('Access denied');
     }
 
-    const inventory = await this.roomTypesRepo.upsertInventory(roomTypeId, input);
+    const inventory = await this.roomTypesRepo.upsertInventory(
+      roomTypeId,
+      input as unknown as RoomTypeInventoryInputInterface
+    );
 
     return inventory;
   }
@@ -430,7 +444,7 @@ export class roomTypesService {
       roomTypeId,
       input.startDate,
       input.endDate,
-      updates,
+      updates as unknown as Partial<RoomTypeInventoryInputInterface>,
       input.daysOfWeek
     );
 
@@ -645,3 +659,5 @@ export class roomTypesService {
     };
   }
 }
+
+export const roomTypesService = new RoomTypesService();
