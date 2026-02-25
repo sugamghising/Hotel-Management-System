@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { z } from 'zod';
 import { authMiddleware } from '../../core/middleware/auth';
 import { createRateLimiter } from '../../core/middleware/rateLimiter';
 import { requirePermission } from '../../core/middleware/requirePermission';
@@ -56,11 +57,64 @@ router.get(
   roomsController.getGrid
 );
 
+// ============================================================================
+// AVAILABILITY (fixed paths before /:roomId to avoid route shadowing)
+// ============================================================================
+
+router.get(
+  '/available',
+  requirePermission('ROOM.READ'),
+  validate({
+    params: OrganizationIdParamSchema.merge(HotelIdParamSchema),
+    query: z.object({
+      checkIn: z.string().date(),
+      checkOut: z.string().date(),
+      excludeReservationId: z.string().uuid().optional(),
+      roomTypeId: z.string().uuid().optional(),
+      limit: z.coerce.number().int().positive().max(100).optional(),
+    }),
+  }),
+  roomsController.findAvailable
+);
+
+// ============================================================================
+// HOUSEKEEPING (fixed path before /:roomId to avoid route shadowing)
+// ============================================================================
+
+router.get(
+  '/cleaning-tasks',
+  requirePermission('HOUSEKEEPING.READ'),
+  validate({
+    params: OrganizationIdParamSchema.merge(HotelIdParamSchema),
+    query: z.object({
+      status: z.enum(['dirty', 'cleaning', 'priority']).optional(),
+    }),
+  }),
+  roomsController.getCleaningTasks
+);
+
+// ============================================================================
+// BULK STATUS UPDATE (before /:roomId to avoid ambiguity)
+// ============================================================================
+
+router.post(
+  '/bulk-status',
+  requirePermission('ROOM.BULK_UPDATE'),
+  validate({
+    params: OrganizationIdParamSchema.merge(HotelIdParamSchema),
+    body: BulkStatusUpdateSchema,
+  }),
+  roomsController.bulkUpdateStatus
+);
+
 router.get(
   '/:roomId',
   requirePermission('ROOM.READ'),
   validate({
     params: OrganizationIdParamSchema.merge(HotelIdParamSchema).merge(RoomIdParamSchema),
+    query: z.object({
+      reservations: z.coerce.boolean().optional(),
+    }),
   }),
   roomsController.getById
 );
@@ -119,18 +173,8 @@ router.delete(
   roomsController.removeOutOfOrder
 );
 
-router.post(
-  '/bulk-status',
-  requirePermission('ROOM.BULK_UPDATE'),
-  validate({
-    params: OrganizationIdParamSchema.merge(HotelIdParamSchema),
-    body: BulkStatusUpdateSchema,
-  }),
-  roomsController.bulkUpdateStatus
-);
-
 // ============================================================================
-// AVAILABILITY
+// AVAILABILITY (per-room)
 // ============================================================================
 
 router.get(
@@ -138,17 +182,13 @@ router.get(
   requirePermission('ROOM.READ'),
   validate({
     params: OrganizationIdParamSchema.merge(HotelIdParamSchema).merge(RoomIdParamSchema),
+    query: z.object({
+      checkIn: z.string().date(),
+      checkOut: z.string().date(),
+      excludeReservationId: z.string().uuid().optional(),
+    }),
   }),
   roomsController.checkAvailability
-);
-
-router.get(
-  '/available',
-  requirePermission('ROOM.READ'),
-  validate({
-    params: OrganizationIdParamSchema.merge(HotelIdParamSchema),
-  }),
-  roomsController.findAvailable
 );
 
 // ============================================================================
@@ -173,17 +213,5 @@ router.get(
   roomsController.getMaintenanceHistory
 );
 
-// ============================================================================
-// HOUSEKEEPING
-// ============================================================================
-
-router.get(
-  '/cleaning-tasks',
-  requirePermission('HOUSEKEEPING.READ'),
-  validate({
-    params: OrganizationIdParamSchema.merge(HotelIdParamSchema),
-  }),
-  roomsController.getCleaningTasks
-);
-
 export default router;
+

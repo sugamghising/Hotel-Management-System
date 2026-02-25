@@ -172,7 +172,7 @@ export const RoomGridResponseSchema = z
 
 const RoomConflictSchema = z
   .object({
-    reservationId: z.string().uuid(),
+    reservationId: z.string().uuid().nullable(),
     guestName: z.string(),
     checkIn: z.string().datetime(),
     checkOut: z.string().datetime(),
@@ -602,7 +602,10 @@ roomsRegistry.registerPath({
   request: {
     params: OrgHotelParams,
     query: z.object({
-      status: RoomStatusSchema.optional().openapi({ description: 'Filter by room status' }),
+      status: z
+        .enum(['dirty', 'cleaning', 'priority'])
+        .optional()
+        .openapi({ description: 'Filter by cleaning status (dirty, cleaning, priority)' }),
     }),
   },
   responses: createApiResponse(
