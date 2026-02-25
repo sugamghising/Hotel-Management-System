@@ -57,13 +57,6 @@ export const CreateRoomSchema = z
     rackRate: z.number().positive().optional().nullable(),
 
     status: RoomStatusSchema.default('VACANT_CLEAN'),
-  })
-  .refine((data) => {
-    // Validate status consistency
-    if (data.status === 'OUT_OF_ORDER' && !data.isAccessible) {
-      // OK - can be OOO for any reason
-    }
-    return true;
   });
 
 // ============================================================================
@@ -131,7 +124,7 @@ export const RoomQuerySchema = z.object({
   floor: z.coerce.number().int().optional(),
   building: z.string().optional(),
   isOutOfOrder: z.coerce.boolean().optional(),
-  viewType: z.string().optional(),
+  viewType: ViewTypeSchema.optional(),
   search: z.string().optional(),
   page: z.coerce.number().int().positive().default(1),
   limit: z.coerce.number().int().positive().max(100).default(20),

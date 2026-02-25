@@ -209,9 +209,9 @@ export class RoomsRepository {
     }) as Promise<Room>;
   }
 
-  async bulkUpdateStatus(roomIds: string[], status: RoomStatus): Promise<number> {
+  async bulkUpdateStatus(roomIds: string[], status: RoomStatus, hotelId?: string): Promise<number> {
     const result = await prisma.room.updateMany({
-      where: { id: { in: roomIds } },
+      where: { id: { in: roomIds }, ...(hotelId ? { hotelId, deletedAt: null } : {}) },
       data: {
         status,
         updatedAt: new Date(),
@@ -248,13 +248,15 @@ export class RoomsRepository {
         AND res.status = 'CHECKED_IN'
       LEFT JOIN guests res_g ON res.guest_id = res_g.id
       LEFT JOIN LATERAL (
-        SELECT check_in_date 
-        FROM reservations 
-        WHERE hotel_id = ${hotelId}::uuid
-          AND status IN ('CONFIRMED', 'CHECKED_IN')
-          AND check_in_date > CURRENT_DATE
-        ORDER BY check_in_date
-        LIMIT 1
+        SELECT 
+          MIN(res_next.check_in_date) AS check_in_date
+        FROM reservations res_next
+        JOIN reservation_rooms rr_next ON rr_next.reservation_id = res_next.id
+        WHERE rr_next.room_id = r.id
+          AND res_next.hotel_id = ${hotelId}::uuid
+          AND res_next.status IN ('CONFIRMED', 'CHECKED_IN')
+          AND rr_next.status IN ('ASSIGNED', 'OCCUPIED')
+          AND res_next.check_in_date > CURRENT_DATE
       ) next_res ON true
       WHERE r.hotel_id = ${hotelId}::uuid
         AND r.deleted_at IS NULL
@@ -389,6 +391,42 @@ export class RoomsRepository {
       },
       orderBy: { checkInAt: 'desc' },
     }) as Promise<RoomReservationDetail | null>;
+  }
+
+  async getCurrentReservationsByRoomIds(
+    roomIds: string[]
+  ): Promise<Map<string, RoomReservationDetail>> {
+    const records = await prisma.reservationRoom.findMany({
+      where: {
+        roomId: { in: roomIds },
+        status: { in: ['ASSIGNED', 'OCCUPIED'] },
+        checkInAt: { not: null },
+        checkOutAt: null,
+        reservation: {
+          status: 'CHECKED_IN',
+        },
+      },
+      include: {
+        reservation: {
+          include: {
+            guest: {
+              select: {
+                firstName: true,
+                lastName: true,
+              },
+            },
+          },
+        },
+      },
+    }) as RoomReservationDetail[];
+
+    const map = new Map<string, RoomReservationDetail>();
+    for (const record of records) {
+      if (record.roomId) {
+        map.set(record.roomId, record);
+      }
+    }
+    return map;
   }
 
   async getNextReservation(

@@ -171,30 +171,37 @@ export class RoomsService {
 
     const { rooms, total } = await this.roomRepo.findByHotel(hotelId, filters, pagination);
 
-    // Get current guests for occupied rooms
-    const roomsWithGuests = await Promise.all(
-      rooms.map(async (room) => {
-        let currentGuest: string | undefined;
+    // Get current guests for occupied rooms in a single batch to avoid N+1 queries
+    const occupiedRoomIds = rooms
+      .filter((room) => room.status.startsWith('OCCUPIED'))
+      .map((room) => room.id);
 
-        if (room.status.startsWith('OCCUPIED')) {
-          const current = await this.roomRepo.getCurrentReservation(room.id);
-          if (current) {
-            currentGuest = `${current.reservation.guest.firstName} ${current.reservation.guest.lastName}`;
-          }
+    const reservationsByRoomId =
+      occupiedRoomIds.length > 0
+        ? await this.roomRepo.getCurrentReservationsByRoomIds(occupiedRoomIds)
+        : new Map<string, RoomReservationDetail>();
+
+    const roomsWithGuests = rooms.map((room) => {
+      let currentGuest: string | undefined;
+
+      if (room.status.startsWith('OCCUPIED')) {
+        const current = reservationsByRoomId.get(room.id);
+        if (current) {
+          currentGuest = `${current.reservation.guest.firstName} ${current.reservation.guest.lastName}`;
         }
+      }
 
-        return {
-          id: room.id,
-          roomNumber: room.roomNumber,
-          floor: room.floor,
-          status: room.status,
-          roomType: this.extractRoomTypeInfo(room),
-          isOutOfOrder: room.isOutOfOrder,
-          cleaningPriority: room.cleaningPriority,
-          ...(currentGuest ? { currentGuest } : {}),
-        };
-      })
-    );
+      return {
+        id: room.id,
+        roomNumber: room.roomNumber,
+        floor: room.floor,
+        status: room.status,
+        roomType: this.extractRoomTypeInfo(room),
+        isOutOfOrder: room.isOutOfOrder,
+        cleaningPriority: room.cleaningPriority,
+        ...(currentGuest ? { currentGuest } : {}),
+      };
+    });
 
     return {
       rooms: roomsWithGuests,
@@ -476,15 +483,12 @@ export class RoomsService {
   ): Promise<{ updatedCount: number }> {
     await this.verifyHotelAccess(organizationId, hotelId);
 
-    // Verify all rooms belong to this hotel and org
-    for (const roomId of input.roomIds) {
-      const exists = await this.roomRepo.existsInHotel(hotelId, roomId);
-      if (!exists) {
-        throw new NotFoundError(`Room '${roomId}' not found in hotel`);
-      }
-    }
+    // Verify all rooms exist in this hotel with a single query
+    const updatedCount = await this.roomRepo.bulkUpdateStatus(input.roomIds, input.status, hotelId);
 
-    const updatedCount = await this.roomRepo.bulkUpdateStatus(input.roomIds, input.status);
+    if (updatedCount !== input.roomIds.length) {
+      throw new NotFoundError(`One or more rooms not found in hotel`);
+    }
 
     logger.info(`Bulk room status update: ${updatedCount} rooms to ${input.status}`, {
       hotelId,
@@ -520,7 +524,7 @@ export class RoomsService {
         available: false,
         conflicts: [
           {
-            reservationId: '',
+            reservationId: null,
             guestName: 'OUT_OF_ORDER',
             checkIn: room.oooFrom ?? new Date(),
             checkOut: room.oooUntil ?? new Date(),
@@ -705,8 +709,20 @@ export class RoomsService {
     _organizationId: string,
     _proposedCount: number
   ): Promise<{ valid: boolean; message?: string }> {
-    // This would check against organization maxRooms limit
-    // Simplified implementation
+    const rawMax = process.env.ORG_MAX_ROOMS ?? process.env.ORGANIZATION_MAX_ROOMS;
+    const maxRooms = rawMax ? Number(rawMax) : undefined;
+
+    if (!maxRooms || !Number.isFinite(maxRooms) || maxRooms <= 0) {
+      return { valid: true };
+    }
+
+    if (_proposedCount > maxRooms) {
+      return {
+        valid: false,
+        message: `Organization has reached the maximum allowed number of rooms (${maxRooms}).`,
+      };
+    }
+
     return { valid: true };
   }
 

@@ -313,7 +313,7 @@ export interface CleaningTaskItem {
 }
 
 export interface RoomConflict {
-  reservationId: string;
+  reservationId: string | null;
   guestName: string;
   checkIn: Date;
   checkOut: Date;
