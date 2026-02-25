@@ -4,6 +4,7 @@ import { Router } from 'express';
 import { authRoutes } from '../api/auth';
 import { hotelsRoutes } from '../api/hotel';
 import { organizationRoutes } from '../api/organizations';
+import { roomsRoutes } from '../api/rooms/inedx';
 
 const router = Router();
 
@@ -21,6 +22,7 @@ v1Router.use('/users', userRoutes);
 v1Router.use('/organizations', organizationRoutes);
 v1Router.use('/auth', authRoutes);
 v1Router.use('/hotels', hotelsRoutes);
+v1Router.use('/rooms', roomsRoutes);
 
 // Mount versioned routes
 router.use(config.api.fullPrefix, v1Router);
