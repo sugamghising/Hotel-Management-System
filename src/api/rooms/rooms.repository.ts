@@ -12,7 +12,7 @@ import type {
 } from './rooms.types';
 
 export type RoomWhereInput = Prisma.RoomWhereInput;
-export type RoomCreateInput = Prisma.RoomCreateInput;
+export type RoomCreateInput = Prisma.RoomUncheckedCreateInput;
 export type RoomUpdateInput = Prisma.RoomUpdateInput;
 
 export class RoomsRepository {

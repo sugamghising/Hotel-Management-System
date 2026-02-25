@@ -256,6 +256,62 @@ export interface BulkStatusUpdateInput {
   reason?: string;
 }
 
+export interface RoomTypeInfo {
+  id: string;
+  code: string;
+  name: string;
+  baseOccupancy: number;
+  maxOccupancy: number;
+}
+
+export interface RoomWithType extends Room {
+  roomType: RoomTypeInfo;
+}
+
+export interface RoomListItem {
+  id: string;
+  roomNumber: string;
+  floor: number | null;
+  status: RoomStatus;
+  roomType: RoomTypeInfo;
+  isOutOfOrder: boolean;
+  cleaningPriority: number;
+  currentGuest?: string;
+}
+
+export interface RoomListResponse {
+  rooms: RoomListItem[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}
+
+export interface AvailableRoomItem {
+  id: string;
+  roomNumber: string;
+  floor: number | null;
+  roomType: RoomTypeInfo;
+  features: {
+    isSmoking: boolean;
+    isAccessible: boolean;
+    viewType: string | null;
+  };
+}
+
+export interface CleaningTaskItem {
+  id: string;
+  roomNumber: string;
+  floor: number | null;
+  status: RoomStatus;
+  roomType: { code: string; name: string; defaultCleaningTime: number };
+  cleaningPriority: number;
+  estimatedMinutes: number;
+  currentTask: unknown;
+}
+
 export interface RoomConflict {
   reservationId: string;
   guestName: string;
