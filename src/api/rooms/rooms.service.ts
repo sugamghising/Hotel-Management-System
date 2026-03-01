@@ -487,7 +487,7 @@ export class RoomsService {
     const updatedCount = await this.roomRepo.bulkUpdateStatus(input.roomIds, input.status, hotelId);
 
     if (updatedCount !== input.roomIds.length) {
-      throw new NotFoundError(`One or more rooms not found in hotel`);
+      throw new NotFoundError('One or more rooms not found in hotel');
     }
 
     logger.info(`Bulk room status update: ${updatedCount} rooms to ${input.status}`, {
@@ -709,7 +709,7 @@ export class RoomsService {
     _organizationId: string,
     _proposedCount: number
   ): Promise<{ valid: boolean; message?: string }> {
-    const rawMax = process.env.ORG_MAX_ROOMS ?? process.env.ORGANIZATION_MAX_ROOMS;
+    const rawMax = process.env['ORG_MAX_ROOMS'] ?? process.env['ORGANIZATION_MAX_ROOMS'];
     const maxRooms = rawMax ? Number(rawMax) : undefined;
 
     if (!maxRooms || !Number.isFinite(maxRooms) || maxRooms <= 0) {
