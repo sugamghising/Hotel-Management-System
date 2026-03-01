@@ -206,3 +206,4 @@ export class RatePlansController {
     handleServiceResponse(ServiceResponse.success(result, 'Rates calculated'), res);
   });
 }
+export const ratePlansController = new RatePlansController();
