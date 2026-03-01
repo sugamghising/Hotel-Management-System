@@ -153,7 +153,8 @@ export class RatePlansRepository {
     minStay?: number | null,
     reason?: string
   ): Promise<RateOverride> {
-    const normalizedDate = new Date(date.setHours(0, 0, 0, 0));
+    const normalizedDate = new Date(date);
+    normalizedDate.setHours(0, 0, 0, 0);
     return prisma.rateOverride.upsert({
       where: {
         uq_rateoverride_plan_date: {
@@ -179,11 +180,13 @@ export class RatePlansRepository {
   }
 
   async deleteOverride(ratePlanId: string, date: Date): Promise<void> {
+    const normalizedDate = new Date(date);
+    normalizedDate.setHours(0, 0, 0, 0);
     await prisma.rateOverride.delete({
       where: {
         uq_rateoverride_plan_date: {
           ratePlanId,
-          date: new Date(date.setHours(0, 0, 0, 0)),
+          date: normalizedDate,
         },
       },
     });
@@ -199,9 +202,20 @@ export class RatePlansRepository {
       reason?: string;
     }>
   ): Promise<number> {
-    const results = await prisma.$transaction(
-      overrides.map((o) => {
-        const normalizedDate = new Date(o.date.setHours(0, 0, 0, 0));
+    type OverrideWithRate = {
+      date: Date;
+      rate: number;
+      stopSell?: boolean;
+      minStay?: number | null;
+      reason?: string;
+    };
+    const withRate = overrides.filter((o): o is OverrideWithRate => o.rate !== undefined);
+    const withoutRate = overrides.filter((o) => o.rate === undefined);
+
+    const results = await prisma.$transaction([
+      ...withRate.map((o) => {
+        const normalizedDate = new Date(o.date);
+        normalizedDate.setHours(0, 0, 0, 0);
         return prisma.rateOverride.upsert({
           where: {
             uq_rateoverride_plan_date: {
@@ -212,20 +226,35 @@ export class RatePlansRepository {
           create: {
             ratePlanId,
             date: normalizedDate,
-            rate: o.rate ?? 0,
+            rate: o.rate,
             stopSell: o.stopSell ?? false,
             minStay: o.minStay ?? null,
             reason: o.reason ?? null,
           },
           update: {
-            ...(o.rate !== undefined ? { rate: o.rate } : {}),
+            rate: o.rate,
             ...(o.stopSell !== undefined ? { stopSell: o.stopSell } : {}),
             ...(o.minStay !== undefined ? { minStay: o.minStay } : {}),
             ...(o.reason !== undefined ? { reason: o.reason } : {}),
           },
         });
-      })
-    );
+      }),
+      ...withoutRate.map((o) => {
+        const normalizedDate = new Date(o.date);
+        normalizedDate.setHours(0, 0, 0, 0);
+        return prisma.rateOverride.updateMany({
+          where: {
+            ratePlanId,
+            date: normalizedDate,
+          },
+          data: {
+            ...(o.stopSell !== undefined ? { stopSell: o.stopSell } : {}),
+            ...(o.minStay !== undefined ? { minStay: o.minStay } : {}),
+            ...(o.reason !== undefined ? { reason: o.reason } : {}),
+          },
+        });
+      }),
+    ]);
 
     return results.length;
   }
@@ -345,6 +374,8 @@ export class RatePlansRepository {
       },
       _sum: {
         totalAmount: true,
+      },
+      _avg: {
         averageRate: true,
       },
     });
@@ -352,7 +383,7 @@ export class RatePlansRepository {
     return {
       bookingsCount: result._count.id,
       totalRevenue: Number(result._sum.totalAmount || 0),
-      averageRate: Number(result._sum.averageRate || 0),
+      averageRate: Number(result._avg.averageRate || 0),
     };
   }
 

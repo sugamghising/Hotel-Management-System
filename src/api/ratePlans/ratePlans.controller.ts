@@ -2,6 +2,7 @@ import type { Request, Response } from 'express';
 import { StatusCodes } from 'http-status-codes';
 import { ServiceResponse, handleServiceResponse } from '../../common';
 import { asyncHandler } from '../../core';
+import type { RatePlanQueryInput } from './ratePlans.schema';
 import { ratePlansService } from './ratePlans.service';
 import type {
   CreateRatePlanInput,
@@ -9,7 +10,6 @@ import type {
   RateOverrideBulkInput,
   RateOverrideInput,
   RatePlanCloneInput,
-  RatePlanQueryFilters,
   UpdateRatePlanInput,
 } from './ratePlans.types';
 
@@ -34,23 +34,21 @@ export class RatePlansController {
    */
   list = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId } = req.params as { organizationId: string; hotelId: string };
-    const query = req.query as Record<string, string | undefined>;
+    const query = req.query as unknown as RatePlanQueryInput;
 
-    const filters: RatePlanQueryFilters = {};
-    if (query['roomTypeId']) filters.roomTypeId = query['roomTypeId'];
-    if (query['isActive'] !== undefined) filters.isActive = query['isActive'] === 'true';
-    if (query['isPublic'] !== undefined) filters.isPublic = query['isPublic'] === 'true';
-    if (query['channelCode']) filters.channelCode = query['channelCode'];
-    if (query['validOnDate']) filters.validOnDate = new Date(query['validOnDate']);
-    if (query['search']) filters.search = query['search'];
-
-    const page = Number(query['page'] || '1');
-    const limit = Number(query['limit'] || '20');
-
-    const result = await ratePlansService.findByHotel(hotelId, organizationId, filters, {
-      page,
-      limit,
-    });
+    const result = await ratePlansService.findByHotel(
+      hotelId,
+      organizationId,
+      {
+        ...(query.roomTypeId ? { roomTypeId: query.roomTypeId } : {}),
+        ...(query.isActive !== undefined ? { isActive: query.isActive } : {}),
+        ...(query.isPublic !== undefined ? { isPublic: query.isPublic } : {}),
+        ...(query.channelCode ? { channelCode: query.channelCode } : {}),
+        ...(query.validOnDate ? { validOnDate: query.validOnDate } : {}),
+        ...(query.search ? { search: query.search } : {}),
+      },
+      { page: query.page, limit: query.limit }
+    );
 
     handleServiceResponse(ServiceResponse.success(result, 'Rate plans retrieved'), res);
   });

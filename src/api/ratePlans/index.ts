@@ -59,3 +59,6 @@ export type {
   RatePlanListResponse as RatePlanListResponseDTO,
   RateCalculationResponse,
 } from './ratePlans.dto';
+
+// OpenAPI / Registry
+export { ratePlansRegistry } from './ratePlans.registry';

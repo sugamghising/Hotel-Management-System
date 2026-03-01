@@ -73,14 +73,14 @@ export class RatePlansService {
       roomTypeId: input.roomTypeId,
       code: input.code.toUpperCase(),
       name: input.name,
-      description: input.description || null,
-      pricingType: input.pricingType || 'DAILY',
+      description: input.description ?? null,
+      pricingType: input.pricingType ?? 'DAILY',
       baseRate: input.baseRate,
-      currencyCode: input.currencyCode || 'USD',
-      minAdvanceDays: input.minAdvanceDays || null,
-      maxAdvanceDays: input.maxAdvanceDays || null,
-      minStay: input.minStay || 1,
-      maxStay: input.maxStay || null,
+      currencyCode: input.currencyCode ?? 'USD',
+      minAdvanceDays: input.minAdvanceDays ?? null,
+      maxAdvanceDays: input.maxAdvanceDays ?? null,
+      minStay: input.minStay ?? 1,
+      maxStay: input.maxStay ?? null,
       isRefundable: input.isRefundable ?? true,
       cancellationPolicy: input.cancellationPolicy || 'FLEXIBLE',
       isPublic: input.isPublic ?? true,
@@ -306,8 +306,8 @@ export class RatePlansService {
       dates.push({
         date: dateStr,
         baseRate: ratePlan.baseRate,
-        overrideRate: override?.rate || null,
-        finalRate: override?.rate || ratePlan.baseRate,
+        overrideRate: override?.rate ?? null,
+        finalRate: override?.rate ?? ratePlan.baseRate,
         stopSell: override?.stopSell || false,
         minStay: override?.minStay !== undefined ? override.minStay : ratePlan.minStay,
         isValid,
@@ -442,7 +442,7 @@ export class RatePlansService {
 
     const roomType = await this.roomTypeRepo.findById(input.roomTypeId);
     if (!roomType || roomType.deletedAt || roomType.hotelId !== hotelId) {
-      throw new NotFoundError(`Roomtype with id ${input.roomTypeId} not found.`);
+      throw new NotFoundError(`Room type '${input.roomTypeId}' not found`);
     }
 
     const nights = Math.ceil(
@@ -475,6 +475,12 @@ export class RatePlansService {
         continue; // Skip this rate plan - restrictions not met
       }
 
+      // Fetch all overrides for the date range once to avoid N+1 queries
+      const lastNight = new Date(input.checkOut);
+      lastNight.setDate(lastNight.getDate() - 1);
+      const allOverrides = await this.ratePlanRepo.getOverrides(rp.id, input.checkIn, lastNight);
+      const overrideMap = new Map(allOverrides.map((o) => [o.date.toISOString().split('T')[0], o]));
+
       // Calculate nightly rates
       const nightlyRates: Array<{
         date: string;
@@ -489,10 +495,9 @@ export class RatePlansService {
         const dateStr = current.toISOString().split('T')[0] ?? '';
 
         // Get override if exists
-        const overrides = await this.ratePlanRepo.getOverrides(rp.id, current, current);
-        const override = overrides[0];
+        const override = overrideMap.get(dateStr);
 
-        let baseRate = override?.rate || rp.baseRate;
+        let baseRate = override?.rate ?? rp.baseRate;
         const adjustments: Array<{ ruleType: string; description: string; amount: number }> = [];
 
         // Apply dynamic pricing rules
@@ -515,7 +520,7 @@ export class RatePlansService {
         const finalRate = Math.max(0, Math.round(baseRate * 100) / 100);
         nightlyRates.push({
           date: dateStr,
-          baseRate: override?.rate || rp.baseRate,
+          baseRate: override?.rate ?? rp.baseRate,
           adjustments,
           finalRate,
         });
@@ -587,7 +592,7 @@ export class RatePlansService {
     if (input.roomTypeId) {
       const targetRoomType = await this.roomTypeRepo.findById(input.roomTypeId);
       if (!targetRoomType || targetRoomType.deletedAt) {
-        throw new NotFoundError(`Target room type not found. ${input.roomTypeId}`);
+        throw new NotFoundError(`Target room type '${input.roomTypeId}' not found`);
       }
       if (targetRoomType.hotelId !== source.hotelId) {
         throw new BadRequestError('Cannot clone to room type in different hotel');
@@ -713,11 +718,10 @@ export class RatePlansService {
     switch (adjustment.type) {
       case 'PERCENTAGE': {
         const percentChange = baseRate * (adjustment.value / 100);
-        return adjustment.operation === 'SUBTRACT'
-          ? -percentChange
-          : adjustment.operation === 'ADD'
-            ? percentChange
-            : percentChange; // MULTIPLY would be different
+        if (adjustment.operation === 'SUBTRACT') return -percentChange;
+        if (adjustment.operation === 'ADD') return percentChange;
+        // MULTIPLY: new rate = baseRate * (value / 100), delta = new rate - baseRate
+        return baseRate * (adjustment.value / 100) - baseRate;
       }
 
       case 'FIXED_AMOUNT':

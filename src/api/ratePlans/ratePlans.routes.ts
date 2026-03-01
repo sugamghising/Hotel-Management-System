@@ -8,6 +8,7 @@ import {
   CalendarQuerySchema,
   CloneRatePlanSchema,
   CreateRatePlanSchema,
+  DeleteOverrideBodySchema,
   HotelIdParamSchema,
   OrganizationIdParamSchema,
   RateCalculationSchema,
@@ -126,6 +127,7 @@ router.delete(
   requirePermission('RATE_PLAN.UPDATE'),
   validate({
     params: OrganizationIdParamSchema.merge(HotelIdParamSchema).merge(RatePlanIdParamSchema),
+    body: DeleteOverrideBodySchema,
   }),
   ratePlansController.deleteOverride
 );
