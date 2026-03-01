@@ -1,5 +1,3 @@
-// src/features/rate-plans/rate-plans.routes.ts
-
 import { Router } from 'express';
 import { validate } from '../../core';
 import { authMiddleware } from '../../core/middleware/auth';
