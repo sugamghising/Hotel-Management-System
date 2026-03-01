@@ -4,7 +4,7 @@ import type { Prisma } from '../../generated/prisma';
 import type { RateOverride, RatePlan } from './ratePlans.types';
 
 export type RatePlanWhereInput = Prisma.RatePlanWhereInput;
-export type RatePlanCreateInput = Prisma.RatePlanCreateInput;
+export type RatePlanCreateInput = Prisma.RatePlanUncheckedCreateInput;
 export type RatePlanUpdateInput = Prisma.RatePlanUpdateInput;
 
 export class RatePlansRepository {
