@@ -249,6 +249,10 @@ export const CalendarQuerySchema = z
     startDate: z.coerce.date(),
     endDate: z.coerce.date(),
   })
+  .refine((data) => data.endDate >= data.startDate, {
+    message: 'End date must be on or after start date',
+    path: ['endDate'],
+  })
   .refine(
     (data) => {
       const daysDiff = (data.endDate.getTime() - data.startDate.getTime()) / (1000 * 60 * 60 * 24);
@@ -259,6 +263,10 @@ export const CalendarQuerySchema = z
       path: ['endDate'],
     }
   );
+
+export const DeleteOverrideBodySchema = z.object({
+  date: z.coerce.date(),
+});
 
 // ============================================================================
 // TYPE EXPORTS

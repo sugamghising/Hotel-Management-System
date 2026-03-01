@@ -8,6 +8,7 @@ export {
   PricingRuleSchema,
   RatePlanQuerySchema,
   CalendarQuerySchema,
+  DeleteOverrideBodySchema,
   RatePlanIdParamSchema,
   HotelIdParamSchema,
   OrganizationIdParamSchema,
