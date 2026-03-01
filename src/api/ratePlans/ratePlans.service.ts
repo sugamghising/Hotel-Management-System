@@ -801,3 +801,5 @@ export class RatePlansService {
     };
   }
 }
+
+export const ratePlansService = new RatePlansService();
