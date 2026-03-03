@@ -601,4 +601,4 @@ export class ReservationsRepository {
   }
 }
 
-export const reservationRepository = new ReservationsRepository();
+export const reservationsRepository = new ReservationsRepository();

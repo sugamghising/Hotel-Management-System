@@ -165,6 +165,23 @@ export interface ReservationRoom {
 }
 
 // ============================================================================
+// DOMAIN ENTITY WITH RELATIONS
+// ============================================================================
+
+export interface ReservationWithRelations extends Reservation {
+  guest?: {
+    firstName: string;
+    lastName: string;
+  };
+  rooms?: Array<
+    ReservationRoom & {
+      roomType?: { name: string; code: string };
+      room?: { roomNumber: string };
+    }
+  >;
+}
+
+// ============================================================================
 // API INPUTS/OUTPUTS
 // ============================================================================
 
