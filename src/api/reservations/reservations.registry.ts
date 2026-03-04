@@ -32,14 +32,9 @@ const ReservationStatusSchema = z
 const RateBreakdownItemSchema = z
   .object({
     date: z.string(),
-    baseRate: z.number(),
-    adjustments: z.array(
-      z.object({
-        description: z.string(),
-        amount: z.number(),
-      })
-    ),
-    finalRate: z.number(),
+    rate: z.number(),
+    tax: z.number(),
+    total: z.number(),
   })
   .openapi('RateBreakdownItem');
 
@@ -62,15 +57,11 @@ const ReservationRoomItemSchema = z
     roomTypeCode: z.string(),
     roomId: z.string().uuid().nullable(),
     roomNumber: z.string().nullable(),
-    adults: z.number().int(),
-    children: z.number().int(),
-    infants: z.number().int(),
-    ratePlanId: z.string().uuid(),
-    ratePlanName: z.string(),
-    ratePlanCode: z.string(),
-    rateBreakdown: z.array(RateBreakdownItemSchema),
-    totalRate: z.number(),
-    status: ReservationStatusSchema,
+    status: z.string(),
+    roomRate: z.number(),
+    assignedAt: z.string().datetime().nullable(),
+    checkInAt: z.string().datetime().nullable(),
+    checkOutAt: z.string().datetime().nullable(),
   })
   .openapi('ReservationRoomItem');
 
@@ -78,55 +69,84 @@ const ReservationResponseSchema = z
   .object({
     id: z.string().uuid(),
     confirmationNumber: z.string(),
-    organizationId: z.string().uuid(),
-    hotelId: z.string().uuid(),
-    status: ReservationStatusSchema,
+    externalRef: z.string().nullable(),
 
-    // Dates
-    checkInDate: z.string().datetime(),
-    checkOutDate: z.string().datetime(),
-    actualCheckIn: z.string().datetime().nullable(),
-    actualCheckOut: z.string().datetime().nullable(),
-    arrivalTime: z.string().nullable(),
-    departureTime: z.string().nullable(),
-    nights: z.number().int(),
+    // Status group
+    status: z.object({
+      reservation: ReservationStatusSchema,
+      checkIn: z.string(),
+    }),
 
-    // Guest
-    guest: ReservationGuestSchema,
+    // Dates group
+    dates: z.object({
+      checkIn: z.string().datetime(),
+      checkOut: z.string().datetime(),
+      arrivalTime: z.string().datetime().nullable(),
+      departureTime: z.string().datetime().nullable(),
+      nights: z.number().int(),
+    }),
+
+    // Guests group
+    guests: z.object({
+      primaryGuestId: z.string().uuid(),
+      primaryGuestName: z.string(),
+      adultCount: z.number().int(),
+      childCount: z.number().int(),
+      infantCount: z.number().int(),
+      totalGuests: z.number().int(),
+    }),
 
     // Rooms
     rooms: z.array(ReservationRoomItemSchema),
 
-    // Financials
-    totalAmount: z.number(),
-    paidAmount: z.number(),
-    balanceDue: z.number(),
-    currencyCode: z.string(),
+    // Financials group
+    financial: z.object({
+      currencyCode: z.string(),
+      nightlyRates: z.array(RateBreakdownItemSchema),
+      averageRate: z.number(),
+      subtotal: z.number(),
+      taxAmount: z.number(),
+      discountAmount: z.number(),
+      totalAmount: z.number(),
+      paidAmount: z.number(),
+      balance: z.number(),
+    }),
 
-    // Source & Guarantee
-    source: BookingSourceSchema,
-    channelCode: z.string().nullable(),
-    corporateCode: z.string().nullable(),
-    guaranteeType: GuaranteeTypeSchema,
-    guaranteeAmount: z.number().nullable(),
+    // Source group
+    source: z.object({
+      bookingSource: BookingSourceSchema,
+      channelCode: z.string().nullable(),
+      bookedAt: z.string().datetime(),
+      bookedBy: z.string(),
+    }),
 
-    // Policies
-    cancellationPolicy: CancellationPolicySchema,
+    // Policies group
+    policies: z.object({
+      cancellationPolicy: CancellationPolicySchema,
+      guaranteeType: GuaranteeTypeSchema,
+      guaranteeAmount: z.number().nullable(),
+    }),
 
-    // Notes
-    guestNotes: z.string().nullable(),
-    specialRequests: z.string().nullable(),
-    internalNotes: z.string().nullable(),
+    // Notes group
+    notes: z.object({
+      guestNotes: z.string().nullable(),
+      specialRequests: z.string().nullable(),
+      internalNotes: z.string().nullable(),
+    }),
 
-    // Cancellation
-    cancelledAt: z.string().datetime().nullable(),
-    cancellationReason: z.string().nullable(),
-    cancellationFee: z.number().nullable(),
+    // Cancellation group
+    cancellation: z
+      .object({
+        cancelledAt: z.string().datetime(),
+        cancelledBy: z.string(),
+        reason: z.string(),
+        fee: z.number(),
+      })
+      .nullable()
+      .optional(),
 
-    // Metadata
-    isWalkIn: z.boolean(),
     createdAt: z.string().datetime(),
-    updatedAt: z.string().datetime(),
+    modifiedAt: z.string().datetime(),
   })
   .openapi('ReservationResponse');
 
@@ -134,18 +154,17 @@ const ReservationListItemSchema = z
   .object({
     id: z.string().uuid(),
     confirmationNumber: z.string(),
+    guestName: z.string(),
     status: ReservationStatusSchema,
+    checkInStatus: z.string(),
     checkInDate: z.string().datetime(),
     checkOutDate: z.string().datetime(),
     nights: z.number().int(),
-    guestName: z.string(),
-    roomTypeName: z.string(),
+    roomType: z.string(),
     roomNumber: z.string().nullable(),
     totalAmount: z.number(),
-    balanceDue: z.number(),
+    balance: z.number(),
     source: BookingSourceSchema,
-    isWalkIn: z.boolean(),
-    createdAt: z.string().datetime(),
   })
   .openapi('ReservationListItem');
 
@@ -168,22 +187,22 @@ const ReservationListResponseSchema = z
 const InHouseGuestSchema = z
   .object({
     reservationId: z.string().uuid(),
-    confirmationNumber: z.string(),
+    guestId: z.string().uuid(),
     guestName: z.string(),
-    roomNumber: z.string().nullable(),
-    roomTypeName: z.string(),
+    roomNumber: z.string(),
+    roomType: z.string(),
     checkInDate: z.string().datetime(),
     checkOutDate: z.string().datetime(),
     nights: z.number().int(),
     vipStatus: z.string().nullable(),
-    balanceDue: z.number(),
+    balance: z.number(),
   })
   .openapi('InHouseGuest');
 
 const SplitReservationResponseSchema = z
   .object({
     original: ReservationResponseSchema,
-    newReservation: ReservationResponseSchema,
+    new: ReservationResponseSchema,
   })
   .openapi('SplitReservationResponse');
 
@@ -313,7 +332,7 @@ reservationsRegistry.registerPath({
     params: OrgHotelParams,
   },
   responses: createApiResponse(
-    z.object({ arrivals: z.array(ReservationListItemSchema) }),
+    z.object({ reservations: z.array(ReservationResponseSchema) }),
     "Today's arrivals retrieved successfully"
   ),
 });
@@ -332,7 +351,7 @@ reservationsRegistry.registerPath({
     params: OrgHotelParams,
   },
   responses: createApiResponse(
-    z.object({ departures: z.array(ReservationListItemSchema) }),
+    z.object({ reservations: z.array(ReservationResponseSchema) }),
     "Today's departures retrieved successfully"
   ),
 });

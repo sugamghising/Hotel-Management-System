@@ -217,6 +217,9 @@ export class ReservationsService {
     input: WalkInInput,
     createdBy?: string
   ): Promise<ReservationResponse> {
+    // Force checkInDate to today for walk-ins
+    const today = new Date(new Date().setHours(0, 0, 0, 0));
+
     // Validate room is immediately available
     const room = await this.roomRepo.findById(input.roomId);
     if (!room || room.hotelId !== hotelId) {
@@ -225,7 +228,7 @@ export class ReservationsService {
 
     const roomCheck = await this.roomRepo.checkAvailability(
       input.roomId,
-      new Date(),
+      today,
       input.checkOutDate
     );
     if (!roomCheck.available) {
@@ -238,34 +241,28 @@ export class ReservationsService {
       hotelId,
       {
         ...input,
+        checkInDate: today,
         source: 'DIRECT_WALKIN',
         isWalkIn: true,
       },
       createdBy
     );
 
-    // Auto check-in: update reservation status directly
-    await this.reservationsRepo.update(reservation.id, {
-      status: 'CHECKED_IN',
-      checkInStatus: 'CHECKED_IN',
-    });
-
-    // Record initial payment
-    // await this.recordPayment(reservation.id, input.initialPayment, input.paymentMethod);
-
-    // Re-fetch and return the updated reservation
-    const updated = await this.reservationsRepo.findById(reservation.id);
-    if (!updated) {
-      throw new NotFoundError(`Reservation ${reservation.id} not found`);
-    }
-    return this.mapToResponse(updated as ReservationWithRelations);
+    // Auto check-in: reuse existing check-in workflow so reservation, reservation_room,
+    // and room statuses stay in sync.
+    return this.checkIn(
+      reservation.id,
+      organizationId,
+      { roomId: input.roomId },
+      createdBy
+    );
   }
 
   // ============================================================================
   // READ
   // ============================================================================
 
-  async findById(id: string, organizationId: string): Promise<ReservationResponse> {
+  async findById(id: string, organizationId: string, hotelId?: string): Promise<ReservationResponse> {
     const reservation = await this.reservationsRepo.findById(id);
 
     if (!reservation || reservation.deletedAt) {
@@ -274,6 +271,10 @@ export class ReservationsService {
 
     if (reservation.organizationId !== organizationId) {
       throw new ForbiddenError('Access denied');
+    }
+
+    if (hotelId && reservation.hotelId !== hotelId) {
+      throw new NotFoundError(`Reservation ${id} not found`);
     }
 
     return this.mapToResponse(reservation);
@@ -345,6 +346,7 @@ export class ReservationsService {
   async update(
     id: string,
     organizationId: string,
+    hotelId: string,
     input: UpdateReservationInput,
     updatedBy?: string
   ): Promise<ReservationResponse> {
@@ -356,6 +358,10 @@ export class ReservationsService {
 
     if (reservation.organizationId !== organizationId) {
       throw new ForbiddenError('Access denied');
+    }
+
+    if (reservation.hotelId !== hotelId) {
+      throw new NotFoundError(`Reservation ${id} not found`);
     }
 
     // Cannot modify checked-out or cancelled reservations
@@ -378,10 +384,14 @@ export class ReservationsService {
     let rateUpdates = {};
     if (input.checkInDate || input.checkOutDate) {
       const resWithRooms = reservation as ReservationWithRelations;
+      const roomTypeId = resWithRooms.rooms?.[0]?.roomTypeId;
+      if (!roomTypeId) {
+        throw new BadRequestError('Cannot update dates: no room assigned to reservation');
+      }
       // Check new availability
       const availability = await this.reservationsRepo.checkAvailability(
         reservation.hotelId,
-        resWithRooms.rooms?.[0]?.roomTypeId ?? reservation.ratePlanId,
+        roomTypeId,
         newCheckIn,
         newCheckOut
       );
@@ -392,7 +402,7 @@ export class ReservationsService {
       // Recalculate rates
       const newRates = await this.calculateRates(
         reservation.hotelId,
-        resWithRooms.rooms?.[0]?.roomTypeId ?? reservation.ratePlanId,
+        roomTypeId,
         reservation.ratePlanId,
         newCheckIn,
         newCheckOut,
@@ -441,9 +451,20 @@ export class ReservationsService {
   async checkIn(
     id: string,
     organizationId: string,
-    input: CheckInInput,
+    hotelId: string | CheckInInput,
+    input?: CheckInInput | string,
     _checkedInBy?: string
   ): Promise<ReservationResponse> {
+    // Support (id, orgId, hotelId, input, by) from controller and (id, orgId, input) from internal callers
+    let resolvedHotelId: string | undefined;
+    let resolvedInput: CheckInInput;
+    if (typeof hotelId === 'string') {
+      resolvedHotelId = hotelId;
+      resolvedInput = input as CheckInInput;
+    } else {
+      resolvedInput = hotelId;
+    }
+
     const reservation = await this.reservationsRepo.findById(id);
 
     if (!reservation || reservation.deletedAt) {
@@ -452,6 +473,10 @@ export class ReservationsService {
 
     if (reservation.organizationId !== organizationId) {
       throw new ForbiddenError('Access denied');
+    }
+
+    if (resolvedHotelId && reservation.hotelId !== resolvedHotelId) {
+      throw new NotFoundError(`Reservation ${id} not found`);
     }
 
     if (!['CONFIRMED', 'CHECKED_IN'].includes(reservation.status)) {
@@ -464,7 +489,7 @@ export class ReservationsService {
     }
 
     // Determine room to use
-    let roomId = input.roomId || resRoom.roomId;
+    let roomId = resolvedInput.roomId || resRoom.roomId;
 
     if (!roomId) {
       // Auto-assign
@@ -487,7 +512,7 @@ export class ReservationsService {
       }
     }
 
-    await this.reservationsRepo.checkIn(id, resRoom.id, roomId, input.earlyCheckIn);
+    await this.reservationsRepo.checkIn(id, resRoom.id, roomId, resolvedInput.earlyCheckIn);
 
     // Create folio if not exists
     // await this.folioService.createForReservation(id);
@@ -495,7 +520,7 @@ export class ReservationsService {
     logger.info(`Guest checked in: ${reservation.confirmationNumber}`, {
       reservationId: id,
       roomId,
-      earlyCheckIn: input.earlyCheckIn,
+      earlyCheckIn: resolvedInput.earlyCheckIn,
     });
 
     return this.findById(id, organizationId);
@@ -508,6 +533,7 @@ export class ReservationsService {
   async checkOut(
     id: string,
     organizationId: string,
+    hotelId: string,
     input: CheckOutInput,
     _checkedOutBy?: string
   ): Promise<ReservationResponse> {
@@ -519,6 +545,10 @@ export class ReservationsService {
 
     if (reservation.organizationId !== organizationId) {
       throw new ForbiddenError('Access denied');
+    }
+
+    if (reservation.hotelId !== hotelId) {
+      throw new NotFoundError(`Reservation ${id} not found`);
     }
 
     if (reservation.status !== 'CHECKED_IN') {
@@ -557,6 +587,7 @@ export class ReservationsService {
   async assignRoom(
     id: string,
     organizationId: string,
+    hotelId: string,
     input: RoomAssignmentInput,
     assignedBy?: string
   ): Promise<ReservationResponse> {
@@ -568,6 +599,10 @@ export class ReservationsService {
 
     if (reservation.organizationId !== organizationId) {
       throw new ForbiddenError('Access denied');
+    }
+
+    if (reservation.hotelId !== hotelId) {
+      throw new NotFoundError(`Reservation ${id} not found`);
     }
 
     const resRoom = (reservation as ReservationWithRelations).rooms?.[0];
@@ -609,10 +644,18 @@ export class ReservationsService {
     return this.findById(id, organizationId);
   }
 
-  async unassignRoom(id: string, organizationId: string): Promise<ReservationResponse> {
+  async unassignRoom(id: string, organizationId: string, hotelId: string): Promise<ReservationResponse> {
     const reservation = await this.reservationsRepo.findById(id);
 
     if (!reservation || reservation.deletedAt) {
+      throw new NotFoundError(`Reservation ${id} not found`);
+    }
+
+    if (reservation.organizationId !== organizationId) {
+      throw new ForbiddenError('Access denied');
+    }
+
+    if (reservation.hotelId !== hotelId) {
       throw new NotFoundError(`Reservation ${id} not found`);
     }
 
@@ -637,6 +680,7 @@ export class ReservationsService {
   async cancel(
     id: string,
     organizationId: string,
+    hotelId: string,
     reason: string,
     waiveFee: boolean = false,
     cancelledBy?: string
@@ -649,6 +693,10 @@ export class ReservationsService {
 
     if (reservation.organizationId !== organizationId) {
       throw new ForbiddenError('Access denied');
+    }
+
+    if (reservation.hotelId !== hotelId) {
+      throw new NotFoundError(`Reservation ${id} not found`);
     }
 
     if (['CANCELLED', 'CHECKED_OUT'].includes(reservation.status)) {
@@ -691,6 +739,7 @@ export class ReservationsService {
   async markNoShow(
     id: string,
     organizationId: string,
+    hotelId: string,
     input: NoShowInput,
     _markedBy?: string
   ): Promise<ReservationResponse> {
@@ -702,6 +751,10 @@ export class ReservationsService {
 
     if (reservation.organizationId !== organizationId) {
       throw new ForbiddenError('Access denied');
+    }
+
+    if (reservation.hotelId !== hotelId) {
+      throw new NotFoundError(`Reservation ${id} not found`);
     }
 
     if (reservation.status !== 'CONFIRMED') {
@@ -781,6 +834,7 @@ export class ReservationsService {
   async split(
     id: string,
     organizationId: string,
+    hotelId: string,
     input: SplitReservationInput,
     splitBy?: string
   ): Promise<{ original: ReservationResponse; new: ReservationResponse }> {
@@ -792,6 +846,10 @@ export class ReservationsService {
 
     if (reservation.organizationId !== organizationId) {
       throw new ForbiddenError('Access denied');
+    }
+
+    if (reservation.hotelId !== hotelId) {
+      throw new NotFoundError(`Reservation ${id} not found`);
     }
 
     if (reservation.status === 'CHECKED_IN') {
@@ -813,6 +871,22 @@ export class ReservationsService {
     const newConfirmationNumber = await this.reservationsRepo.generateConfirmationNumber(
       reservation.hotelId
     );
+
+    // Determine room type for the new reservation
+    const resWithRooms = reservation as ReservationWithRelations;
+    const originalRoomTypeId = resWithRooms.rooms?.[0]?.roomTypeId;
+    const newRoomTypeId = input.newRoomTypeId || originalRoomTypeId;
+    if (!newRoomTypeId) {
+      throw new BadRequestError('Cannot split reservation: room type not found');
+    }
+
+    // Validate newRoomTypeId if provided
+    if (input.newRoomTypeId) {
+      const roomType = await this.roomTypeRepo.findById(input.newRoomTypeId);
+      if (!roomType || roomType.hotelId !== reservation.hotelId) {
+        throw new NotFoundError(`Room type ${input.newRoomTypeId} not found`);
+      }
+    }
 
     const { original, new: newRes } = await this.reservationsRepo.splitReservation(
       id,
@@ -866,6 +940,14 @@ export class ReservationsService {
         bookedBy: splitBy || 'SYSTEM',
         modifiedAt: new Date(),
         modifiedBy: null,
+      },
+      {
+        roomTypeId: newRoomTypeId,
+        roomId: null,
+        roomRate: reservation.averageRate,
+        adultCount: reservation.adultCount,
+        childCount: reservation.childCount,
+        status: 'RESERVED',
       }
     );
 
@@ -911,20 +993,28 @@ export class ReservationsService {
       throw new NotFoundError(`Rate plan ${ratePlanId} not found`);
     }
 
+    // Fetch all overrides for the full date range at once to avoid N+1 queries
+    const allOverrides = await this.ratePlanRepo.getOverrides(ratePlanId, checkIn, checkOut);
+    const overridesByDate = new Map(
+      allOverrides.map((o: { date: Date; rate: number }) => [
+        o.date.toISOString().split('T')[0],
+        o.rate,
+      ])
+    );
+
     const breakdown: RateBreakdownItem[] = [];
     let subtotal = 0;
 
     const current = new Date(checkIn);
     for (let i = 0; i < nights; i++) {
-      // Check for override
-      const overrides = await this.ratePlanRepo.getOverrides(ratePlanId, current, current);
-      const dailyRate = overrides[0]?.rate || ratePlan.baseRate;
+      const dateKey = current.toISOString().split('T')[0] as string;
+      const dailyRate = overridesByDate.get(dateKey) ?? ratePlan.baseRate;
 
       const taxRate = 0.15; // Simplified - would use actual tax engine
       const tax = Math.round(dailyRate * taxRate * 100) / 100;
 
       breakdown.push({
-        date: current.toISOString().split('T')[0] as string,
+        date: dateKey,
         rate: dailyRate,
         tax,
         total: dailyRate + tax,

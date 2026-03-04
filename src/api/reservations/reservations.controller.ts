@@ -97,12 +97,13 @@ export class ReservationsController {
    * GET /organizations/:organizationId/hotels/:hotelId/reservations/:reservationId
    */
   getById = asyncHandler(async (req: Request, res: Response) => {
-    const { organizationId, reservationId } = req.params as {
+    const { organizationId, hotelId, reservationId } = req.params as {
       organizationId: string;
+      hotelId: string;
       reservationId: string;
     };
 
-    const reservation = await reservationsService.findById(reservationId, organizationId);
+    const reservation = await reservationsService.findById(reservationId, organizationId, hotelId);
 
     handleServiceResponse(ServiceResponse.success({ reservation }, 'Reservation retrieved'), res);
   });
@@ -126,8 +127,9 @@ export class ReservationsController {
    * PATCH /organizations/:organizationId/hotels/:hotelId/reservations/:reservationId
    */
   update = asyncHandler(async (req: Request, res: Response) => {
-    const { organizationId, reservationId } = req.params as {
+    const { organizationId, hotelId, reservationId } = req.params as {
       organizationId: string;
+      hotelId: string;
       reservationId: string;
     };
     const input = req.body as UpdateReservationInput;
@@ -135,6 +137,7 @@ export class ReservationsController {
     const reservation = await reservationsService.update(
       reservationId,
       organizationId,
+      hotelId,
       input as unknown as SvcUpdateInput,
       req.user?.sub
     );
@@ -146,8 +149,9 @@ export class ReservationsController {
    * POST /organizations/:organizationId/hotels/:hotelId/reservations/:reservationId/check-in
    */
   checkIn = asyncHandler(async (req: Request, res: Response) => {
-    const { organizationId, reservationId } = req.params as {
+    const { organizationId, hotelId, reservationId } = req.params as {
       organizationId: string;
+      hotelId: string;
       reservationId: string;
     };
     const input = req.body as CheckInInput;
@@ -155,6 +159,7 @@ export class ReservationsController {
     const reservation = await reservationsService.checkIn(
       reservationId,
       organizationId,
+      hotelId,
       input as unknown as SvcCheckInInput,
       req.user?.sub
     );
@@ -166,8 +171,9 @@ export class ReservationsController {
    * POST /organizations/:organizationId/hotels/:hotelId/reservations/:reservationId/check-out
    */
   checkOut = asyncHandler(async (req: Request, res: Response) => {
-    const { organizationId, reservationId } = req.params as {
+    const { organizationId, hotelId, reservationId } = req.params as {
       organizationId: string;
+      hotelId: string;
       reservationId: string;
     };
     const input = req.body as CheckOutInput;
@@ -175,6 +181,7 @@ export class ReservationsController {
     const reservation = await reservationsService.checkOut(
       reservationId,
       organizationId,
+      hotelId,
       input as unknown as SvcCheckOutInput,
       req.user?.sub
     );
@@ -186,8 +193,9 @@ export class ReservationsController {
    * POST /organizations/:organizationId/hotels/:hotelId/reservations/:reservationId/assign-room
    */
   assignRoom = asyncHandler(async (req: Request, res: Response) => {
-    const { organizationId, reservationId } = req.params as {
+    const { organizationId, hotelId, reservationId } = req.params as {
       organizationId: string;
+      hotelId: string;
       reservationId: string;
     };
     const input = req.body as RoomAssignmentInput;
@@ -195,6 +203,7 @@ export class ReservationsController {
     const reservation = await reservationsService.assignRoom(
       reservationId,
       organizationId,
+      hotelId,
       input,
       req.user?.sub
     );
@@ -206,12 +215,17 @@ export class ReservationsController {
    * POST /organizations/:organizationId/hotels/:hotelId/reservations/:reservationId/unassign-room
    */
   unassignRoom = asyncHandler(async (req: Request, res: Response) => {
-    const { organizationId, reservationId } = req.params as {
+    const { organizationId, hotelId, reservationId } = req.params as {
       organizationId: string;
+      hotelId: string;
       reservationId: string;
     };
 
-    const reservation = await reservationsService.unassignRoom(reservationId, organizationId);
+    const reservation = await reservationsService.unassignRoom(
+      reservationId,
+      organizationId,
+      hotelId
+    );
 
     handleServiceResponse(ServiceResponse.success({ reservation }, 'Room unassigned'), res);
   });
@@ -220,8 +234,9 @@ export class ReservationsController {
    * POST /organizations/:organizationId/hotels/:hotelId/reservations/:reservationId/cancel
    */
   cancel = asyncHandler(async (req: Request, res: Response) => {
-    const { organizationId, reservationId } = req.params as {
+    const { organizationId, hotelId, reservationId } = req.params as {
       organizationId: string;
+      hotelId: string;
       reservationId: string;
     };
     const { reason, waiveFee } = req.body as CancellationInput;
@@ -229,6 +244,7 @@ export class ReservationsController {
     const reservation = await reservationsService.cancel(
       reservationId,
       organizationId,
+      hotelId,
       reason,
       waiveFee,
       req.user?.sub
@@ -241,8 +257,9 @@ export class ReservationsController {
    * POST /organizations/:organizationId/hotels/:hotelId/reservations/:reservationId/no-show
    */
   noShow = asyncHandler(async (req: Request, res: Response) => {
-    const { organizationId, reservationId } = req.params as {
+    const { organizationId, hotelId, reservationId } = req.params as {
       organizationId: string;
+      hotelId: string;
       reservationId: string;
     };
     const input = req.body as NoShowInput;
@@ -250,6 +267,7 @@ export class ReservationsController {
     const reservation = await reservationsService.markNoShow(
       reservationId,
       organizationId,
+      hotelId,
       input as unknown as SvcNoShowInput,
       req.user?.sub
     );
@@ -261,8 +279,9 @@ export class ReservationsController {
    * POST /organizations/:organizationId/hotels/:hotelId/reservations/:reservationId/split
    */
   split = asyncHandler(async (req: Request, res: Response) => {
-    const { organizationId, reservationId } = req.params as {
+    const { organizationId, hotelId, reservationId } = req.params as {
       organizationId: string;
+      hotelId: string;
       reservationId: string;
     };
     const input = req.body as SplitReservationInput;
@@ -270,6 +289,7 @@ export class ReservationsController {
     const result = await reservationsService.split(
       reservationId,
       organizationId,
+      hotelId,
       input as unknown as SvcSplitInput,
       req.user?.sub
     );
