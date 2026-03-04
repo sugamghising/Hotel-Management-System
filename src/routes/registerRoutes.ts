@@ -5,6 +5,8 @@ import { authRoutes } from '../api/auth';
 import { hotelsRoutes } from '../api/hotel';
 import { organizationRoutes } from '../api/organizations';
 import { ratePlansRoutes } from '../api/ratePlans';
+import { reservationsRoutes } from '../api/reservations';
+import { roomTypesRoutes } from '../api/roomTypes';
 import { roomsRoutes } from '../api/rooms';
 
 const router = Router();
@@ -25,6 +27,8 @@ v1Router.use('/auth', authRoutes);
 v1Router.use('/hotels', hotelsRoutes);
 v1Router.use('/organizations/:organizationId/hotels/:hotelId/rooms', roomsRoutes);
 v1Router.use('/organizations/:organizationId/hotels/:hotelId/rate-plans', ratePlansRoutes);
+v1Router.use('/organizations/:organizationId/hotels/:hotelId/room-types', roomTypesRoutes);
+v1Router.use('/organizations/:organizationId/hotels/:hotelId/reservations', reservationsRoutes);
 
 // Mount versioned routes
 router.use(config.api.fullPrefix, v1Router);
