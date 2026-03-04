@@ -104,6 +104,22 @@ export class ReservationsRepository {
       where.source = filters.bookingSource as $Enums.BookingSource;
     }
 
+    if (filters.roomNumber) {
+      where.rooms = {
+        some: {
+          room: {
+            roomNumber: { contains: filters.roomNumber, mode: 'insensitive' },
+          },
+        },
+      };
+    }
+
+    if (filters.createdFrom || filters.createdTo) {
+      where.bookedAt = {};
+      if (filters.createdFrom) where.bookedAt.gte = filters.createdFrom;
+      if (filters.createdTo) where.bookedAt.lte = filters.createdTo;
+    }
+
     const [reservations, total] = await Promise.all([
       prisma.reservation.findMany({
         where,
@@ -515,23 +531,33 @@ export class ReservationsRepository {
   // CONFIRMATION NUMBER GENERATION
   // ============================================================================
 
-  async generateConfirmationNumber(hotelId: string): Promise<string> {
+  async generateConfirmationNumber(_hotelId: string): Promise<string> {
     const date = new Date();
     const year = date.getFullYear().toString().slice(-2);
     const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    const day = date.getDate().toString().padStart(2, '0');
 
-    // Get count for today to ensure uniqueness
-    const count = await prisma.reservation.count({
-      where: {
-        hotelId,
-        bookedAt: {
-          gte: new Date(date.setHours(0, 0, 0, 0)),
-        },
-      },
-    });
+    // Use a random suffix with retry loop to avoid race conditions on concurrent creates
+    const maxAttempts = 10;
+    const MIN_SUFFIX = 1000;
+    const SUFFIX_RANGE = 9000; // generates 4-digit suffix: MIN_SUFFIX to MIN_SUFFIX + SUFFIX_RANGE - 1
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const randomSuffix = Math.floor(Math.random() * SUFFIX_RANGE + MIN_SUFFIX).toString();
+      const confirmationNumber = `${year}${month}${day}${randomSuffix}`;
 
-    const sequence = (count + 1).toString().padStart(4, '0');
-    return `${year}${month}${sequence}`;
+      const existing = await prisma.reservation.findUnique({
+        where: { confirmationNumber },
+        select: { id: true },
+      });
+
+      if (!existing) {
+        return confirmationNumber;
+      }
+    }
+
+    // Fallback: last 6 digits of current timestamp guarantee uniqueness when
+    // random generation fails after max attempts
+    return `${year}${month}${day}${Date.now().toString().slice(-6)}`;
   }
 
   // ============================================================================
@@ -541,7 +567,8 @@ export class ReservationsRepository {
   async splitReservation(
     reservationId: string,
     splitDate: Date,
-    newReservationData: Prisma.ReservationUncheckedCreateInput
+    newReservationData: Prisma.ReservationUncheckedCreateInput,
+    newRoomData: Prisma.ReservationRoomUncheckedCreateWithoutReservationInput
   ): Promise<{ original: Reservation; new: Reservation }> {
     return prisma.$transaction(async (tx) => {
       const original = await tx.reservation.findUnique({
@@ -561,6 +588,10 @@ export class ReservationsRepository {
           ),
           modifiedAt: new Date(),
         },
+        include: {
+          rooms: { include: { roomType: true, room: true } },
+          guest: true,
+        },
       });
 
       // Create new reservation from split date
@@ -575,9 +606,25 @@ export class ReservationsRepository {
         },
       });
 
+      // Create reservation room for the new reservation
+      await tx.reservationRoom.create({
+        data: {
+          ...newRoomData,
+          reservationId: newReservation.id,
+        },
+      });
+
+      const newReservationWithRelations = await tx.reservation.findUnique({
+        where: { id: newReservation.id },
+        include: {
+          rooms: { include: { roomType: true, room: true } },
+          guest: true,
+        },
+      });
+
       return {
         original: updatedOriginal as unknown as Reservation,
-        new: newReservation as unknown as Reservation,
+        new: newReservationWithRelations as unknown as Reservation,
       };
     });
   }
