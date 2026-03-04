@@ -29,7 +29,7 @@ import type {
   WalkInInput,
 } from './reservations.types';
 
-export class ReservationService {
+export class ReservationsService {
   private reservationsRepo: ReservationsRepository;
   private hotelRepo: HotelRepository;
   private ratePlanRepo: RatePlansRepository;
@@ -1063,3 +1063,5 @@ export class ReservationService {
     };
   }
 }
+
+export const reservationsService = new ReservationsService();
