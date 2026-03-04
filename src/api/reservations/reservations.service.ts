@@ -1,16 +1,32 @@
-import { BadRequestError, ConflictError, NotFoundError, logger } from '../../core';
+import { BadRequestError, ConflictError, ForbiddenError, NotFoundError, logger } from '../../core';
 import { prisma } from '../../database/prisma';
 import { type HotelRepository, hotelRepository } from '../hotel';
 import { type RatePlansRepository, ratePlansRepository } from '../ratePlans';
 import { type RoomTypesRepository, roomTypesRepository } from '../roomTypes';
 import { type RoomsRepository, roomsRepository } from '../rooms';
-import { type ReservationsRepository, reservationsRepository } from './reservations.repository';
+import type { RoomConflict } from '../rooms/rooms.types';
+import {
+  type ReservationUpdateInput,
+  type ReservationsRepository,
+  reservationsRepository,
+} from './reservations.repository';
 import type {
+  CheckInInput,
+  CheckOutInput,
   CreateReservationInput,
+  InHouseGuestResponse,
+  NoShowInput,
   RateBreakdownItem,
   Reservation,
+  ReservationListResponse,
   ReservationResponse,
+  ReservationSearchFilters,
   ReservationWithRelations,
+  RoomAssignmentInput,
+  SplitReservationInput,
+  UpdateReservationInput,
+  VIPStatus,
+  WalkInInput,
 } from './reservations.types';
 
 export class ReservationService {
@@ -189,6 +205,683 @@ export class ReservationService {
     });
 
     return this.mapToResponse(reservation);
+  }
+
+  // ============================================================================
+  // WALK-IN
+  // ============================================================================
+
+  async createWalkIn(
+    organizationId: string,
+    hotelId: string,
+    input: WalkInInput,
+    createdBy?: string
+  ): Promise<ReservationResponse> {
+    // Validate room is immediately available
+    const room = await this.roomRepo.findById(input.roomId);
+    if (!room || room.hotelId !== hotelId) {
+      throw new NotFoundError(`Room ${input.roomId} not found`);
+    }
+
+    const roomCheck = await this.roomRepo.checkAvailability(
+      input.roomId,
+      new Date(),
+      input.checkOutDate
+    );
+    if (!roomCheck.available) {
+      throw new ConflictError('Room is not available for immediate check-in');
+    }
+
+    // Create as normal reservation then immediately check in
+    const reservation = await this.create(
+      organizationId,
+      hotelId,
+      {
+        ...input,
+        source: 'DIRECT_WALKIN',
+        isWalkIn: true,
+      },
+      createdBy
+    );
+
+    // Auto check-in: update reservation status directly
+    await this.reservationsRepo.update(reservation.id, {
+      status: 'CHECKED_IN',
+      checkInStatus: 'CHECKED_IN',
+    });
+
+    // Record initial payment
+    // await this.recordPayment(reservation.id, input.initialPayment, input.paymentMethod);
+
+    // Re-fetch and return the updated reservation
+    const updated = await this.reservationsRepo.findById(reservation.id);
+    if (!updated) {
+      throw new NotFoundError(`Reservation ${reservation.id} not found`);
+    }
+    return this.mapToResponse(updated as ReservationWithRelations);
+  }
+
+  // ============================================================================
+  // READ
+  // ============================================================================
+
+  async findById(id: string, organizationId: string): Promise<ReservationResponse> {
+    const reservation = await this.reservationsRepo.findById(id);
+
+    if (!reservation || reservation.deletedAt) {
+      throw new NotFoundError(`Reservation ${id} not found`);
+    }
+
+    if (reservation.organizationId !== organizationId) {
+      throw new ForbiddenError('Access denied');
+    }
+
+    return this.mapToResponse(reservation);
+  }
+
+  async findByConfirmationNumber(
+    confirmationNumber: string,
+    organizationId?: string
+  ): Promise<ReservationResponse> {
+    const reservation = await prisma.reservation.findUnique({
+      where: { confirmationNumber },
+      include: { rooms: { include: { roomType: true, room: true } }, guest: true },
+    });
+
+    if (!reservation || reservation.deletedAt) {
+      throw new NotFoundError(`Reservation ${confirmationNumber} not found`);
+    }
+
+    if (organizationId && reservation.organizationId !== organizationId) {
+      throw new ForbiddenError('Access denied');
+    }
+
+    return this.mapToResponse(reservation as unknown as ReservationWithRelations);
+  }
+
+  async search(
+    hotelId: string,
+    organizationId: string,
+    filters: ReservationSearchFilters,
+    pagination: { page: number; limit: number } = { page: 1, limit: 20 }
+  ): Promise<ReservationListResponse> {
+    await this.verifyHotelAccess(organizationId, hotelId);
+
+    const { reservations, total } = await this.reservationsRepo.search(
+      hotelId,
+      filters,
+      pagination
+    );
+
+    return {
+      reservations: (reservations as ReservationWithRelations[]).map((r) => ({
+        id: r.id,
+        confirmationNumber: r.confirmationNumber,
+        guestName: r.guest ? `${r.guest.firstName} ${r.guest.lastName}` : 'Unknown',
+        status: r.status,
+        checkInStatus: r.checkInStatus,
+        checkInDate: r.checkInDate,
+        checkOutDate: r.checkOutDate,
+        nights: r.nights,
+        roomType: r.rooms?.[0]?.roomType?.code || 'N/A',
+        roomNumber: r.rooms?.[0]?.room?.roomNumber || null,
+        totalAmount: r.totalAmount,
+        balance: r.balance,
+        source: r.source,
+      })),
+      pagination: {
+        page: pagination.page,
+        limit: pagination.limit,
+        total,
+        totalPages: Math.ceil(total / pagination.limit),
+      },
+    };
+  }
+
+  // ============================================================================
+  // UPDATE
+  // ============================================================================
+
+  async update(
+    id: string,
+    organizationId: string,
+    input: UpdateReservationInput,
+    updatedBy?: string
+  ): Promise<ReservationResponse> {
+    const reservation = await this.reservationsRepo.findById(id);
+
+    if (!reservation || reservation.deletedAt) {
+      throw new NotFoundError(`Reservation ${id} not found`);
+    }
+
+    if (reservation.organizationId !== organizationId) {
+      throw new ForbiddenError('Access denied');
+    }
+
+    // Cannot modify checked-out or cancelled reservations
+    if (['CHECKED_OUT', 'CANCELLED'].includes(reservation.status)) {
+      throw new ConflictError(`Cannot modify ${reservation.status.toLowerCase()} reservation`);
+    }
+
+    // Validate date changes
+    const newCheckIn = input.checkInDate || reservation.checkInDate;
+    const newCheckOut = input.checkOutDate || reservation.checkOutDate;
+    const newNights = Math.ceil(
+      (newCheckOut.getTime() - newCheckIn.getTime()) / (1000 * 60 * 60 * 24)
+    );
+
+    if (newNights < 1) {
+      throw new BadRequestError('Minimum stay is 1 night');
+    }
+
+    // If dates changed, recalculate rates and check availability
+    let rateUpdates = {};
+    if (input.checkInDate || input.checkOutDate) {
+      const resWithRooms = reservation as ReservationWithRelations;
+      // Check new availability
+      const availability = await this.reservationsRepo.checkAvailability(
+        reservation.hotelId,
+        resWithRooms.rooms?.[0]?.roomTypeId ?? reservation.ratePlanId,
+        newCheckIn,
+        newCheckOut
+      );
+      if (!availability.available) {
+        throw new ConflictError('No availability for new dates');
+      }
+
+      // Recalculate rates
+      const newRates = await this.calculateRates(
+        reservation.hotelId,
+        resWithRooms.rooms?.[0]?.roomTypeId ?? reservation.ratePlanId,
+        reservation.ratePlanId,
+        newCheckIn,
+        newCheckOut,
+        input.adultCount || reservation.adultCount,
+        input.childCount || reservation.childCount
+      );
+
+      rateUpdates = {
+        nights: newNights,
+        totalAmount: newRates.total,
+        taxAmount: newRates.tax,
+        balance: newRates.total - reservation.paidAmount,
+        rateBreakdown: newRates.breakdown,
+        averageRate: newRates.average,
+      };
+    }
+
+    const { arrivalTime, departureTime, ...restInput } = input;
+    const parsedTimes: { arrivalTime?: Date | null; departureTime?: Date | null } = {};
+    if (arrivalTime !== undefined) {
+      parsedTimes.arrivalTime = arrivalTime ? this.parseTime(arrivalTime) : null;
+    }
+    if (departureTime !== undefined) {
+      parsedTimes.departureTime = departureTime ? this.parseTime(departureTime) : null;
+    }
+
+    const updated = await this.reservationsRepo.update(id, {
+      ...restInput,
+      ...parsedTimes,
+      ...rateUpdates,
+      modifiedBy: updatedBy || null,
+    } as ReservationUpdateInput);
+
+    logger.info(`Reservation updated: ${reservation.confirmationNumber}`, {
+      reservationId: id,
+      changes: Object.keys(input),
+    });
+
+    return this.mapToResponse(updated);
+  }
+
+  // ============================================================================
+  // CHECK-IN
+  // ============================================================================
+
+  async checkIn(
+    id: string,
+    organizationId: string,
+    input: CheckInInput,
+    _checkedInBy?: string
+  ): Promise<ReservationResponse> {
+    const reservation = await this.reservationsRepo.findById(id);
+
+    if (!reservation || reservation.deletedAt) {
+      throw new NotFoundError(`Reservation ${id} not found`);
+    }
+
+    if (reservation.organizationId !== organizationId) {
+      throw new ForbiddenError('Access denied');
+    }
+
+    if (!['CONFIRMED', 'CHECKED_IN'].includes(reservation.status)) {
+      throw new ConflictError(`Cannot check in ${reservation.status.toLowerCase()} reservation`);
+    }
+
+    const resRoom = (reservation as ReservationWithRelations).rooms?.[0];
+    if (!resRoom) {
+      throw new NotFoundError('Reservation room');
+    }
+
+    // Determine room to use
+    let roomId = input.roomId || resRoom.roomId;
+
+    if (!roomId) {
+      // Auto-assign
+      roomId = await this.reservationsRepo.autoAssignRoom(id, resRoom.roomTypeId);
+      if (!roomId) {
+        throw new ConflictError('No rooms available for check-in');
+      }
+    } else {
+      // Verify room availability
+      const roomCheck = await this.roomRepo.checkAvailability(
+        roomId,
+        new Date(),
+        reservation.checkOutDate,
+        id
+      );
+      if (!roomCheck.available) {
+        throw new ConflictError(
+          `Room has conflicts: ${roomCheck.conflicts.map((c: RoomConflict) => c.guestName).join(', ')}`
+        );
+      }
+    }
+
+    await this.reservationsRepo.checkIn(id, resRoom.id, roomId, input.earlyCheckIn);
+
+    // Create folio if not exists
+    // await this.folioService.createForReservation(id);
+
+    logger.info(`Guest checked in: ${reservation.confirmationNumber}`, {
+      reservationId: id,
+      roomId,
+      earlyCheckIn: input.earlyCheckIn,
+    });
+
+    return this.findById(id, organizationId);
+  }
+
+  // ============================================================================
+  // CHECK-OUT
+  // ============================================================================
+
+  async checkOut(
+    id: string,
+    organizationId: string,
+    input: CheckOutInput,
+    _checkedOutBy?: string
+  ): Promise<ReservationResponse> {
+    const reservation = await this.reservationsRepo.findById(id);
+
+    if (!reservation || reservation.deletedAt) {
+      throw new NotFoundError(`Reservation ${id} not found`);
+    }
+
+    if (reservation.organizationId !== organizationId) {
+      throw new ForbiddenError('Access denied');
+    }
+
+    if (reservation.status !== 'CHECKED_IN') {
+      throw new ConflictError('Guest is not checked in');
+    }
+
+    // Check balance
+    if (reservation.balance > 0 && !input.payment) {
+      throw new ConflictError(`Outstanding balance: ${reservation.balance}`);
+    }
+
+    const resRoom = (reservation as ReservationWithRelations).rooms?.[0];
+    if (!resRoom || !resRoom.roomId) {
+      throw new NotFoundError('Assigned room');
+    }
+
+    await this.reservationsRepo.checkOut(id, resRoom.id, resRoom.roomId, input.lateCheckOut);
+
+    // Record payment if provided
+    if (input.payment) {
+      // await this.recordPayment(id, input.payment.amount, input.payment.method);
+    }
+
+    logger.info(`Guest checked out: ${reservation.confirmationNumber}`, {
+      reservationId: id,
+      lateCheckOut: input.lateCheckOut,
+    });
+
+    return this.findById(id, organizationId);
+  }
+
+  // ============================================================================
+  // ROOM ASSIGNMENT
+  // ============================================================================
+
+  async assignRoom(
+    id: string,
+    organizationId: string,
+    input: RoomAssignmentInput,
+    assignedBy?: string
+  ): Promise<ReservationResponse> {
+    const reservation = await this.reservationsRepo.findById(id);
+
+    if (!reservation || reservation.deletedAt) {
+      throw new NotFoundError(`Reservation ${id} not found`);
+    }
+
+    if (reservation.organizationId !== organizationId) {
+      throw new ForbiddenError('Access denied');
+    }
+
+    const resRoom = (reservation as ReservationWithRelations).rooms?.[0];
+    if (!resRoom) {
+      throw new NotFoundError('Reservation room');
+    }
+
+    // Verify room
+    const room = await this.roomRepo.findById(input.roomId);
+    if (!room || room.hotelId !== reservation.hotelId) {
+      throw new NotFoundError(`Room ${input.roomId} not found`);
+    }
+
+    if (room.roomTypeId !== resRoom.roomTypeId) {
+      throw new BadRequestError('Room type mismatch');
+    }
+
+    // Check availability
+    const roomCheck = await this.roomRepo.checkAvailability(
+      input.roomId,
+      reservation.checkInDate,
+      reservation.checkOutDate,
+      id
+    );
+
+    if (!roomCheck.available && !input.force) {
+      throw new ConflictError(
+        `Room not available: ${roomCheck.conflicts.map((c: RoomConflict) => `${c.guestName} (${c.checkIn.toDateString()})`).join(', ')}`
+      );
+    }
+
+    await this.reservationsRepo.assignRoom(resRoom.id, input.roomId, assignedBy || 'SYSTEM');
+
+    logger.info(`Room assigned: ${reservation.confirmationNumber} -> ${room.roomNumber}`, {
+      reservationId: id,
+      roomId: input.roomId,
+    });
+
+    return this.findById(id, organizationId);
+  }
+
+  async unassignRoom(id: string, organizationId: string): Promise<ReservationResponse> {
+    const reservation = await this.reservationsRepo.findById(id);
+
+    if (!reservation || reservation.deletedAt) {
+      throw new NotFoundError(`Reservation ${id} not found`);
+    }
+
+    if (reservation.status === 'CHECKED_IN') {
+      throw new ConflictError('Cannot unassign room for checked-in guest');
+    }
+
+    const resRoom = (reservation as ReservationWithRelations).rooms?.[0];
+    if (!resRoom) {
+      throw new NotFoundError('Reservation room');
+    }
+
+    await this.reservationsRepo.unassignRoom(resRoom.id);
+
+    return this.findById(id, organizationId);
+  }
+
+  // ============================================================================
+  // CANCELLATION
+  // ============================================================================
+
+  async cancel(
+    id: string,
+    organizationId: string,
+    reason: string,
+    waiveFee: boolean = false,
+    cancelledBy?: string
+  ): Promise<ReservationResponse> {
+    const reservation = await this.reservationsRepo.findById(id);
+
+    if (!reservation || reservation.deletedAt) {
+      throw new NotFoundError(`Reservation ${id} not found`);
+    }
+
+    if (reservation.organizationId !== organizationId) {
+      throw new ForbiddenError('Access denied');
+    }
+
+    if (['CANCELLED', 'CHECKED_OUT'].includes(reservation.status)) {
+      throw new ConflictError(`Reservation is already ${reservation.status.toLowerCase()}`);
+    }
+
+    if (reservation.status === 'CHECKED_IN') {
+      throw new ConflictError('Cannot cancel checked-in reservation. Please check out first.');
+    }
+
+    // Calculate cancellation fee based on policy
+    let fee = 0;
+    if (!waiveFee) {
+      fee = this.calculateCancellationFee(reservation);
+    }
+
+    await this.reservationsRepo.cancel(
+      id,
+      reason,
+      cancelledBy || 'SYSTEM',
+      fee > 0 ? fee : undefined
+    );
+
+    // Release room inventory
+    // await this.inventoryService.release(reservation.rooms[0].roomTypeId, reservation.checkInDate, reservation.checkOutDate);
+
+    logger.info(`Reservation cancelled: ${reservation.confirmationNumber}`, {
+      reservationId: id,
+      reason,
+      fee,
+    });
+
+    return this.findById(id, organizationId);
+  }
+
+  // ============================================================================
+  // NO-SHOW
+  // ============================================================================
+
+  async markNoShow(
+    id: string,
+    organizationId: string,
+    input: NoShowInput,
+    _markedBy?: string
+  ): Promise<ReservationResponse> {
+    const reservation = await this.reservationsRepo.findById(id);
+
+    if (!reservation || reservation.deletedAt) {
+      throw new NotFoundError(`Reservation ${id} not found`);
+    }
+
+    if (reservation.organizationId !== organizationId) {
+      throw new ForbiddenError('Access denied');
+    }
+
+    if (reservation.status !== 'CONFIRMED') {
+      throw new ConflictError('Only confirmed reservations can be marked no-show');
+    }
+
+    // Verify check-in date is today or past
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (reservation.checkInDate > today) {
+      throw new ConflictError('Cannot mark future reservation as no-show');
+    }
+
+    await this.reservationsRepo.markNoShow(id, input.chargeNoShowFee ?? false);
+
+    logger.info(`No-show marked: ${reservation.confirmationNumber}`, {
+      reservationId: id,
+      chargeFee: input.chargeNoShowFee,
+    });
+
+    return this.findById(id, organizationId);
+  }
+
+  // ============================================================================
+  // DASHBOARD QUERIES
+  // ============================================================================
+
+  async getTodayArrivals(hotelId: string, organizationId: string): Promise<ReservationResponse[]> {
+    await this.verifyHotelAccess(organizationId, hotelId);
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const reservations = await this.reservationsRepo.getTodayArrivals(hotelId, today);
+    return reservations.map((r) => this.mapToResponse(r));
+  }
+
+  async getTodayDepartures(
+    hotelId: string,
+    organizationId: string
+  ): Promise<ReservationResponse[]> {
+    await this.verifyHotelAccess(organizationId, hotelId);
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const reservations = await this.reservationsRepo.getTodayDepartures(hotelId, today);
+    return reservations.map((r) => this.mapToResponse(r));
+  }
+
+  async getInHouseGuests(hotelId: string, organizationId: string): Promise<InHouseGuestResponse[]> {
+    await this.verifyHotelAccess(organizationId, hotelId);
+
+    const reservations = await this.reservationsRepo.getInHouseGuests(hotelId);
+
+    return reservations.map((r) => ({
+      reservationId: r.id,
+      guestId: r.guestId,
+      guestName: (() => {
+        const g = (r as ReservationWithRelations).guest;
+        return g ? `${g.firstName} ${g.lastName}` : 'Unknown';
+      })(),
+      roomNumber: (r as ReservationWithRelations).rooms?.[0]?.room?.roomNumber || 'N/A',
+      roomType: (r as ReservationWithRelations).rooms?.[0]?.roomType?.code || 'N/A',
+      checkInDate: r.checkInDate,
+      checkOutDate: r.checkOutDate,
+      nights: r.nights,
+      balance: r.balance,
+      vipStatus: ((r as ReservationWithRelations).guest?.vipStatus ?? 'NONE') as VIPStatus,
+    }));
+  }
+
+  // ============================================================================
+  // SPLIT/MERGE
+  // ============================================================================
+
+  async split(
+    id: string,
+    organizationId: string,
+    input: SplitReservationInput,
+    splitBy?: string
+  ): Promise<{ original: ReservationResponse; new: ReservationResponse }> {
+    const reservation = await this.reservationsRepo.findById(id);
+
+    if (!reservation || reservation.deletedAt) {
+      throw new NotFoundError(`Reservation ${id} not found`);
+    }
+
+    if (reservation.organizationId !== organizationId) {
+      throw new ForbiddenError('Access denied');
+    }
+
+    if (reservation.status === 'CHECKED_IN') {
+      throw new ConflictError('Cannot split checked-in reservation');
+    }
+
+    // Validate split date is within stay
+    if (input.splitDate <= reservation.checkInDate || input.splitDate >= reservation.checkOutDate) {
+      throw new BadRequestError('Split date must be within reservation dates');
+    }
+
+    // Calculate nights for each part
+    const originalNights = Math.ceil(
+      (input.splitDate.getTime() - reservation.checkInDate.getTime()) / (1000 * 60 * 60 * 24)
+    );
+    const newNights = reservation.nights - originalNights;
+
+    // Create new confirmation number
+    const newConfirmationNumber = await this.reservationsRepo.generateConfirmationNumber(
+      reservation.hotelId
+    );
+
+    const { original, new: newRes } = await this.reservationsRepo.splitReservation(
+      id,
+      input.splitDate,
+      {
+        organizationId: reservation.organizationId,
+        hotelId: reservation.hotelId,
+        guestId: reservation.guestId,
+        confirmationNumber: newConfirmationNumber,
+        externalRef: null,
+        source: reservation.source,
+        channelCode: reservation.channelCode,
+        agentId: reservation.agentId,
+        corporateCode: reservation.corporateCode,
+        checkInDate: input.splitDate,
+        checkOutDate: reservation.checkOutDate,
+        arrivalTime: reservation.arrivalTime,
+        departureTime: reservation.departureTime,
+        nights: newNights,
+        status: 'CONFIRMED',
+        checkInStatus: 'NOT_CHECKED_IN',
+        adultCount: reservation.adultCount,
+        childCount: reservation.childCount,
+        infantCount: reservation.infantCount,
+        currencyCode: reservation.currencyCode,
+        totalAmount: reservation.totalAmount * (newNights / reservation.nights),
+        taxAmount: reservation.taxAmount * (newNights / reservation.nights),
+        discountAmount: 0,
+        paidAmount: 0,
+        balance: reservation.totalAmount * (newNights / reservation.nights),
+        ratePlanId: reservation.ratePlanId,
+        rateBreakdown: [],
+        averageRate: reservation.averageRate,
+        cancellationPolicy: reservation.cancellationPolicy,
+        guaranteeType: reservation.guaranteeType,
+        guaranteeAmount: reservation.guaranteeAmount,
+        cardToken: reservation.cardToken,
+        cardLastFour: reservation.cardLastFour,
+        cardExpiryMonth: reservation.cardExpiryMonth,
+        cardExpiryYear: reservation.cardExpiryYear,
+        cardBrand: reservation.cardBrand,
+        guestNotes: reservation.guestNotes,
+        specialRequests: reservation.specialRequests,
+        internalNotes: `Split from ${reservation.confirmationNumber}`,
+        cancelledAt: null,
+        cancelledBy: null,
+        cancellationReason: null,
+        cancellationFee: null,
+        noShow: false,
+        bookedAt: new Date(),
+        bookedBy: splitBy || 'SYSTEM',
+        modifiedAt: new Date(),
+        modifiedBy: null,
+      }
+    );
+
+    logger.info(
+      `Reservation split: ${reservation.confirmationNumber} -> ${newConfirmationNumber}`,
+      {
+        originalId: id,
+        newId: newRes.id,
+        splitDate: input.splitDate,
+      }
+    );
+
+    return {
+      original: this.mapToResponse(original as ReservationWithRelations),
+      new: this.mapToResponse(newRes as ReservationWithRelations),
+    };
   }
 
   // ============================================================================

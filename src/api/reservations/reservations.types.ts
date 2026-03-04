@@ -172,6 +172,7 @@ export interface ReservationWithRelations extends Reservation {
   guest?: {
     firstName: string;
     lastName: string;
+    vipStatus?: VIPStatus;
   };
   rooms?: Array<
     ReservationRoom & {
