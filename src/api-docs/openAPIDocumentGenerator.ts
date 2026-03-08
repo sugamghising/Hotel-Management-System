@@ -1,4 +1,5 @@
 import { authRegistry } from '@/api/auth/auth.registry';
+import { guestsRegistry } from '@/api/guests/guests.registry';
 import { healthRegistry } from '@/api/health/health.registry';
 import { hotelRegistry } from '@/api/hotel/hotel.registry';
 import { organizationRegistry } from '@/api/organizations/organization.registry';
@@ -23,6 +24,7 @@ export function generateOpenAPIDocument(): OpenAPIDocument {
     roomsRegistry,
     ratePlansRegistry,
     reservationsRegistry,
+    guestsRegistry,
   ]);
   const generator = new OpenApiGeneratorV3(registry.definitions);
 

@@ -129,12 +129,25 @@ router.get(
 // ============================================================================
 
 router.get(
-  '/stats/overview',
+  '/stats',
   requirePermission('GUEST.READ'),
   validate({
     params: OrganizationIdParamSchema,
   }),
   guestsController.getStats
+);
+
+// ============================================================================
+// IN-HOUSE GUESTS (mounted separately under /hotels/:hotelId/guests)
+// ============================================================================
+
+export const guestsInHouseRouter = Router({ mergeParams: true });
+guestsInHouseRouter.use(authMiddleware);
+
+guestsInHouseRouter.get(
+  '/in-house',
+  requirePermission('GUEST.READ'),
+  guestsController.getInHouseGuests
 );
 
 export default router;

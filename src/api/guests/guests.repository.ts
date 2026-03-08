@@ -127,13 +127,18 @@ export class GuestsRepository {
 
     if (filters?.search) {
       const search = filters.search;
-      where.OR = [
-        { firstName: { contains: search, mode: 'insensitive' } },
-        { lastName: { contains: search, mode: 'insensitive' } },
-        { email: { contains: search.toLowerCase() } },
-        { phone: { contains: search } },
-        { mobile: { contains: search } },
-        { companyName: { contains: search, mode: 'insensitive' } },
+      where.AND = [
+        ...(Array.isArray(where.AND) ? where.AND : []),
+        {
+          OR: [
+            { firstName: { contains: search, mode: 'insensitive' } },
+            { lastName: { contains: search, mode: 'insensitive' } },
+            { email: { contains: search.toLowerCase() } },
+            { phone: { contains: search } },
+            { mobile: { contains: search } },
+            { companyName: { contains: search, mode: 'insensitive' } },
+          ],
+        },
       ];
     }
 
@@ -155,7 +160,10 @@ export class GuestsRepository {
 
     if (filters?.hasPhone !== undefined) {
       if (filters.hasPhone) {
-        where.OR = [{ phone: { not: null } }, { mobile: { not: null } }];
+        where.AND = [
+          ...(Array.isArray(where.AND) ? where.AND : []),
+          { OR: [{ phone: { not: null } }, { mobile: { not: null } }] },
+        ];
       } else {
         where.phone = null;
         where.mobile = null;
@@ -633,14 +641,14 @@ export class GuestsRepository {
         prisma.$queryRaw`
         SELECT 
           company_name as name,
-          COUNT(*) as guest_count,
-          SUM(total_revenue) as total_revenue
+          COUNT(*) as "guestCount",
+          SUM(total_revenue) as "totalRevenue"
         FROM guests
         WHERE organization_id = ${organizationId}::uuid
           AND deleted_at IS NULL
           AND company_name IS NOT NULL
         GROUP BY company_name
-        ORDER BY guest_count DESC
+        ORDER BY "guestCount" DESC
         LIMIT 10
       `,
 

@@ -2,7 +2,7 @@
 export { GuestsController, guestsController } from './guests.controller';
 export { GuestsService, guestsService } from './guests.service';
 export { GuestsRepository, guestsRepository } from './guests.repository';
-export { default as guestsRoutes } from './guests.routes';
+export { default as guestsRoutes, guestsInHouseRouter } from './guests.routes';
 
 // Types
 export type {
