@@ -2,7 +2,7 @@ import { healthRoutes, userRoutes } from '@api/index';
 import { config } from '@config/index';
 import { Router } from 'express';
 import { authRoutes } from '../api/auth';
-import { guestsRoutes } from '../api/guests';
+import { guestsInHouseRouter, guestsRoutes } from '../api/guests';
 import { hotelsRoutes } from '../api/hotel';
 import { organizationRoutes } from '../api/organizations';
 import { ratePlansRoutes } from '../api/ratePlans';
@@ -31,6 +31,7 @@ v1Router.use('/organizations/:organizationId/hotels/:hotelId/rate-plans', ratePl
 v1Router.use('/organizations/:organizationId/hotels/:hotelId/room-types', roomTypesRoutes);
 v1Router.use('/organizations/:organizationId/hotels/:hotelId/reservations', reservationsRoutes);
 v1Router.use('/organizations/:organizationId/guests', guestsRoutes);
+v1Router.use('/organizations/:organizationId/hotels/:hotelId/guests', guestsInHouseRouter);
 
 // Mount versioned routes
 router.use(config.api.fullPrefix, v1Router);

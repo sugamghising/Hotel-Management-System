@@ -2,6 +2,7 @@ import { BadRequestError, ConflictError, ForbiddenError, NotFoundError, logger }
 import { encrypt, maskIdNumber } from '../../core/utils/crypto';
 import { Prisma } from '../../generated/prisma';
 import type { GuestStats, InHouseGuest } from './guests.dto';
+import { type HotelRepository, hotelRepository } from '../hotel';
 import { type GuestsRepository, guestsRepository } from './guests.repository';
 import type {
   CreateGuestInput,
@@ -37,8 +38,13 @@ type GuestWithRelations = Prisma.GuestGetPayload<{
 
 export class GuestsService {
   private guestRepository: GuestsRepository;
-  constructor(guestRepo: GuestsRepository = guestsRepository) {
+  private hotelRepository: HotelRepository;
+  constructor(
+    guestRepo: GuestsRepository = guestsRepository,
+    hotelRepo: HotelRepository = hotelRepository
+  ) {
     this.guestRepository = guestRepo;
+    this.hotelRepository = hotelRepo;
   }
 
   // ============================================================================
@@ -54,18 +60,17 @@ export class GuestsService {
     if (input.email) {
       const existing = await this.guestRepository.findByEmail(organizationId, input.email);
       if (existing) {
-        // Return existing guest with warning instead of error
-        // Or throw conflict based on business rules
         logger.warn(`Guest with email ${input.email} already exists`, {
           existingGuestId: existing.id,
+          organizationId,
         });
-        // For now, we'll create anyway but log it
+        throw new ConflictError('Guest with this email already exists for this organization');
       }
     }
     // Encrypt ID number if provided
     let encryptedIdNumber: string | null = null;
-    if (input.idNumber && input.idType) {
-      encryptedIdNumber = await encrypt(input.idNumber);
+    if (input.idNumber) {
+      encryptedIdNumber = encrypt(input.idNumber);
     }
 
     const guest = await this.guestRepository.create({
@@ -211,11 +216,12 @@ export class GuestsService {
       throw new ForbiddenError('Access denied to this guest');
     }
 
-    // Check email uniqueness if changing
-    if (input.email && input.email !== guest.email) {
-      const existing = await this.guestRepository.findByEmail(organizationId, input.email);
+    // Normalize email and check uniqueness if changing
+    const normalizedEmail = input.email?.toLowerCase().trim();
+    if (normalizedEmail && normalizedEmail !== guest.email) {
+      const existing = await this.guestRepository.findByEmail(organizationId, normalizedEmail);
       if (existing && existing.id !== id) {
-        throw new ConflictError(`Email ${input.email} is already in use`);
+        throw new ConflictError(`Email ${normalizedEmail} is already in use`);
       }
     }
 
@@ -225,12 +231,15 @@ export class GuestsService {
       encryptedIdNumber = null; // Clear ID
     } else if (input.idNumber && input.idNumber !== '[ENCRYPTED]') {
       // Only encrypt if it's a new value (not the masked placeholder)
-      encryptedIdNumber = await encrypt(input.idNumber);
+      encryptedIdNumber = encrypt(input.idNumber);
     }
 
-    const { roomPreferences, idNumber: _idNumber, ...rest } = input;
+    const { roomPreferences, idNumber: _idNumber, email, firstName, lastName, ...rest } = input;
     const updateData: Prisma.GuestUpdateInput = {
       ...rest,
+      ...(email !== undefined && { email: normalizedEmail ?? null }),
+      ...(firstName !== undefined && { firstName: firstName.trim() }),
+      ...(lastName !== undefined && { lastName: lastName.trim() }),
       updatedAt: new Date(),
     };
 
@@ -332,15 +341,15 @@ export class GuestsService {
     input: MergeGuestsInput,
     performedBy?: string
   ): Promise<GuestResponse> {
-    // Verify all guests exist and belong to organization
+    // Verify all guests exist, are not soft-deleted, and belong to organization
     const target = await this.guestRepository.findById(input.targetGuestId);
-    if (!target || target.organizationId !== organizationId) {
+    if (!target || target.organizationId !== organizationId || target.deletedAt) {
       throw new NotFoundError(`Target guest not found: ${input.targetGuestId}`);
     }
 
     for (const sourceId of input.sourceGuestIds) {
       const source = await this.guestRepository.findById(sourceId);
-      if (!source || source.organizationId !== organizationId) {
+      if (!source || source.organizationId !== organizationId || source.deletedAt) {
         throw new NotFoundError(`Source guest not found: ${sourceId}`);
       }
     }
@@ -393,9 +402,15 @@ export class GuestsService {
 
   async getInHouseGuests(
     hotelId: string,
-    _organizationId: string,
+    organizationId: string,
     businessDate?: Date
   ): Promise<InHouseGuest[]> {
+    // Verify the hotel belongs to the organization
+    const hotelExists = await this.hotelRepository.existsInOrganization(organizationId, hotelId);
+    if (!hotelExists) {
+      throw new NotFoundError(`Hotel not found: ${hotelId}`);
+    }
+
     const date = businessDate || new Date();
     date.setHours(0, 0, 0, 0);
 
@@ -544,8 +559,8 @@ export class GuestsService {
     };
   }
 
-  private mapToResponseWithHistory(guestWithReservations: GuestWithRelations) {
-    const base = this.mapToResponse(guestWithReservations as unknown as Guest);
+  private async mapToResponseWithHistory(guestWithReservations: GuestWithRelations) {
+    const base = await this.mapToResponse(guestWithReservations as unknown as Guest);
 
     return {
       ...base,
