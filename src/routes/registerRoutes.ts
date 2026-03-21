@@ -2,6 +2,7 @@ import { healthRoutes, userRoutes } from '@api/index';
 import { config } from '@config/index';
 import { Router } from 'express';
 import { authRoutes } from '../api/auth';
+import { folioRoutes } from '../api/folio';
 import { guestsInHouseRouter, guestsRoutes } from '../api/guests';
 import { hotelsRoutes } from '../api/hotel';
 import { organizationRoutes } from '../api/organizations';
@@ -30,6 +31,7 @@ v1Router.use('/organizations/:organizationId/hotels/:hotelId/rooms', roomsRoutes
 v1Router.use('/organizations/:organizationId/hotels/:hotelId/rate-plans', ratePlansRoutes);
 v1Router.use('/organizations/:organizationId/hotels/:hotelId/room-types', roomTypesRoutes);
 v1Router.use('/organizations/:organizationId/hotels/:hotelId/reservations', reservationsRoutes);
+v1Router.use('/organizations/:organizationId/hotels/:hotelId', folioRoutes);
 v1Router.use('/organizations/:organizationId/guests', guestsRoutes);
 v1Router.use('/organizations/:organizationId/hotels/:hotelId/guests', guestsInHouseRouter);
 
