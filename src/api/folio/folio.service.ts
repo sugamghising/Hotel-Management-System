@@ -169,7 +169,7 @@ export class FolioService {
     reservationId: string,
     organizationId: string,
     input: PostChargeInput,
-    postedBy: string
+    postedBy?: string
   ): Promise<FolioItem> {
     const reservation = await this.verifyReservationAccess(reservationId, organizationId);
 
@@ -214,7 +214,7 @@ export class FolioService {
     reservationId: string,
     organizationId: string,
     input: PostBulkChargesInput,
-    postedBy: string
+    postedBy?: string
   ): Promise<FolioItem[]> {
     const reservation = await this.verifyReservationAccess(reservationId, organizationId);
     const businessDate = new Date();
@@ -257,7 +257,7 @@ export class FolioService {
     itemId: string,
     organizationId: string,
     reason: string,
-    voidedBy: string
+    voidedBy?: string
   ): Promise<FolioItem> {
     const item = await this.folioRepo.findFolioItemById(itemId);
 
@@ -298,7 +298,7 @@ export class FolioService {
     organizationId: string,
     newAmount: number,
     reason: string,
-    adjustedBy: string
+    adjustedBy?: string
   ): Promise<FolioItem> {
     const item = await this.folioRepo.findFolioItemById(itemId);
 
@@ -323,7 +323,7 @@ export class FolioService {
     reservationId: string,
     organizationId: string,
     input: ProcessPaymentInput,
-    processedBy: string
+    processedBy?: string
   ): Promise<PaymentResponse> {
     const reservation = await this.verifyReservationAccess(reservationId, organizationId);
 
@@ -409,7 +409,7 @@ export class FolioService {
     paymentId: string,
     organizationId: string,
     input: RefundPaymentInput,
-    processedBy: string
+    processedBy?: string
   ): Promise<PaymentResponse> {
     const originalPayment = await this.folioRepo.findPaymentById(paymentId);
 
@@ -470,7 +470,7 @@ export class FolioService {
     return this.mapPaymentToResponse(refund);
   }
 
-  async voidPayment(paymentId: string, organizationId: string, _voidedBy: string): Promise<void> {
+  async voidPayment(paymentId: string, organizationId: string, _voidedBy?: string): Promise<void> {
     const payment = await this.folioRepo.findPaymentById(paymentId);
 
     if (!payment) {
@@ -501,7 +501,7 @@ export class FolioService {
     reservationId: string,
     organizationId: string,
     input: CreateInvoiceInput,
-    _createdBy: string
+    _createdBy?: string
   ): Promise<InvoiceResponse> {
     const reservation = await this.verifyReservationAccess(reservationId, organizationId);
 
@@ -599,7 +599,7 @@ export class FolioService {
     organizationId: string,
     amount: number,
     method: string,
-    recordedBy: string
+    recordedBy?: string
   ): Promise<InvoiceResponse> {
     const invoice = await this.folioRepo.findInvoiceById(invoiceId);
 
@@ -646,7 +646,7 @@ export class FolioService {
     fromReservationId: string,
     organizationId: string,
     input: TransferChargesInput,
-    transferredBy: string
+    transferredBy?: string
   ): Promise<void> {
     // Verify both reservations exist and user has access
     const fromRes = await this.verifyReservationAccess(fromReservationId, organizationId);
@@ -717,7 +717,7 @@ export class FolioService {
     hotelId: string,
     _organizationId: string,
     businessDate: Date,
-    postedBy: string
+    postedBy?: string
   ): Promise<{ posted: number; totalAmount: number }> {
     // Verify hotel access
     // TODO: Add hotel access verification
