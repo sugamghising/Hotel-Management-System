@@ -1,4 +1,4 @@
-// src/features/folio/folio.repository.ts
+// src/api/folio/folio.repository.ts
 
 import { prisma } from '../../database/prisma';
 import type { Prisma } from '../../generated/prisma';
@@ -53,9 +53,10 @@ export class FolioRepository {
   // ============================================================================
 
   async findFolioItemById(id: string): Promise<FolioItem | null> {
-    return prisma.folioItem.findUnique({
+    const item = await prisma.folioItem.findUnique({
       where: { id },
-    }) as Promise<FolioItem | null>;
+    });
+    return item ? mapFolioItem(item) : null;
   }
 
   async findFolioItemsByReservation(
@@ -130,7 +131,7 @@ export class FolioRepository {
 
     return prisma.$transaction(async (tx) => {
       // Create adjustment entry
-      await tx.folioItem.create({
+      const adjustment = await tx.folioItem.create({
         data: {
           organizationId: original.organizationId,
           hotelId: original.hotelId,
@@ -150,7 +151,7 @@ export class FolioRepository {
         },
       });
 
-      return mapFolioItem(original);
+      return mapFolioItem(adjustment);
     });
   }
 
@@ -197,9 +198,10 @@ export class FolioRepository {
   // ============================================================================
 
   async findPaymentById(id: string): Promise<Payment | null> {
-    return prisma.payment.findUnique({
+    const payment = await prisma.payment.findUnique({
       where: { id },
-    }) as Promise<Payment | null>;
+    });
+    return payment ? mapPayment(payment) : null;
   }
 
   async findPaymentsByReservation(reservationId: string): Promise<Payment[]> {
@@ -280,12 +282,18 @@ export class FolioRepository {
   // ============================================================================
 
   async findInvoiceById(id: string): Promise<Invoice | null> {
-    return prisma.invoice.findUnique({
+    const invoice = await prisma.invoice.findUnique({
       where: { id },
       include: {
         reservation: true,
       },
-    }) as Promise<Invoice | null>;
+    });
+
+    if (!invoice) {
+      return null;
+    }
+
+    return mapInvoice(invoice);
   }
 
   async findInvoicesByReservation(reservationId: string): Promise<Invoice[]> {
@@ -343,14 +351,19 @@ export class FolioRepository {
     const date = new Date();
     const prefix = `INV-${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, '0')}`;
 
-    const count = await prisma.invoice.count({
-      where: {
-        hotelId,
-        invoiceNumber: { startsWith: prefix },
-      },
-    });
+    return prisma.$transaction(
+      async (tx) => {
+        const count = await tx.invoice.count({
+          where: {
+            hotelId,
+            invoiceNumber: { startsWith: prefix },
+          },
+        });
 
-    return `${prefix}-${String(count + 1).padStart(5, '0')}`;
+        return `${prefix}-${String(count + 1).padStart(5, '0')}`;
+      },
+      { isolationLevel: 'Serializable' }
+    );
   }
 
   // ============================================================================
@@ -365,14 +378,25 @@ export class FolioRepository {
     reason: string
   ): Promise<void> {
     await prisma.$transaction(async (tx) => {
-      // Get charges to transfer
+      // Get charges to transfer, scoped to the source reservation
       const charges = await tx.folioItem.findMany({
-        where: { id: { in: chargeIds } },
+        where: {
+          id: { in: chargeIds },
+          reservationId: fromReservationId,
+        },
       });
+
+      // Ensure all requested charges belong to the source reservation
+      if (charges.length !== chargeIds.length) {
+        throw new Error('One or more charges were not found for the source reservation.');
+      }
 
       // Void original charges
       await tx.folioItem.updateMany({
-        where: { id: { in: chargeIds } },
+        where: {
+          id: { in: chargeIds },
+          reservationId: fromReservationId,
+        },
         data: {
           isVoided: true,
           voidedAt: new Date(),
