@@ -171,6 +171,7 @@ export class FolioService {
     input: PostChargeInput,
     postedBy?: string
   ): Promise<FolioItem> {
+    const actorId = postedBy ?? 'system';
     const reservation = await this.verifyReservationAccess(reservationId, organizationId);
 
     // Validate reservation can accept charges
@@ -195,7 +196,7 @@ export class FolioService {
       revenueCode: input.revenueCode || 'OTHER',
       department: input.department || 'OTHER',
       postedAt: new Date(),
-      postedBy,
+      postedBy: actorId,
       businessDate,
       isVoided: false,
       source: input.source || null,
@@ -216,6 +217,7 @@ export class FolioService {
     input: PostBulkChargesInput,
     postedBy?: string
   ): Promise<FolioItem[]> {
+    const actorId = postedBy ?? 'system';
     const reservation = await this.verifyReservationAccess(reservationId, organizationId);
     const businessDate = new Date();
     businessDate.setHours(0, 0, 0, 0);
@@ -236,7 +238,7 @@ export class FolioService {
         revenueCode: 'OTHER',
         department: 'OTHER',
         postedAt: new Date(),
-        postedBy,
+        postedBy: actorId,
         businessDate,
         isVoided: false,
         source: 'BULK',
@@ -259,6 +261,7 @@ export class FolioService {
     reason: string,
     voidedBy?: string
   ): Promise<FolioItem> {
+    const actorId = voidedBy ?? 'system';
     const item = await this.folioRepo.findFolioItemById(itemId);
 
     if (!item) {
@@ -282,7 +285,7 @@ export class FolioService {
       throw new BadRequestError('Cannot void charge that has been paid on an invoice');
     }
 
-    const voided = await this.folioRepo.voidFolioItem(itemId, voidedBy, reason);
+    const voided = await this.folioRepo.voidFolioItem(itemId, actorId, reason);
 
     logger.warn(`Charge voided: ${item.description}`, {
       folioItemId: itemId,
@@ -300,6 +303,7 @@ export class FolioService {
     reason: string,
     adjustedBy?: string
   ): Promise<FolioItem> {
+    const actorId = adjustedBy ?? 'system';
     const item = await this.folioRepo.findFolioItemById(itemId);
 
     if (!item) {
@@ -312,7 +316,7 @@ export class FolioService {
       throw new BadRequestError('Cannot adjust voided charge');
     }
 
-    return this.folioRepo.adjustFolioItem(itemId, newAmount, reason, adjustedBy);
+    return this.folioRepo.adjustFolioItem(itemId, newAmount, reason, actorId);
   }
 
   // ============================================================================
@@ -325,6 +329,7 @@ export class FolioService {
     input: ProcessPaymentInput,
     processedBy?: string
   ): Promise<PaymentResponse> {
+    const actorId = processedBy ?? 'system';
     const reservation = await this.verifyReservationAccess(reservationId, organizationId);
 
     // Check for existing authorization if using card
@@ -356,7 +361,7 @@ export class FolioService {
       isRefund: false,
       notes: input.notes || null,
       createdAt: new Date(),
-      createdBy: processedBy,
+      createdBy: actorId,
     });
 
     // Process through gateway for card payments
@@ -411,6 +416,7 @@ export class FolioService {
     input: RefundPaymentInput,
     processedBy?: string
   ): Promise<PaymentResponse> {
+    const actorId = processedBy ?? 'system';
     const originalPayment = await this.folioRepo.findPaymentById(paymentId);
 
     if (!originalPayment) {
@@ -459,7 +465,7 @@ export class FolioService {
       processedAt: new Date(),
       notes: `Refund: ${input.reason}`,
       createdAt: new Date(),
-      createdBy: processedBy,
+      createdBy: actorId,
     });
 
     logger.info(`Payment refunded: ${input.amount}`, {
@@ -648,6 +654,7 @@ export class FolioService {
     input: TransferChargesInput,
     transferredBy?: string
   ): Promise<void> {
+    const actorId = transferredBy ?? 'system';
     // Verify both reservations exist and user has access
     const fromRes = await this.verifyReservationAccess(fromReservationId, organizationId);
     const toRes = await this.verifyReservationAccess(input.targetReservationId, organizationId);
@@ -660,7 +667,7 @@ export class FolioService {
       input.chargeIds,
       fromReservationId,
       input.targetReservationId,
-      transferredBy,
+      actorId,
       input.reason
     );
 
@@ -719,10 +726,11 @@ export class FolioService {
     businessDate: Date,
     postedBy?: string
   ): Promise<{ posted: number; totalAmount: number }> {
+    const actorId = postedBy ?? 'system';
     // Verify hotel access
     // TODO: Add hotel access verification
 
-    return this.folioRepo.postRoomChargesForNightAudit(hotelId, businessDate, postedBy);
+    return this.folioRepo.postRoomChargesForNightAudit(hotelId, businessDate, actorId);
   }
 
   // ============================================================================
