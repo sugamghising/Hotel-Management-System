@@ -10,6 +10,7 @@ import {
   InvoiceIdParamSchema,
   OrganizationIdParamSchema,
   PaymentIdParamSchema,
+  PaymentMethodSchema,
   PostBulkChargesSchema,
   PostChargeSchema,
   ProcessPaymentSchema,
@@ -55,18 +56,7 @@ const TransferResultSchema = z.object({});
 const NightAuditResultSchema = z.object({ posted: z.number().int(), totalAmount: z.number() });
 const InvoicePaymentBodySchema = z.object({
   amount: z.number().positive(),
-  method: z.enum([
-    'CASH',
-    'CREDIT_CARD',
-    'DEBIT_CARD',
-    'BANK_TRANSFER',
-    'CHECK',
-    'MOBILE_PAYMENT',
-    'GIFT_CARD',
-    'LOYALTY_POINTS',
-    'DIRECT_BILL',
-    'DEPOSIT',
-  ]),
+  method: PaymentMethodSchema,
 });
 
 export const folioRegistry = new OpenAPIRegistry();

@@ -18,7 +18,8 @@ import type {
   TransferChargesInput,
 } from './folio.types';
 
-// Mock payment gateway - replace with actual integration
+// Mock payment gateway - replace with actual integration (e.g., Stripe, Adyen)
+// Card payments are explicitly unsupported until a real gateway is configured
 class PaymentGateway {
   async processPayment(params: {
     amount: number;
@@ -31,10 +32,16 @@ class PaymentGateway {
     authCode?: string;
     error?: string;
   }> {
-    // Integration with Stripe, Adyen, etc.
-    // This is a mock implementation
     if (params.amount <= 0) {
       return { success: false, error: 'Invalid amount' };
+    }
+
+    if (['CREDIT_CARD', 'DEBIT_CARD'].includes(params.method)) {
+      return {
+        success: false,
+        error:
+          'Card payment gateway not configured. Please integrate a payment provider (e.g., Stripe, Adyen) before accepting card payments.',
+      };
     }
 
     return {
@@ -77,9 +84,13 @@ export class FolioService {
   // FOLIO MANAGEMENT
   // ============================================================================
 
-  async getFolio(reservationId: string, organizationId: string): Promise<FolioResponse> {
+  async getFolio(
+    reservationId: string,
+    organizationId: string,
+    hotelId?: string
+  ): Promise<FolioResponse> {
     // Verify access
-    const reservation = await this.verifyReservationAccess(reservationId, organizationId);
+    const reservation = await this.verifyReservationAccess(reservationId, organizationId, hotelId);
 
     const [charges, payments, invoices, summary] = await Promise.all([
       this.folioRepo.findFolioItemsByReservation(reservationId),
@@ -169,10 +180,11 @@ export class FolioService {
     reservationId: string,
     organizationId: string,
     input: PostChargeInput,
-    postedBy?: string
+    postedBy?: string,
+    hotelId?: string
   ): Promise<FolioItem> {
     const actorId = postedBy ?? 'system';
-    const reservation = await this.verifyReservationAccess(reservationId, organizationId);
+    const reservation = await this.verifyReservationAccess(reservationId, organizationId, hotelId);
 
     // Validate reservation can accept charges
     const invalidStatuses = ['CANCELLED', 'NO_SHOW'];
@@ -215,10 +227,11 @@ export class FolioService {
     reservationId: string,
     organizationId: string,
     input: PostBulkChargesInput,
-    postedBy?: string
+    postedBy?: string,
+    hotelId?: string
   ): Promise<FolioItem[]> {
     const actorId = postedBy ?? 'system';
-    const reservation = await this.verifyReservationAccess(reservationId, organizationId);
+    const reservation = await this.verifyReservationAccess(reservationId, organizationId, hotelId);
     const businessDate = new Date();
     businessDate.setHours(0, 0, 0, 0);
 
@@ -327,10 +340,11 @@ export class FolioService {
     reservationId: string,
     organizationId: string,
     input: ProcessPaymentInput,
-    processedBy?: string
+    processedBy?: string,
+    hotelId?: string
   ): Promise<PaymentResponse> {
     const actorId = processedBy ?? 'system';
-    const reservation = await this.verifyReservationAccess(reservationId, organizationId);
+    const reservation = await this.verifyReservationAccess(reservationId, organizationId, hotelId);
 
     // Check for existing authorization if using card
     if (['CREDIT_CARD', 'DEBIT_CARD'].includes(input.method)) {
@@ -507,9 +521,10 @@ export class FolioService {
     reservationId: string,
     organizationId: string,
     input: CreateInvoiceInput,
-    _createdBy?: string
+    _createdBy?: string,
+    hotelId?: string
   ): Promise<InvoiceResponse> {
-    const reservation = await this.verifyReservationAccess(reservationId, organizationId);
+    const reservation = await this.verifyReservationAccess(reservationId, organizationId, hotelId);
 
     // Get unpaid charges
     const charges = await this.folioRepo.findFolioItemsByReservation(reservationId, {
@@ -551,7 +566,7 @@ export class FolioService {
       status: 'OPEN',
       billToName:
         input.billToName || `${reservation.guest.firstName} ${reservation.guest.lastName}`,
-      billToAddress: input.billToAddress ? JSON.stringify(input.billToAddress) : JSON.stringify({}),
+      billToAddress: input.billToAddress ?? {},
       documentUrl: null,
       sentAt: null,
       paidAt: null,
@@ -652,11 +667,12 @@ export class FolioService {
     fromReservationId: string,
     organizationId: string,
     input: TransferChargesInput,
-    transferredBy?: string
+    transferredBy?: string,
+    hotelId?: string
   ): Promise<void> {
     const actorId = transferredBy ?? 'system';
     // Verify both reservations exist and user has access
-    const fromRes = await this.verifyReservationAccess(fromReservationId, organizationId);
+    const fromRes = await this.verifyReservationAccess(fromReservationId, organizationId, hotelId);
     const toRes = await this.verifyReservationAccess(input.targetReservationId, organizationId);
 
     if (fromRes.hotelId !== toRes.hotelId) {
@@ -683,13 +699,14 @@ export class FolioService {
 
   async validateCheckout(
     reservationId: string,
-    organizationId: string
+    organizationId: string,
+    hotelId?: string
   ): Promise<{
     canCheckout: boolean;
     balance: number;
     issues: string[];
   }> {
-    await this.verifyReservationAccess(reservationId, organizationId);
+    await this.verifyReservationAccess(reservationId, organizationId, hotelId);
     const summary = await this.folioRepo.getFolioSummary(reservationId);
 
     const issues: string[] = [];
@@ -737,7 +754,11 @@ export class FolioService {
   // PRIVATE HELPERS
   // ============================================================================
 
-  private async verifyReservationAccess(reservationId: string, organizationId: string) {
+  private async verifyReservationAccess(
+    reservationId: string,
+    organizationId: string,
+    hotelId?: string
+  ) {
     const reservation = await prisma.reservation.findUnique({
       where: { id: reservationId },
       include: {
@@ -756,6 +777,10 @@ export class FolioService {
 
     if (reservation.organizationId !== organizationId) {
       throw new ForbiddenError('Access denied to this reservation');
+    }
+
+    if (hotelId && reservation.hotelId !== hotelId) {
+      throw new NotFoundError(`Reservation not found with id: ${reservationId}`);
     }
 
     return reservation;

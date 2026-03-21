@@ -1,4 +1,4 @@
-// src/features/folio/folio.controller.ts
+// src/api/folio/folio.controller.ts
 
 import type { Request, Response } from 'express';
 import { StatusCodes } from 'http-status-codes';
@@ -11,12 +11,13 @@ export class FolioController {
    * GET /organizations/:organizationId/hotels/:hotelId/reservations/:reservationId/folio
    */
   getFolio = asyncHandler(async (req: Request, res: Response) => {
-    const { organizationId, reservationId } = req.params as {
+    const { organizationId, hotelId, reservationId } = req.params as {
       organizationId: string;
+      hotelId: string;
       reservationId: string;
     };
 
-    const folio = await folioService.getFolio(reservationId, organizationId);
+    const folio = await folioService.getFolio(reservationId, organizationId, hotelId);
 
     handleServiceResponse(ServiceResponse.success({ folio }, 'Folio retrieved successfully'), res);
   });
@@ -25,8 +26,9 @@ export class FolioController {
    * POST /organizations/:organizationId/hotels/:hotelId/reservations/:reservationId/folio/charges
    */
   postCharge = asyncHandler(async (req: Request, res: Response) => {
-    const { organizationId, reservationId } = req.params as {
+    const { organizationId, hotelId, reservationId } = req.params as {
       organizationId: string;
+      hotelId: string;
       reservationId: string;
     };
     const input = req.body;
@@ -35,7 +37,8 @@ export class FolioController {
       reservationId,
       organizationId,
       input,
-      req.user?.sub
+      req.user?.sub,
+      hotelId
     );
 
     handleServiceResponse(
@@ -48,8 +51,9 @@ export class FolioController {
    * POST /organizations/:organizationId/hotels/:hotelId/reservations/:reservationId/folio/charges/bulk
    */
   postBulkCharges = asyncHandler(async (req: Request, res: Response) => {
-    const { organizationId, reservationId } = req.params as {
+    const { organizationId, hotelId, reservationId } = req.params as {
       organizationId: string;
+      hotelId: string;
       reservationId: string;
     };
     const input = req.body;
@@ -58,7 +62,8 @@ export class FolioController {
       reservationId,
       organizationId,
       input,
-      req.user?.sub
+      req.user?.sub,
+      hotelId
     );
 
     handleServiceResponse(
@@ -101,8 +106,9 @@ export class FolioController {
    * POST /organizations/:organizationId/hotels/:hotelId/reservations/:reservationId/folio/payments
    */
   processPayment = asyncHandler(async (req: Request, res: Response) => {
-    const { organizationId, reservationId } = req.params as {
+    const { organizationId, hotelId, reservationId } = req.params as {
       organizationId: string;
+      hotelId: string;
       reservationId: string;
     };
     const input = req.body;
@@ -111,7 +117,8 @@ export class FolioController {
       reservationId,
       organizationId,
       input,
-      req.user?.sub
+      req.user?.sub,
+      hotelId
     );
 
     handleServiceResponse(
@@ -147,13 +154,14 @@ export class FolioController {
    * POST /organizations/:organizationId/hotels/:hotelId/reservations/:reservationId/folio/transfer
    */
   transferCharges = asyncHandler(async (req: Request, res: Response) => {
-    const { organizationId, reservationId } = req.params as {
+    const { organizationId, hotelId, reservationId } = req.params as {
       organizationId: string;
+      hotelId: string;
       reservationId: string;
     };
     const input = req.body;
 
-    await folioService.transferCharges(reservationId, organizationId, input, req.user?.sub);
+    await folioService.transferCharges(reservationId, organizationId, input, req.user?.sub, hotelId);
 
     handleServiceResponse(ServiceResponse.success({}, 'Charges transferred successfully'), res);
   });
@@ -162,8 +170,9 @@ export class FolioController {
    * POST /organizations/:organizationId/hotels/:hotelId/reservations/:reservationId/folio/invoices
    */
   createInvoice = asyncHandler(async (req: Request, res: Response) => {
-    const { organizationId, reservationId } = req.params as {
+    const { organizationId, hotelId, reservationId } = req.params as {
       organizationId: string;
+      hotelId: string;
       reservationId: string;
     };
     const input = req.body;
@@ -172,7 +181,8 @@ export class FolioController {
       reservationId,
       organizationId,
       input,
-      req.user?.sub
+      req.user?.sub,
+      hotelId
     );
 
     handleServiceResponse(
@@ -241,12 +251,13 @@ export class FolioController {
    * GET /organizations/:organizationId/hotels/:hotelId/reservations/:reservationId/folio/checkout-validation
    */
   validateCheckout = asyncHandler(async (req: Request, res: Response) => {
-    const { organizationId, reservationId } = req.params as {
+    const { organizationId, hotelId, reservationId } = req.params as {
       organizationId: string;
+      hotelId: string;
       reservationId: string;
     };
 
-    const validation = await folioService.validateCheckout(reservationId, organizationId);
+    const validation = await folioService.validateCheckout(reservationId, organizationId, hotelId);
 
     handleServiceResponse(
       ServiceResponse.success({ validation }, 'Checkout validation successful'),
