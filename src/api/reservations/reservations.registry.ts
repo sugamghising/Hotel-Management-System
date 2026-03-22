@@ -38,7 +38,7 @@ const RateBreakdownItemSchema = z
   })
   .openapi('RateBreakdownItem');
 
-const ReservationGuestSchema = z
+const _ReservationGuestSchema = z
   .object({
     id: z.string().uuid(),
     firstName: z.string(),
