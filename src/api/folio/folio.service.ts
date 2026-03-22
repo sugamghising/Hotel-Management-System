@@ -567,7 +567,9 @@ export class FolioService {
       status: 'OPEN',
       billToName:
         input.billToName || `${reservation.guest.firstName} ${reservation.guest.lastName}`,
-      billToAddress: (input.billToAddress ?? {}) as unknown as Prisma.InputJsonValue,
+      billToAddress: input.billToAddress != null
+        ? (input.billToAddress as unknown as Prisma.InputJsonValue)
+        : Prisma.JsonNull,
       documentUrl: null,
       sentAt: null,
       paidAt: null,

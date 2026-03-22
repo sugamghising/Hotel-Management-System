@@ -5,7 +5,6 @@ import { requirePermission } from '../../core/middleware/requirePermission';
 import { checkinCheckoutController } from './checkinCheckout.controller';
 import {
   AssignRoomSchema,
-  AutoAssignRoomSchema,
   ChangeRoomSchema,
   CheckInRequestSchema,
   CheckoutSchema,
@@ -82,7 +81,7 @@ router.post(
 router.post(
   '/reservations/:reservationId/rooms/auto-assign',
   requirePermission('RESERVATION.ASSIGN_ROOM'),
-  validate({ params: OrgHotelReservationParams, body: AutoAssignRoomSchema }),
+  validate({ params: OrgHotelReservationParams }),
   checkinCheckoutController.autoAssignRoom
 );
 

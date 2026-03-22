@@ -38,7 +38,7 @@ export class CheckinCheckoutService {
   async getPreCheckInData(organizationId: string, hotelId: string, reservationId: string) {
     const reservation = await reservationsService.findById(reservationId, organizationId, hotelId);
 
-    const folioValidation = await folioService.validateCheckout(reservationId, organizationId);
+    const folioValidation = await folioService.validateCheckout(reservationId, organizationId, hotelId);
 
     const availableRooms = await this.checkinCheckoutRepo.findAvailableRooms(
       organizationId,
@@ -290,7 +290,7 @@ export class CheckinCheckoutService {
   async checkoutPreview(organizationId: string, hotelId: string, reservationId: string) {
     const reservation = await reservationsService.findById(reservationId, organizationId, hotelId);
     const folio = await folioService.getFolio(reservationId, organizationId);
-    const validation = await folioService.validateCheckout(reservationId, organizationId);
+    const validation = await folioService.validateCheckout(reservationId, organizationId, hotelId);
 
     return {
       reservation,
@@ -307,7 +307,11 @@ export class CheckinCheckoutService {
     input: CheckoutInput,
     userId?: string
   ) {
-    const validation = await folioService.validateCheckout(reservationId, organizationId);
+    const validation = await folioService.validateCheckout(reservationId, organizationId, hotelId);
+
+    if (!validation.canCheckout) {
+      throw new ConflictError(`Cannot check out: ${validation.issues.join('; ')}`);
+    }
 
     if (validation.balance > 0 && !input.paymentMethod) {
       throw new ConflictError('Outstanding balance requires a payment method');
@@ -322,7 +326,7 @@ export class CheckinCheckoutService {
         ...(input.cardToken !== undefined ? { cardToken: input.cardToken } : {}),
       };
 
-      await folioService.processPayment(reservationId, organizationId, paymentInput, userId);
+      await folioService.processPayment(reservationId, organizationId, paymentInput, userId, hotelId);
     }
 
     const reservation = await reservationsService.checkOut(
@@ -344,7 +348,8 @@ export class CheckinCheckoutService {
       reservationId,
       organizationId,
       invoiceInput,
-      userId
+      userId,
+      hotelId
     );
 
     if (input.invoiceEmail) {
@@ -368,10 +373,7 @@ export class CheckinCheckoutService {
       organizationId,
       hotelId,
       reservationId,
-      {
-        ...input,
-        capturePreAuth: true,
-      },
+      input,
       userId
     );
   }
@@ -521,7 +523,7 @@ export class CheckinCheckoutService {
     reservationId: string
   ): Promise<ReservationStatusResponse> {
     const reservation = await reservationsService.findById(reservationId, organizationId, hotelId);
-    const folioValidation = await folioService.validateCheckout(reservationId, organizationId);
+    const folioValidation = await folioService.validateCheckout(reservationId, organizationId, hotelId);
 
     return { reservation, folioValidation };
   }
