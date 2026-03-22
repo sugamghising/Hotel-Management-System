@@ -67,6 +67,7 @@ export class CheckinCheckoutRepository {
         cancellationReason: null,
         cancelledAt: null,
         cancelledBy: null,
+        cancellationFee: null,
         modifiedAt: new Date(),
         modifiedBy,
         internalNotes: existingInternalNotes
@@ -119,6 +120,7 @@ export class CheckinCheckoutRepository {
           hotelId,
           deletedAt: null,
           checkInDate: businessDate,
+          status: { in: ['CONFIRMED', 'CHECKED_IN'] },
         },
       }),
       prisma.reservation.count({
@@ -127,6 +129,7 @@ export class CheckinCheckoutRepository {
           hotelId,
           deletedAt: null,
           checkOutDate: businessDate,
+          status: 'CHECKED_IN',
         },
       }),
       prisma.reservation.count({

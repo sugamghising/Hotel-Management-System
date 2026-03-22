@@ -3,6 +3,8 @@ import { z } from '@/common/utils/zodExtensions';
 import { OpenAPIRegistry } from '@asteasolutions/zod-to-openapi';
 import { StatusCodes } from 'http-status-codes';
 import {
+  AssignRoomSchema,
+  ChangeRoomSchema,
   CheckInRequestSchema,
   CheckoutSchema,
   EarlyCheckInSchema,
@@ -15,6 +17,7 @@ import {
   ReinstateSchema,
   ReservationIdParamSchema,
   ShortenStaySchema,
+  UpgradeRoomSchema,
   WalkInCheckInSchema,
 } from './checkinCheckout.schema';
 
@@ -135,6 +138,51 @@ checkinCheckoutRegistry.registerPath({
     'Walk-in check-in completed successfully',
     StatusCodes.CREATED
   ),
+});
+
+checkinCheckoutRegistry.registerPath({
+  method: 'post',
+  path: '/api/v1/organizations/{organizationId}/hotels/{hotelId}/reservations/{reservationId}/rooms/assign',
+  tags: ['CheckInCheckout'],
+  summary: 'Assign room to reservation',
+  request: {
+    params: OrgHotelReservationParams,
+    body: { content: { 'application/json': { schema: AssignRoomSchema } } },
+  },
+  responses: createApiResponse(z.record(z.unknown()), 'Room assigned successfully'),
+});
+
+checkinCheckoutRegistry.registerPath({
+  method: 'post',
+  path: '/api/v1/organizations/{organizationId}/hotels/{hotelId}/reservations/{reservationId}/rooms/auto-assign',
+  tags: ['CheckInCheckout'],
+  summary: 'Auto-assign room to reservation',
+  request: { params: OrgHotelReservationParams },
+  responses: createApiResponse(z.record(z.unknown()), 'Room auto-assigned successfully'),
+});
+
+checkinCheckoutRegistry.registerPath({
+  method: 'post',
+  path: '/api/v1/organizations/{organizationId}/hotels/{hotelId}/reservations/{reservationId}/rooms/upgrade',
+  tags: ['CheckInCheckout'],
+  summary: 'Upgrade room for reservation',
+  request: {
+    params: OrgHotelReservationParams,
+    body: { content: { 'application/json': { schema: UpgradeRoomSchema } } },
+  },
+  responses: createApiResponse(z.record(z.unknown()), 'Room upgraded successfully'),
+});
+
+checkinCheckoutRegistry.registerPath({
+  method: 'post',
+  path: '/api/v1/organizations/{organizationId}/hotels/{hotelId}/reservations/{reservationId}/rooms/change',
+  tags: ['CheckInCheckout'],
+  summary: 'Change room for reservation',
+  request: {
+    params: OrgHotelReservationParams,
+    body: { content: { 'application/json': { schema: ChangeRoomSchema } } },
+  },
+  responses: createApiResponse(z.record(z.unknown()), 'Room changed successfully'),
 });
 
 checkinCheckoutRegistry.registerPath({

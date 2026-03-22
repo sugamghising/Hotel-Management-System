@@ -69,7 +69,6 @@ export const ChangeRoomSchema = z.object({
 });
 
 export const CheckoutSchema = z.object({
-  capturePreAuth: z.boolean().default(true),
   paymentMethod: PaymentMethodSchema.optional(),
   cardToken: z.string().optional(),
   invoiceEmail: z.string().email().optional(),
