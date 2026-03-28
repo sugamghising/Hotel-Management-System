@@ -197,7 +197,7 @@ async function main() {
     // Create default roles
     const roles = await Promise.all([
         prisma.role.upsert({
-            where: { id: '' },
+            where: { uq_role_org_code: { organizationId: org.id, code: 'SUPER_ADMIN' } },
             update: {},
             create: {
                 organizationId: org.id,
@@ -209,7 +209,7 @@ async function main() {
             },
         }),
         prisma.role.upsert({
-            where: { id: '' },
+            where: { uq_role_org_code: { organizationId: org.id, code: 'HOTEL_MANAGER' } },
             update: {},
             create: {
                 organizationId: org.id,
@@ -221,7 +221,7 @@ async function main() {
             },
         }),
         prisma.role.upsert({
-            where: { id: '' },
+            where: { uq_role_org_code: { organizationId: org.id, code: 'FRONT_DESK' } },
             update: {},
             create: {
                 organizationId: org.id,
@@ -233,7 +233,7 @@ async function main() {
             },
         }),
         prisma.role.upsert({
-            where: { id: '' },
+            where: { uq_role_org_code: { organizationId: org.id, code: 'HK_MANAGER' } },
             update: {},
             create: {
                 organizationId: org.id,
@@ -245,7 +245,7 @@ async function main() {
             },
         }),
         prisma.role.upsert({
-            where: { id: '' },
+            where: { uq_role_org_code: { organizationId: org.id, code: 'HK_SUPERVISOR' } },
             update: {},
             create: {
                 organizationId: org.id,
@@ -257,7 +257,7 @@ async function main() {
             },
         }),
         prisma.role.upsert({
-            where: { id: '' },
+            where: { uq_role_org_code: { organizationId: org.id, code: 'HK_STAFF' } },
             update: {},
             create: {
                 organizationId: org.id,

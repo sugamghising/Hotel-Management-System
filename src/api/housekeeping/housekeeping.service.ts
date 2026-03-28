@@ -283,11 +283,15 @@ export class HousekeepingService {
       Math.round((completedAt.getTime() - startedAt.getTime()) / (1000 * 60))
     );
 
+    const postCleanRoomStatus = task.room?.status.startsWith('OCCUPIED')
+      ? 'OCCUPIED_DIRTY'
+      : 'VACANT_DIRTY';
+
     const updated = await prisma.$transaction(async (tx) => {
       await tx.room.update({
         where: { id: task.roomId },
         data: {
-          status: 'VACANT_DIRTY',
+          status: postCleanRoomStatus,
           updatedAt: new Date(),
         },
       });
@@ -516,6 +520,7 @@ export class HousekeepingService {
     const outcome = !hasAutoFail && overallScore >= 85 ? 'PASSED' : 'FAILED';
     const scoresJson = input.scores as unknown as Prisma.InputJsonValue;
     const failureItemsJson = (input.failureItems ?? []) as unknown as Prisma.InputJsonValue;
+    const isOccupied = task.room?.status.startsWith('OCCUPIED') ?? false;
 
     const inspection = await prisma.$transaction(async (tx) => {
       let maintenanceRequestId: string | null = null;
@@ -573,7 +578,7 @@ export class HousekeepingService {
         await tx.room.update({
           where: { id: task.roomId },
           data: {
-            status: 'VACANT_CLEAN',
+            status: isOccupied ? 'OCCUPIED_CLEAN' : 'VACANT_CLEAN',
             lastCleanedAt: new Date(),
             updatedAt: new Date(),
           },
@@ -591,7 +596,7 @@ export class HousekeepingService {
         await tx.room.update({
           where: { id: task.roomId },
           data: {
-            status: 'VACANT_DIRTY',
+            status: isOccupied ? 'OCCUPIED_DIRTY' : 'VACANT_DIRTY',
             updatedAt: new Date(),
           },
         });

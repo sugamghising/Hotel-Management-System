@@ -73,17 +73,33 @@ class OutboxWorker {
           nextAttemptAt: { lte: now },
         },
         orderBy: [{ createdAt: 'asc' }],
+        select: { id: true },
       });
 
       if (!next) {
         return null;
       }
 
-      return tx.outboxEvent.update({
-        where: { id: next.id },
+      // Atomically claim the event by conditionally updating only if it is still PENDING.
+      const updated = await tx.outboxEvent.updateMany({
+        where: {
+          id: next.id,
+          status: 'PENDING',
+          nextAttemptAt: { lte: now },
+        },
         data: {
           status: 'PROCESSING',
         },
+      });
+
+      if (updated.count !== 1) {
+        // Another worker has already claimed or modified this event.
+        return null;
+      }
+
+      // Reload the event in its new PROCESSING state and return it.
+      return tx.outboxEvent.findUnique({
+        where: { id: next.id },
       });
     });
   }
