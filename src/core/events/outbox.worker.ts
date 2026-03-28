@@ -22,7 +22,7 @@ const ReservationCheckedInPayloadSchema = z.object({
   roomId: z.string().uuid(),
   checkedInAt: z.coerce.date(),
   earlyCheckIn: z.boolean().optional(),
-  assignmentType: z.string().optional(),
+  assignmentType: z.enum(['INITIAL', 'AUTO', 'MANUAL', 'UPGRADE', 'CHANGE', 'WALK_IN']).optional(),
 });
 
 const ReservationNoShowPayloadSchema = z.object({

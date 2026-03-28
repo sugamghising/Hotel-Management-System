@@ -109,9 +109,8 @@ export class CheckinCheckoutController {
       organizationId,
       hotelId,
       reservationId,
-      roomId,
-      req.user?.sub,
-      force
+      { roomId, ...(force !== undefined ? { force } : {}) },
+      req.user?.sub
     );
 
     handleServiceResponse(

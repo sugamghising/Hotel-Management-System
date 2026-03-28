@@ -9,6 +9,7 @@ import {
   logger,
 } from '../../core';
 import { folioService } from '../folio/folio.service';
+import type { RoomAssignmentInput } from '../reservations';
 import { reservationsService } from '../reservations/reservations.service';
 import {
   type CheckinCheckoutRepository,
@@ -224,28 +225,10 @@ export class CheckinCheckoutService {
     organizationId: string,
     hotelId: string,
     reservationId: string,
-    roomId: string,
-    userId?: string,
-    force?: boolean,
-    assignmentType?: 'INITIAL' | 'AUTO' | 'MANUAL' | 'UPGRADE' | 'CHANGE' | 'WALK_IN',
-    reason?: string,
-    previousRoomId?: string
+    input: RoomAssignmentInput,
+    userId?: string
   ) {
-    const assignmentInput = {
-      roomId,
-      ...(force !== undefined ? { force } : {}),
-      ...(assignmentType !== undefined ? { assignmentType } : {}),
-      ...(reason !== undefined ? { reason } : {}),
-      ...(previousRoomId !== undefined ? { previousRoomId } : {}),
-    };
-
-    return reservationsService.assignRoom(
-      reservationId,
-      organizationId,
-      hotelId,
-      assignmentInput,
-      userId
-    );
+    return reservationsService.assignRoom(reservationId, organizationId, hotelId, input, userId);
   }
 
   async autoAssignRoom(
@@ -283,10 +266,12 @@ export class CheckinCheckoutService {
       organizationId,
       hotelId,
       reservationId,
-      room.id,
-      userId,
-      false,
-      'AUTO'
+      {
+        roomId: room.id,
+        assignmentType: 'AUTO',
+        force: false,
+      },
+      userId
     );
     return {
       reservation: updated,
@@ -314,12 +299,16 @@ export class CheckinCheckoutService {
       organizationId,
       hotelId,
       reservationId,
-      roomId,
-      userId,
-      true,
-      'UPGRADE',
-      upgradeReason,
-      currentReservation.rooms[0]?.roomId || undefined
+      {
+        roomId,
+        assignmentType: 'UPGRADE',
+        force: true,
+        ...(upgradeReason !== undefined ? { reason: upgradeReason } : {}),
+        ...(currentReservation.rooms[0]?.roomId
+          ? { previousRoomId: currentReservation.rooms[0]?.roomId }
+          : {}),
+      },
+      userId
     );
 
     if (upgradeFee && upgradeFee > 0) {
@@ -362,12 +351,16 @@ export class CheckinCheckoutService {
       organizationId,
       hotelId,
       reservationId,
-      roomId,
-      userId,
-      true,
-      'CHANGE',
-      changeReason,
-      currentReservation.rooms[0]?.roomId || undefined
+      {
+        roomId,
+        assignmentType: 'CHANGE',
+        force: true,
+        ...(changeReason !== undefined ? { reason: changeReason } : {}),
+        ...(currentReservation.rooms[0]?.roomId
+          ? { previousRoomId: currentReservation.rooms[0]?.roomId }
+          : {}),
+      },
+      userId
     );
   }
 
@@ -392,6 +385,13 @@ export class CheckinCheckoutService {
     userId?: string
   ) {
     const validation = await folioService.validateCheckout(reservationId, organizationId, hotelId);
+
+    const issues = validation.issues ?? [];
+    const nonBalanceIssues = issues.filter((issue: string) => !/outstanding balance/i.test(issue));
+
+    if (!validation.canCheckout && nonBalanceIssues.length > 0) {
+      throw new ConflictError(`Cannot check out: ${nonBalanceIssues.join('; ')}`);
+    }
 
     if (validation.balance > 0 && !input.paymentMethod) {
       throw new OutstandingBalanceError('Outstanding balance requires a payment method', {

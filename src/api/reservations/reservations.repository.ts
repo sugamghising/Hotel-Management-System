@@ -1,3 +1,4 @@
+import { NotFoundError } from '../../core/errors';
 import { prisma } from '../../database/prisma';
 import type { $Enums, Prisma } from '../../generated/prisma';
 import type { AssignmentType, Reservation, ReservationStatus } from './reservations.types';
@@ -599,7 +600,7 @@ export class ReservationsRepository {
       });
 
       if (!current) {
-        throw new Error('Reservation room not found');
+        throw new NotFoundError('Reservation room not found');
       }
 
       await tx.reservationRoom.update({
@@ -607,7 +608,7 @@ export class ReservationsRepository {
         data: {
           roomId,
           assignedAt: now,
-          assignedBy,
+          assignedBy: asNullableUuid(assignedBy),
           status: current.reservation.status === 'CHECKED_IN' ? 'OCCUPIED' : 'ASSIGNED',
         },
       });
