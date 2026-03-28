@@ -276,35 +276,54 @@ export class ReservationsRepository {
     reservationId: string,
     reservationRoomId: string,
     roomId: string,
+    organizationId: string,
+    hotelId: string,
     lateCheckOut: boolean = false
   ): Promise<void> {
     const now = new Date();
 
-    await prisma.$transaction([
-      prisma.reservation.update({
+    await prisma.$transaction(async (tx) => {
+      await tx.reservation.update({
         where: { id: reservationId },
         data: {
           status: 'CHECKED_OUT',
           checkInStatus: lateCheckOut ? 'LATE_CHECK_OUT' : 'CHECKED_OUT',
           modifiedAt: now,
         },
-      }),
+      });
 
-      prisma.reservationRoom.update({
+      await tx.reservationRoom.update({
         where: { id: reservationRoomId },
         data: {
           status: 'CHECKED_OUT',
           checkOutAt: now,
         },
-      }),
+      });
 
-      prisma.room.update({
+      await tx.room.update({
         where: { id: roomId },
         data: {
           status: 'VACANT_DIRTY',
         },
-      }),
-    ]);
+      });
+
+      await tx.outboxEvent.create({
+        data: {
+          eventType: 'reservation.checked_out',
+          aggregateType: 'RESERVATION',
+          aggregateId: reservationId,
+          payload: {
+            organizationId,
+            hotelId,
+            reservationId,
+            reservationRoomId,
+            roomId,
+            checkedOutAt: now.toISOString(),
+            lateCheckOut,
+          },
+        },
+      });
+    });
   }
 
   async cancel(id: string, reason: string, cancelledBy: string, fee?: number): Promise<void> {

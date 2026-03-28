@@ -1,4 +1,7 @@
 import { defineConfig } from 'vitest/config';
+import { fileURLToPath } from 'node:url';
+
+const fromRoot = (path: string): string => fileURLToPath(new URL(path, import.meta.url));
 
 export default defineConfig({
     test: {
@@ -20,11 +23,11 @@ export default defineConfig({
     },
     resolve: {
         alias: {
-            '@': './src',
-            '@config': './src/config',
-            '@core': './src/core',
-            '@api': './src/api',
-            '@types': './src/types',
+            '@': fromRoot('./src'),
+            '@config': fromRoot('./src/config'),
+            '@core': fromRoot('./src/core'),
+            '@api': fromRoot('./src/api'),
+            '@types': fromRoot('./src/types'),
         },
     },
 });

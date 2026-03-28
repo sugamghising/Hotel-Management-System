@@ -1,5 +1,4 @@
-import { afterAll, beforeAll, beforeEach } from 'vitest';
-import { userService } from '../src/api/user/user.service';
+import { afterAll, beforeAll } from 'vitest';
 
 // Set test environment
 process.env.NODE_ENV = 'test';
@@ -11,9 +10,4 @@ beforeAll(() => {
 
 afterAll(() => {
   // Global cleanup after all tests
-});
-
-beforeEach(() => {
-  // Clear user store before each test
-  userService._clear();
 });

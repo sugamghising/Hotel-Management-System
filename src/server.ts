@@ -1,10 +1,12 @@
 import { createApp } from './app';
 import { config } from './config/index';
+import { startOutboxWorker, stopOutboxWorker } from './core/events';
 import { logger } from './core/index';
 
 const startServer = async (): Promise<void> => {
   try {
     const app = createApp();
+    startOutboxWorker();
 
     const server = app.listen(config.server.port, config.server.host, () => {
       logger.info(`🚀 Server running at http://${config.server.host}:${config.server.port}`);
@@ -18,6 +20,7 @@ const startServer = async (): Promise<void> => {
     // Graceful shutdown
     const shutdown = (signal: string) => {
       logger.info(`\n${signal} received. Shutting down gracefully...`);
+      stopOutboxWorker();
       server.close(() => {
         logger.info('HTTP server closed');
         process.exit(0);
