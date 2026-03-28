@@ -126,6 +126,17 @@ enum CheckInStatus {
   @@map("check_in_status")
 }
 
+enum AssignmentType {
+  INITIAL
+  AUTO
+  MANUAL
+  UPGRADE
+  CHANGE
+  WALK_IN
+
+  @@map("assignment_type")
+}
+
 enum BookingSource {
   DIRECT_WEB
   DIRECT_PHONE
@@ -1273,6 +1284,9 @@ model Reservation {
   hotel          Hotel             @relation(fields: [hotelId], references: [id])
   guest          Guest             @relation(fields: [guestId], references: [id])
   rooms          ReservationRoom[]
+  checkInRecords CheckInRecord[]
+  checkOutRecords CheckOutRecord[]
+  roomAssignments RoomAssignment[]
   folioItems     FolioItem[]
   payments       Payment[]
   invoices       Invoice[]
@@ -1315,6 +1329,92 @@ model ReservationRoom {
   @@index([reservationId])
   @@index([roomId, checkInAt, checkOutAt], name: "idx_resroom_room_dates")
   @@map("reservation_rooms")
+}
+
+model CheckInRecord {
+  id             String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  hotelId        String @map("hotel_id") @db.Uuid
+  reservationId  String @map("reservation_id") @db.Uuid
+  reservationRoomId String? @map("reservation_room_id") @db.Uuid
+  roomId         String @map("room_id") @db.Uuid
+
+  assignmentType AssignmentType @default(INITIAL) @map("assignment_type")
+  earlyCheckIn   Boolean        @default(false) @map("early_check_in")
+  preAuthAmount  Decimal?       @map("pre_auth_amount") @db.Decimal(10, 2)
+  keysIssued     Int            @default(1) @map("keys_issued")
+  keyCardRef     String?        @map("key_card_ref") @db.VarChar(100)
+  idDocumentId   String?        @map("id_document_id") @db.Uuid
+  notes          String?        @db.Text
+
+  checkedInAt DateTime @default(now()) @map("checked_in_at") @db.Timestamptz(6)
+  checkedInBy String?  @map("checked_in_by") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  reservation Reservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+  room        Room        @relation(fields: [roomId], references: [id])
+
+  @@index([organizationId, hotelId, checkedInAt(sort: Desc)], name: "idx_checkin_scope_time")
+  @@index([reservationId, checkedInAt(sort: Desc)], name: "idx_checkin_res_time")
+  @@index([roomId, checkedInAt(sort: Desc)], name: "idx_checkin_room_time")
+  @@map("check_in_records")
+}
+
+model CheckOutRecord {
+  id             String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  hotelId        String @map("hotel_id") @db.Uuid
+  reservationId  String @map("reservation_id") @db.Uuid
+  reservationRoomId String? @map("reservation_room_id") @db.Uuid
+  roomId         String @map("room_id") @db.Uuid
+
+  lateCheckOut     Boolean       @default(false) @map("late_check_out")
+  lateFeeAmount    Decimal?      @map("late_fee_amount") @db.Decimal(10, 2)
+  finalBalance     Decimal       @default(0) @map("final_balance") @db.Decimal(10, 2)
+  settlementAmount Decimal?      @map("settlement_amount") @db.Decimal(10, 2)
+  paymentMethod    PaymentMethod? @map("payment_method")
+  invoiceId        String?       @map("invoice_id") @db.Uuid
+  keysReturned     Int?          @map("keys_returned")
+  satisfactionScore Int?         @map("satisfaction_score")
+  notes            String?       @db.Text
+
+  checkedOutAt DateTime @default(now()) @map("checked_out_at") @db.Timestamptz(6)
+  checkedOutBy String?  @map("checked_out_by") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  reservation Reservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+  room        Room        @relation(fields: [roomId], references: [id])
+
+  @@index([organizationId, hotelId, checkedOutAt(sort: Desc)], name: "idx_checkout_scope_time")
+  @@index([reservationId, checkedOutAt(sort: Desc)], name: "idx_checkout_res_time")
+  @@index([roomId, checkedOutAt(sort: Desc)], name: "idx_checkout_room_time")
+  @@map("check_out_records")
+}
+
+model RoomAssignment {
+  id             String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  hotelId        String @map("hotel_id") @db.Uuid
+  reservationId  String @map("reservation_id") @db.Uuid
+  reservationRoomId String? @map("reservation_room_id") @db.Uuid
+  roomId         String @map("room_id") @db.Uuid
+
+  assignmentType AssignmentType @default(MANUAL) @map("assignment_type")
+  previousRoomId String?        @map("previous_room_id") @db.Uuid
+  reason         String?        @db.Text
+  isActive       Boolean        @default(true) @map("is_active")
+  assignedAt     DateTime       @default(now()) @map("assigned_at") @db.Timestamptz(6)
+  assignedBy     String?        @map("assigned_by") @db.Uuid
+  releasedAt     DateTime?      @map("released_at") @db.Timestamptz(6)
+  notes          String?        @db.Text
+
+  reservation Reservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+  room        Room        @relation(fields: [roomId], references: [id])
+
+  @@index([organizationId, hotelId, assignedAt(sort: Desc)], name: "idx_room_assign_scope_time")
+  @@index([reservationId, isActive, assignedAt(sort: Desc)], name: "idx_room_assign_res_active")
+  @@index([roomId, isActive], name: "idx_room_assign_room_active")
+  @@map("room_assignments")
 }
 
 // ============================================
@@ -1417,6 +1517,9 @@ model Room {
   hotel           Hotel                    @relation(fields: [hotelId], references: [id])
   roomType        RoomType                 @relation(fields: [roomTypeId], references: [id])
   reservations    ReservationRoom[]
+  checkInRecords  CheckInRecord[]
+  checkOutRecords CheckOutRecord[]
+  roomAssignments RoomAssignment[]
   hkTasks         HousekeepingTask[]
   hkInspections   HousekeepingInspection[]
   lostFoundItems  LostFoundItem[]

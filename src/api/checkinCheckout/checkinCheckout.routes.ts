@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { validate } from '../../core';
 import { authMiddleware } from '../../core/middleware/auth';
-import { requirePermission } from '../../core/middleware/requirePermission';
+import { requireAnyPermission, requirePermission } from '../../core/middleware/requirePermission';
 import { checkinCheckoutController } from './checkinCheckout.controller';
 import {
   AssignRoomSchema,
@@ -31,77 +31,77 @@ const OrgHotelReservationParams = OrgHotelParams.merge(ReservationIdParamSchema)
 
 router.get(
   '/checkin/arrivals',
-  requirePermission('RESERVATION.READ'),
+  requireAnyPermission('FRONTDESK.DASHBOARD', 'RESERVATION.READ'),
   validate({ params: OrgHotelParams }),
   checkinCheckoutController.getArrivals
 );
 
 router.get(
   '/checkin/pre-checkin/:reservationId',
-  requirePermission('RESERVATION.READ'),
+  requireAnyPermission('CHECKIN.PERFORM', 'RESERVATION.READ'),
   validate({ params: OrgHotelReservationParams }),
   checkinCheckoutController.getPreCheckIn
 );
 
 router.post(
   '/reservations/:reservationId/checkin',
-  requirePermission('RESERVATION.CHECK_IN'),
+  requireAnyPermission('CHECKIN.PERFORM', 'RESERVATION.CHECK_IN'),
   validate({ params: OrgHotelReservationParams, body: CheckInRequestSchema }),
   checkinCheckoutController.checkIn
 );
 
 router.post(
   '/reservations/:reservationId/checkin/early',
-  requirePermission('RESERVATION.CHECK_IN'),
+  requireAnyPermission('CHECKIN.EARLY', 'CHECKIN.PERFORM', 'RESERVATION.CHECK_IN'),
   validate({ params: OrgHotelReservationParams, body: EarlyCheckInSchema }),
   checkinCheckoutController.earlyCheckIn
 );
 
 router.post(
   '/checkin/walkin',
-  requirePermission('RESERVATION.CREATE'),
+  requireAnyPermission('CHECKIN.WALKIN', 'RESERVATION.CREATE'),
   validate({ params: OrgHotelParams, body: WalkInCheckInSchema }),
   checkinCheckoutController.walkInCheckIn
 );
 
 router.post(
   '/reservations/:reservationId/checkin/walkin',
-  requirePermission('RESERVATION.CREATE'),
+  requireAnyPermission('CHECKIN.WALKIN', 'RESERVATION.CREATE'),
   validate({ params: OrgHotelReservationParams, body: WalkInCheckInSchema }),
   checkinCheckoutController.walkInCheckIn
 );
 
 router.post(
   '/reservations/:reservationId/rooms/assign',
-  requirePermission('RESERVATION.ASSIGN_ROOM'),
+  requireAnyPermission('ROOM.ASSIGN', 'RESERVATION.ASSIGN_ROOM'),
   validate({ params: OrgHotelReservationParams, body: AssignRoomSchema }),
   checkinCheckoutController.assignRoom
 );
 
 router.post(
   '/reservations/:reservationId/rooms/auto-assign',
-  requirePermission('RESERVATION.ASSIGN_ROOM'),
+  requireAnyPermission('ROOM.ASSIGN', 'RESERVATION.ASSIGN_ROOM'),
   validate({ params: OrgHotelReservationParams }),
   checkinCheckoutController.autoAssignRoom
 );
 
 router.post(
   '/reservations/:reservationId/rooms/upgrade',
-  requirePermission('RESERVATION.ASSIGN_ROOM'),
+  requireAnyPermission('ROOM.UPGRADE', 'ROOM.ASSIGN', 'RESERVATION.ASSIGN_ROOM'),
   validate({ params: OrgHotelReservationParams, body: UpgradeRoomSchema }),
   checkinCheckoutController.upgradeRoom
 );
 
 router.post(
   '/reservations/:reservationId/rooms/change',
-  requirePermission('RESERVATION.ASSIGN_ROOM'),
+  requireAnyPermission('ROOM.CHANGE', 'ROOM.ASSIGN', 'RESERVATION.ASSIGN_ROOM'),
   validate({ params: OrgHotelReservationParams, body: ChangeRoomSchema }),
   checkinCheckoutController.changeRoom
 );
 
 router.get(
   '/checkout/departures',
-  requirePermission('RESERVATION.READ'),
+  requireAnyPermission('FRONTDESK.DASHBOARD', 'RESERVATION.READ'),
   validate({ params: OrgHotelParams }),
   checkinCheckoutController.getDepartures
 );
@@ -115,42 +115,42 @@ router.get(
 
 router.post(
   '/reservations/:reservationId/checkout',
-  requirePermission('RESERVATION.CHECK_OUT'),
+  requireAnyPermission('CHECKOUT.PERFORM', 'RESERVATION.CHECK_OUT'),
   validate({ params: OrgHotelReservationParams, body: CheckoutSchema }),
   checkinCheckoutController.checkout
 );
 
 router.post(
   '/reservations/:reservationId/checkout/express',
-  requirePermission('RESERVATION.CHECK_OUT'),
+  requireAnyPermission('CHECKOUT.EXPRESS', 'CHECKOUT.PERFORM', 'RESERVATION.CHECK_OUT'),
   validate({ params: OrgHotelReservationParams, body: ExpressCheckoutSchema }),
   checkinCheckoutController.expressCheckout
 );
 
 router.post(
   '/reservations/:reservationId/checkout/late',
-  requirePermission('RESERVATION.CHECK_OUT'),
+  requireAnyPermission('CHECKOUT.LATE', 'CHECKOUT.PERFORM', 'RESERVATION.CHECK_OUT'),
   validate({ params: OrgHotelReservationParams, body: LateCheckoutSchema }),
   checkinCheckoutController.lateCheckout
 );
 
 router.post(
   '/reservations/:reservationId/no-show',
-  requirePermission('RESERVATION.NO_SHOW'),
+  requireAnyPermission('CHECKOUT.NO_SHOW', 'RESERVATION.NO_SHOW'),
   validate({ params: OrgHotelReservationParams, body: NoShowSchema }),
   checkinCheckoutController.markNoShow
 );
 
 router.post(
   '/reservations/:reservationId/reinstate',
-  requirePermission('RESERVATION.UPDATE'),
+  requireAnyPermission('CHECKOUT.REINSTATE', 'RESERVATION.UPDATE'),
   validate({ params: OrgHotelReservationParams, body: ReinstateSchema }),
   checkinCheckoutController.reinstate
 );
 
 router.get(
   '/front-desk/dashboard',
-  requirePermission('RESERVATION.READ'),
+  requireAnyPermission('FRONTDESK.DASHBOARD', 'RESERVATION.READ'),
   validate({ params: OrgHotelParams }),
   checkinCheckoutController.frontDeskDashboard
 );

@@ -6,8 +6,10 @@ import type {
   CheckInRequestInput,
   CheckoutInput,
   EarlyCheckInInput,
+  ExpressCheckoutInput,
   ExtendStayInput,
   LateCheckoutInput,
+  NoShowInput,
   ShortenStayInput,
   WalkInCheckInInput,
 } from './checkinCheckout.schema';
@@ -107,9 +109,8 @@ export class CheckinCheckoutController {
       organizationId,
       hotelId,
       reservationId,
-      roomId,
-      req.user?.sub,
-      force
+      { roomId, ...(force !== undefined ? { force } : {}) },
+      req.user?.sub
     );
 
     handleServiceResponse(
@@ -142,14 +143,19 @@ export class CheckinCheckoutController {
       reservationId: string;
     };
 
-    const { roomId, upgradeFee } = req.body as { roomId: string; upgradeFee?: number };
+    const { roomId, upgradeFee, upgradeReason } = req.body as {
+      roomId: string;
+      upgradeFee?: number;
+      upgradeReason?: string;
+    };
     const reservation = await checkinCheckoutService.upgradeRoom(
       organizationId,
       hotelId,
       reservationId,
       roomId,
       req.user?.sub,
-      upgradeFee
+      upgradeFee,
+      upgradeReason
     );
 
     handleServiceResponse(
@@ -165,13 +171,14 @@ export class CheckinCheckoutController {
       reservationId: string;
     };
 
-    const { roomId } = req.body as { roomId: string };
+    const { roomId, changeReason } = req.body as { roomId: string; changeReason?: string };
     const reservation = await checkinCheckoutService.changeRoom(
       organizationId,
       hotelId,
       reservationId,
       roomId,
-      req.user?.sub
+      req.user?.sub,
+      changeReason
     );
 
     handleServiceResponse(
@@ -231,7 +238,7 @@ export class CheckinCheckoutController {
       reservationId: string;
     };
 
-    const input = req.body as CheckoutInput;
+    const input = req.body as ExpressCheckoutInput;
     const data = await checkinCheckoutService.expressCheckout(
       organizationId,
       hotelId,
@@ -275,12 +282,12 @@ export class CheckinCheckoutController {
       reservationId: string;
     };
 
-    const { chargeNoShowFee } = req.body as { chargeNoShowFee?: boolean };
+    const input = req.body as NoShowInput;
     const reservation = await checkinCheckoutService.markNoShow(
       organizationId,
       hotelId,
       reservationId,
-      chargeNoShowFee ?? true,
+      input,
       req.user?.sub
     );
 

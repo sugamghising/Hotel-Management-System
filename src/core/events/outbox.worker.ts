@@ -14,6 +14,53 @@ const ReservationCheckedOutPayloadSchema = z.object({
   lateCheckOut: z.boolean().default(false),
 });
 
+const ReservationCheckedInPayloadSchema = z.object({
+  organizationId: z.string().uuid(),
+  hotelId: z.string().uuid(),
+  reservationId: z.string().uuid(),
+  reservationRoomId: z.string().uuid().optional(),
+  roomId: z.string().uuid(),
+  checkedInAt: z.coerce.date(),
+  earlyCheckIn: z.boolean().optional(),
+  assignmentType: z.enum(['INITIAL', 'AUTO', 'MANUAL', 'UPGRADE', 'CHANGE', 'WALK_IN']).optional(),
+});
+
+const ReservationNoShowPayloadSchema = z.object({
+  organizationId: z.string().uuid(),
+  hotelId: z.string().uuid(),
+  reservationId: z.string().uuid(),
+  markedAt: z.coerce.date(),
+  chargeNoShowFee: z.boolean().optional(),
+  noShowFee: z.number().optional(),
+  reason: z.string().optional(),
+});
+
+const RoomOccupiedPayloadSchema = z.object({
+  organizationId: z.string().uuid(),
+  hotelId: z.string().uuid(),
+  reservationId: z.string().uuid(),
+  roomId: z.string().uuid(),
+  occupiedAt: z.coerce.date(),
+});
+
+const RoomVacatedPayloadSchema = z.object({
+  organizationId: z.string().uuid(),
+  hotelId: z.string().uuid(),
+  reservationId: z.string().uuid(),
+  roomId: z.string().uuid(),
+  vacatedAt: z.coerce.date(),
+  lateCheckOut: z.boolean().optional(),
+});
+
+const RoomUpgradedPayloadSchema = z.object({
+  organizationId: z.string().uuid(),
+  hotelId: z.string().uuid(),
+  reservationId: z.string().uuid(),
+  fromRoomId: z.string().uuid(),
+  toRoomId: z.string().uuid(),
+  assignedAt: z.coerce.date(),
+});
+
 class OutboxWorker {
   private intervalId: NodeJS.Timeout | null = null;
   private isTicking = false;
@@ -106,10 +153,28 @@ class OutboxWorker {
 
   private async processEvent(eventId: string, eventType: string, payload: unknown): Promise<void> {
     try {
-      if (eventType === 'reservation.checked_out') {
-        await this.handleReservationCheckedOut(payload);
-      } else {
-        logger.warn('Unhandled outbox event type', { eventType, eventId });
+      switch (eventType) {
+        case 'reservation.checked_out':
+          await this.handleReservationCheckedOut(payload);
+          break;
+        case 'reservation.checked_in':
+          await this.handleReservationCheckedIn(payload);
+          break;
+        case 'reservation.no_show':
+          await this.handleReservationNoShow(payload);
+          break;
+        case 'room.occupied':
+          await this.handleRoomOccupied(payload);
+          break;
+        case 'room.vacated':
+          await this.handleRoomVacated(payload);
+          break;
+        case 'room.upgraded':
+          await this.handleRoomUpgraded(payload);
+          break;
+        default:
+          logger.warn('Unhandled outbox event type', { eventType, eventId });
+          break;
       }
 
       await prisma.outboxEvent.update({
@@ -182,6 +247,56 @@ class OutboxWorker {
     logger.info('Departure housekeeping task created from checkout event', {
       reservationId: parsed.reservationId,
       roomId: parsed.roomId,
+    });
+  }
+
+  private async handleReservationCheckedIn(payload: unknown): Promise<void> {
+    const parsed = ReservationCheckedInPayloadSchema.parse(payload);
+
+    logger.info('Reservation checked-in event processed', {
+      reservationId: parsed.reservationId,
+      roomId: parsed.roomId,
+      earlyCheckIn: parsed.earlyCheckIn ?? false,
+      assignmentType: parsed.assignmentType ?? 'INITIAL',
+    });
+  }
+
+  private async handleReservationNoShow(payload: unknown): Promise<void> {
+    const parsed = ReservationNoShowPayloadSchema.parse(payload);
+
+    logger.info('Reservation no-show event processed', {
+      reservationId: parsed.reservationId,
+      chargeNoShowFee: parsed.chargeNoShowFee ?? false,
+      noShowFee: parsed.noShowFee ?? null,
+    });
+  }
+
+  private async handleRoomOccupied(payload: unknown): Promise<void> {
+    const parsed = RoomOccupiedPayloadSchema.parse(payload);
+
+    logger.info('Room occupied event processed', {
+      reservationId: parsed.reservationId,
+      roomId: parsed.roomId,
+    });
+  }
+
+  private async handleRoomVacated(payload: unknown): Promise<void> {
+    const parsed = RoomVacatedPayloadSchema.parse(payload);
+
+    logger.info('Room vacated event processed', {
+      reservationId: parsed.reservationId,
+      roomId: parsed.roomId,
+      lateCheckOut: parsed.lateCheckOut ?? false,
+    });
+  }
+
+  private async handleRoomUpgraded(payload: unknown): Promise<void> {
+    const parsed = RoomUpgradedPayloadSchema.parse(payload);
+
+    logger.info('Room upgraded event processed', {
+      reservationId: parsed.reservationId,
+      fromRoomId: parsed.fromRoomId,
+      toRoomId: parsed.toRoomId,
     });
   }
 

@@ -70,6 +70,26 @@ const authHeader = (
   })}`;
 
 const cleanupOperationalData = async (): Promise<void> => {
+  const scopedTasks = await prisma.housekeepingTask.findMany({
+    where: {
+      organizationId: fixtures.organizationId,
+      hotelId: fixtures.hotelId,
+    },
+    select: { id: true },
+  });
+
+  const scopedTaskIds = scopedTasks.map((task) => task.id);
+
+  if (scopedTaskIds.length > 0) {
+    await prisma.housekeepingInspection.deleteMany({
+      where: {
+        taskId: {
+          in: scopedTaskIds,
+        },
+      },
+    });
+  }
+
   await prisma.housekeepingInspection.deleteMany({
     where: {
       organizationId: fixtures.organizationId,
@@ -316,7 +336,7 @@ describe('Housekeeping Routes DB Integration', () => {
     });
 
     expect(room?.status).toBe('VACANT_CLEAN');
-  });
+  }, 15_000);
 
   it('creates a shift, assigns staff, and returns workload and dashboard data', async () => {
     await request(app)

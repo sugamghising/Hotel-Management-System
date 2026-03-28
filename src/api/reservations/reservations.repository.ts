@@ -1,6 +1,16 @@
+import { NotFoundError } from '../../core/errors';
 import { prisma } from '../../database/prisma';
 import type { $Enums, Prisma } from '../../generated/prisma';
-import type { Reservation, ReservationStatus } from './reservations.types';
+import type { AssignmentType, Reservation, ReservationStatus } from './reservations.types';
+
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+const asNullableUuid = (value?: string): string | null => {
+  if (!value || !UUID_REGEX.test(value)) {
+    return null;
+  }
+  return value;
+};
 
 export type ReservationWhereInput = Prisma.ReservationWhereInput;
 export type ReservationCreateInput = Prisma.ReservationCreateInput;
@@ -236,23 +246,42 @@ export class ReservationsRepository {
     reservationId: string,
     reservationRoomId: string,
     roomId: string,
-    earlyCheckIn: boolean = false
+    options: {
+      earlyCheckIn?: boolean;
+      checkedInBy?: string;
+      preAuthAmount?: number;
+      keysIssued?: number;
+      keyCardRef?: string;
+      idDocumentId?: string;
+      notes?: string;
+      assignmentType?: AssignmentType;
+    } = {}
   ): Promise<void> {
     const now = new Date();
+    const earlyCheckIn = options.earlyCheckIn ?? false;
 
-    await prisma.$transaction([
-      // Update reservation
-      prisma.reservation.update({
+    await prisma.$transaction(async (tx) => {
+      const previousReservationRoom = await tx.reservationRoom.findUnique({
+        where: { id: reservationRoomId },
+        select: {
+          roomId: true,
+        },
+      });
+
+      const reservation = await tx.reservation.update({
         where: { id: reservationId },
         data: {
           status: 'CHECKED_IN',
           checkInStatus: earlyCheckIn ? 'EARLY_CHECK_IN' : 'CHECKED_IN',
           modifiedAt: now,
         },
-      }),
+        select: {
+          organizationId: true,
+          hotelId: true,
+        },
+      });
 
-      // Update reservation room
-      prisma.reservationRoom.update({
+      await tx.reservationRoom.update({
         where: { id: reservationRoomId },
         data: {
           roomId,
@@ -260,16 +289,96 @@ export class ReservationsRepository {
           assignedAt: now,
           checkInAt: now,
         },
-      }),
+      });
 
-      // Update room status
-      prisma.room.update({
+      await tx.room.update({
         where: { id: roomId },
         data: {
           status: 'OCCUPIED_CLEAN',
         },
-      }),
-    ]);
+      });
+
+      await tx.roomAssignment.updateMany({
+        where: {
+          reservationId,
+          isActive: true,
+          releasedAt: null,
+        },
+        data: {
+          isActive: false,
+          releasedAt: now,
+        },
+      });
+
+      await tx.roomAssignment.create({
+        data: {
+          organizationId: reservation.organizationId,
+          hotelId: reservation.hotelId,
+          reservationId,
+          reservationRoomId,
+          roomId,
+          assignmentType: options.assignmentType ?? 'INITIAL',
+          previousRoomId: previousReservationRoom?.roomId ?? null,
+          reason: null,
+          isActive: true,
+          assignedAt: now,
+          assignedBy: asNullableUuid(options.checkedInBy),
+          releasedAt: null,
+          notes: null,
+        },
+      });
+
+      await tx.checkInRecord.create({
+        data: {
+          organizationId: reservation.organizationId,
+          hotelId: reservation.hotelId,
+          reservationId,
+          reservationRoomId,
+          roomId,
+          assignmentType: options.assignmentType ?? 'INITIAL',
+          earlyCheckIn,
+          keysIssued: options.keysIssued ?? 1,
+          ...(options.preAuthAmount !== undefined ? { preAuthAmount: options.preAuthAmount } : {}),
+          ...(options.keyCardRef !== undefined ? { keyCardRef: options.keyCardRef } : {}),
+          ...(options.idDocumentId !== undefined ? { idDocumentId: options.idDocumentId } : {}),
+          ...(options.notes !== undefined ? { notes: options.notes } : {}),
+          checkedInAt: now,
+          checkedInBy: asNullableUuid(options.checkedInBy),
+        },
+      });
+
+      await tx.outboxEvent.createMany({
+        data: [
+          {
+            eventType: 'reservation.checked_in',
+            aggregateType: 'RESERVATION',
+            aggregateId: reservationId,
+            payload: {
+              organizationId: reservation.organizationId,
+              hotelId: reservation.hotelId,
+              reservationId,
+              reservationRoomId,
+              roomId,
+              checkedInAt: now.toISOString(),
+              earlyCheckIn,
+              assignmentType: options.assignmentType ?? 'INITIAL',
+            },
+          },
+          {
+            eventType: 'room.occupied',
+            aggregateType: 'ROOM',
+            aggregateId: roomId,
+            payload: {
+              organizationId: reservation.organizationId,
+              hotelId: reservation.hotelId,
+              reservationId,
+              roomId,
+              occupiedAt: now.toISOString(),
+            },
+          },
+        ],
+      });
+    });
   }
 
   async checkOut(
@@ -278,17 +387,31 @@ export class ReservationsRepository {
     roomId: string,
     organizationId: string,
     hotelId: string,
-    lateCheckOut: boolean = false
+    lateCheckOut: boolean = false,
+    options: {
+      checkedOutBy?: string;
+      lateFeeAmount?: number;
+      finalBalance?: number;
+      settlementAmount?: number;
+      paymentMethod?: string;
+      keysReturned?: number;
+      satisfactionScore?: number;
+      notes?: string;
+    } = {}
   ): Promise<void> {
     const now = new Date();
 
     await prisma.$transaction(async (tx) => {
-      await tx.reservation.update({
+      const reservation = await tx.reservation.update({
         where: { id: reservationId },
         data: {
           status: 'CHECKED_OUT',
           checkInStatus: lateCheckOut ? 'LATE_CHECK_OUT' : 'CHECKED_OUT',
           modifiedAt: now,
+        },
+        select: {
+          organizationId: true,
+          hotelId: true,
         },
       });
 
@@ -307,21 +430,76 @@ export class ReservationsRepository {
         },
       });
 
-      await tx.outboxEvent.create({
-        data: {
-          eventType: 'reservation.checked_out',
-          aggregateType: 'RESERVATION',
-          aggregateId: reservationId,
-          payload: {
-            organizationId,
-            hotelId,
-            reservationId,
-            reservationRoomId,
-            roomId,
-            checkedOutAt: now.toISOString(),
-            lateCheckOut,
-          },
+      await tx.roomAssignment.updateMany({
+        where: {
+          reservationId,
+          roomId,
+          isActive: true,
+          releasedAt: null,
         },
+        data: {
+          isActive: false,
+          releasedAt: now,
+        },
+      });
+
+      await tx.checkOutRecord.create({
+        data: {
+          organizationId: reservation.organizationId,
+          hotelId: reservation.hotelId,
+          reservationId,
+          reservationRoomId,
+          roomId,
+          lateCheckOut,
+          ...(options.lateFeeAmount !== undefined ? { lateFeeAmount: options.lateFeeAmount } : {}),
+          finalBalance: options.finalBalance ?? 0,
+          ...(options.settlementAmount !== undefined
+            ? { settlementAmount: options.settlementAmount }
+            : {}),
+          paymentMethod: options.paymentMethod
+            ? (options.paymentMethod as $Enums.PaymentMethod)
+            : null,
+          invoiceId: null,
+          ...(options.keysReturned !== undefined ? { keysReturned: options.keysReturned } : {}),
+          ...(options.satisfactionScore !== undefined
+            ? { satisfactionScore: options.satisfactionScore }
+            : {}),
+          ...(options.notes !== undefined ? { notes: options.notes } : {}),
+          checkedOutAt: now,
+          checkedOutBy: asNullableUuid(options.checkedOutBy),
+        },
+      });
+
+      await tx.outboxEvent.createMany({
+        data: [
+          {
+            eventType: 'reservation.checked_out',
+            aggregateType: 'RESERVATION',
+            aggregateId: reservationId,
+            payload: {
+              organizationId,
+              hotelId,
+              reservationId,
+              reservationRoomId,
+              roomId,
+              checkedOutAt: now.toISOString(),
+              lateCheckOut,
+            },
+          },
+          {
+            eventType: 'room.vacated',
+            aggregateType: 'ROOM',
+            aggregateId: roomId,
+            payload: {
+              organizationId: reservation.organizationId,
+              hotelId: reservation.hotelId,
+              reservationId,
+              roomId,
+              vacatedAt: now.toISOString(),
+              lateCheckOut,
+            },
+          },
+        ],
       });
     });
   }
@@ -340,15 +518,52 @@ export class ReservationsRepository {
     });
   }
 
-  async markNoShow(id: string, chargeFee: boolean): Promise<void> {
-    await prisma.reservation.update({
-      where: { id },
-      data: {
-        status: 'NO_SHOW',
-        noShow: true,
-        ...(chargeFee ? {} : { cancellationFee: null }),
-        modifiedAt: new Date(),
-      },
+  async markNoShow(
+    id: string,
+    chargeFee: boolean,
+    options: {
+      reason?: string;
+      noShowFee?: number;
+    } = {}
+  ): Promise<void> {
+    const now = new Date();
+
+    await prisma.$transaction(async (tx) => {
+      const reservation = await tx.reservation.update({
+        where: { id },
+        data: {
+          status: 'NO_SHOW',
+          noShow: true,
+          ...(chargeFee
+            ? options.noShowFee !== undefined
+              ? { cancellationFee: options.noShowFee }
+              : {}
+            : { cancellationFee: null }),
+          ...(options.reason ? { cancellationReason: options.reason } : {}),
+          modifiedAt: now,
+        },
+        select: {
+          organizationId: true,
+          hotelId: true,
+        },
+      });
+
+      await tx.outboxEvent.create({
+        data: {
+          eventType: 'reservation.no_show',
+          aggregateType: 'RESERVATION',
+          aggregateId: id,
+          payload: {
+            organizationId: reservation.organizationId,
+            hotelId: reservation.hotelId,
+            reservationId: id,
+            markedAt: now.toISOString(),
+            chargeNoShowFee: chargeFee,
+            ...(options.noShowFee !== undefined ? { noShowFee: options.noShowFee } : {}),
+            ...(options.reason ? { reason: options.reason } : {}),
+          },
+        },
+      });
     });
   }
 
@@ -356,15 +571,113 @@ export class ReservationsRepository {
   // ROOM ASSIGNMENT
   // ============================================================================
 
-  async assignRoom(reservationRoomId: string, roomId: string, assignedBy: string): Promise<void> {
-    await prisma.reservationRoom.update({
-      where: { id: reservationRoomId },
-      data: {
-        roomId,
-        assignedAt: new Date(),
-        assignedBy,
-        status: 'ASSIGNED',
-      },
+  async assignRoom(
+    reservationRoomId: string,
+    roomId: string,
+    assignedBy: string,
+    options: {
+      assignmentType?: AssignmentType;
+      reason?: string;
+      previousRoomId?: string;
+    } = {}
+  ): Promise<void> {
+    const now = new Date();
+
+    await prisma.$transaction(async (tx) => {
+      const current = await tx.reservationRoom.findUnique({
+        where: { id: reservationRoomId },
+        select: {
+          reservationId: true,
+          roomId: true,
+          reservation: {
+            select: {
+              status: true,
+              organizationId: true,
+              hotelId: true,
+            },
+          },
+        },
+      });
+
+      if (!current) {
+        throw new NotFoundError('Reservation room not found');
+      }
+
+      await tx.reservationRoom.update({
+        where: { id: reservationRoomId },
+        data: {
+          roomId,
+          assignedAt: now,
+          assignedBy: asNullableUuid(assignedBy),
+          status: current.reservation.status === 'CHECKED_IN' ? 'OCCUPIED' : 'ASSIGNED',
+        },
+      });
+
+      if (current.reservation.status === 'CHECKED_IN') {
+        await tx.room.update({
+          where: { id: roomId },
+          data: {
+            status: 'OCCUPIED_CLEAN',
+          },
+        });
+
+        if (current.roomId && current.roomId !== roomId) {
+          await tx.room.update({
+            where: { id: current.roomId },
+            data: {
+              status: 'VACANT_DIRTY',
+            },
+          });
+        }
+      }
+
+      await tx.roomAssignment.updateMany({
+        where: {
+          reservationId: current.reservationId,
+          isActive: true,
+          releasedAt: null,
+        },
+        data: {
+          isActive: false,
+          releasedAt: now,
+        },
+      });
+
+      await tx.roomAssignment.create({
+        data: {
+          organizationId: current.reservation.organizationId,
+          hotelId: current.reservation.hotelId,
+          reservationId: current.reservationId,
+          reservationRoomId,
+          roomId,
+          assignmentType: options.assignmentType ?? 'MANUAL',
+          previousRoomId: options.previousRoomId ?? current.roomId ?? null,
+          reason: options.reason ?? null,
+          isActive: true,
+          assignedAt: now,
+          assignedBy: asNullableUuid(assignedBy),
+          releasedAt: null,
+          notes: null,
+        },
+      });
+
+      if (options.assignmentType === 'UPGRADE' && current.roomId && current.roomId !== roomId) {
+        await tx.outboxEvent.create({
+          data: {
+            eventType: 'room.upgraded',
+            aggregateType: 'ROOM',
+            aggregateId: roomId,
+            payload: {
+              organizationId: current.reservation.organizationId,
+              hotelId: current.reservation.hotelId,
+              reservationId: current.reservationId,
+              fromRoomId: current.roomId,
+              toRoomId: roomId,
+              assignedAt: now.toISOString(),
+            },
+          },
+        });
+      }
     });
   }
 
@@ -405,7 +718,9 @@ export class ReservationsRepository {
 
     if (!resRoom) return null;
 
-    await this.assignRoom(resRoom.id, availableRoom.id, 'SYSTEM_AUTO');
+    await this.assignRoom(resRoom.id, availableRoom.id, 'SYSTEM_AUTO', {
+      assignmentType: 'AUTO',
+    });
 
     return availableRoom.id;
   }
