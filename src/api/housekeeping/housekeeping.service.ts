@@ -1,3 +1,4 @@
+import { config } from '../../config';
 import { BadRequestError, ConflictError, NotFoundError, logger } from '../../core';
 import { prisma } from '../../database/prisma';
 import type { Prisma } from '../../generated/prisma';
@@ -41,7 +42,7 @@ const INSPECTION_WEIGHTS: Record<keyof InspectionScores, number> = {
   general: 0.1,
 };
 
-const SYSTEM_ACTOR_ID = '00000000-0000-0000-0000-000000000000';
+const SYSTEM_ACTOR_ID = config.system.userId;
 
 export class HousekeepingService {
   private housekeepingRepo: HousekeepingRepository;

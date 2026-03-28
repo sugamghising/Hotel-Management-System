@@ -38,6 +38,16 @@ export const config = {
     accessExpiry: env.JWT_ACCESS_EXPIRY,
     refreshExpiry: env.JWT_REFRESH_EXPIRY,
   },
+
+  system: {
+    userId: env.SYSTEM_USER_ID,
+  },
+
+  maintenance: {
+    escalationCheckerEnabled: env.MAINTENANCE_ESCALATION_CHECKER_ENABLED,
+    escalationCheckerIntervalMs: env.MAINTENANCE_ESCALATION_CHECKER_INTERVAL_MS,
+    escalationCheckerBatchSize: env.MAINTENANCE_ESCALATION_CHECKER_BATCH_SIZE,
+  },
 } as const;
 
 export type Config = typeof config;

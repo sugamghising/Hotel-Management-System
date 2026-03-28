@@ -56,6 +56,17 @@ const envSchema = z.object({
   // Super Admin
   SUPER_ADMIN_EMAIL: z.string().email().default('admin@hms.local'),
   SUPER_ADMIN_PASSWORD: z.string().min(8).default('SuperAdmin123!@#'),
+
+  // System actor
+  SYSTEM_USER_ID: z.string().uuid().default('00000000-0000-0000-0000-000000000000'),
+
+  // Maintenance scheduler
+  MAINTENANCE_ESCALATION_CHECKER_ENABLED: z
+    .string()
+    .transform((val) => val === 'true')
+    .default('true'),
+  MAINTENANCE_ESCALATION_CHECKER_INTERVAL_MS: z.coerce.number().int().min(60000).default(300000),
+  MAINTENANCE_ESCALATION_CHECKER_BATCH_SIZE: z.coerce.number().int().min(1).max(1000).default(100),
 });
 
 const parseEnv = () => {

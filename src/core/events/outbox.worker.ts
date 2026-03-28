@@ -1,8 +1,10 @@
 import { z } from 'zod';
+import { maintenanceService } from '../../api/maintenance/maintenance.service';
+import { config } from '../../config';
 import { prisma } from '../../database/prisma';
 import { logger } from '../logger';
 
-const SYSTEM_ACTOR_ID = '00000000-0000-0000-0000-000000000000';
+const SYSTEM_ACTOR_ID = config.system.userId;
 
 const ReservationCheckedOutPayloadSchema = z.object({
   organizationId: z.string().uuid(),
@@ -59,6 +61,83 @@ const RoomUpgradedPayloadSchema = z.object({
   fromRoomId: z.string().uuid(),
   toRoomId: z.string().uuid(),
   assignedAt: z.coerce.date(),
+});
+
+const MaintenanceRequestCreatedPayloadSchema = z.object({
+  organizationId: z.string().uuid(),
+  hotelId: z.string().uuid(),
+  requestId: z.string().uuid(),
+  priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'URGENT', 'EMERGENCY']).optional(),
+  category: z.string().optional(),
+  roomId: z.string().uuid().nullable().optional(),
+  assetId: z.string().uuid().nullable().optional(),
+  source: z.string().optional(),
+  scheduleId: z.string().uuid().optional(),
+  reportedAt: z.coerce.date().optional(),
+});
+
+const MaintenanceOooSetPayloadSchema = z.object({
+  organizationId: z.string().uuid(),
+  hotelId: z.string().uuid(),
+  requestId: z.string().uuid(),
+  roomId: z.string().uuid(),
+  oooUntil: z.coerce.date().optional(),
+});
+
+const MaintenanceOooClearedPayloadSchema = z.object({
+  organizationId: z.string().uuid(),
+  hotelId: z.string().uuid(),
+  requestId: z.string().uuid(),
+  roomId: z.string().uuid(),
+  clearedAt: z.coerce.date(),
+});
+
+const MaintenanceCompletedPayloadSchema = z.object({
+  organizationId: z.string().uuid(),
+  hotelId: z.string().uuid(),
+  requestId: z.string().uuid(),
+  roomId: z.string().uuid().nullable().optional(),
+  totalCost: z.number().optional(),
+  completedAt: z.coerce.date().optional(),
+});
+
+const MaintenanceEscalatedPayloadSchema = z.object({
+  organizationId: z.string().uuid(),
+  hotelId: z.string().uuid(),
+  requestId: z.string().uuid(),
+  fromPriority: z.string(),
+  toPriority: z.string(),
+  escalationLevel: z.number().int().nonnegative(),
+  reason: z.string().optional(),
+});
+
+const MaintenanceGuestChargePayloadSchema = z.object({
+  organizationId: z.string().uuid(),
+  hotelId: z.string().uuid(),
+  requestId: z.string().uuid(),
+  reservationId: z.string().uuid(),
+  folioItemId: z.string().uuid(),
+  amount: z.number(),
+  taxAmount: z.number().optional(),
+});
+
+const InventoryLowStockPayloadSchema = z.object({
+  organizationId: z.string().uuid(),
+  hotelId: z.string().uuid(),
+  itemId: z.string().uuid(),
+  sku: z.string(),
+  name: z.string(),
+  reorderPoint: z.number().int(),
+  availableStock: z.number().int(),
+  refType: z.string().optional(),
+  refId: z.string().uuid().optional(),
+});
+
+const NightAuditCompletedPayloadSchema = z.object({
+  organizationId: z.string().uuid(),
+  hotelId: z.string().uuid(),
+  businessDate: z.coerce.date(),
+  completedAt: z.coerce.date().optional(),
 });
 
 class OutboxWorker {
@@ -171,6 +250,30 @@ class OutboxWorker {
           break;
         case 'room.upgraded':
           await this.handleRoomUpgraded(payload);
+          break;
+        case 'maintenance.request_created':
+          await this.handleMaintenanceRequestCreated(payload);
+          break;
+        case 'maintenance.ooo_set':
+          await this.handleMaintenanceOooSet(payload);
+          break;
+        case 'maintenance.ooo_cleared':
+          await this.handleMaintenanceOooCleared(payload);
+          break;
+        case 'maintenance.completed':
+          await this.handleMaintenanceCompleted(payload);
+          break;
+        case 'maintenance.escalated':
+          await this.handleMaintenanceEscalated(payload);
+          break;
+        case 'maintenance.guest_charge':
+          await this.handleMaintenanceGuestCharge(payload);
+          break;
+        case 'inventory.low_stock':
+          await this.handleInventoryLowStock(payload);
+          break;
+        case 'night_audit.completed':
+          await this.handleNightAuditCompleted(payload);
           break;
         default:
           logger.warn('Unhandled outbox event type', { eventType, eventId });
@@ -297,6 +400,150 @@ class OutboxWorker {
       reservationId: parsed.reservationId,
       fromRoomId: parsed.fromRoomId,
       toRoomId: parsed.toRoomId,
+    });
+  }
+
+  private async handleMaintenanceRequestCreated(payload: unknown): Promise<void> {
+    const parsed = MaintenanceRequestCreatedPayloadSchema.parse(payload);
+
+    logger.info('Maintenance request created event processed', {
+      requestId: parsed.requestId,
+      roomId: parsed.roomId ?? null,
+      assetId: parsed.assetId ?? null,
+      priority: parsed.priority ?? null,
+      source: parsed.source ?? 'MANUAL',
+    });
+  }
+
+  private async handleMaintenanceOooSet(payload: unknown): Promise<void> {
+    const parsed = MaintenanceOooSetPayloadSchema.parse(payload);
+
+    logger.info('Maintenance room OOO set event processed', {
+      requestId: parsed.requestId,
+      roomId: parsed.roomId,
+      oooUntil: parsed.oooUntil?.toISOString() ?? null,
+    });
+  }
+
+  private async handleMaintenanceOooCleared(payload: unknown): Promise<void> {
+    const parsed = MaintenanceOooClearedPayloadSchema.parse(payload);
+    const scheduledFor = this.asDateOnly(parsed.clearedAt);
+
+    const existing = await prisma.housekeepingTask.findFirst({
+      where: {
+        organizationId: parsed.organizationId,
+        hotelId: parsed.hotelId,
+        roomId: parsed.roomId,
+        taskType: 'DEEP_CLEAN',
+        scheduledFor,
+        status: {
+          in: ['PENDING', 'IN_PROGRESS', 'DND', 'ISSUES_REPORTED', 'COMPLETED', 'VERIFIED'],
+        },
+      },
+      select: { id: true },
+    });
+
+    if (!existing) {
+      await prisma.housekeepingTask.create({
+        data: {
+          organizationId: parsed.organizationId,
+          hotelId: parsed.hotelId,
+          roomId: parsed.roomId,
+          taskType: 'DEEP_CLEAN',
+          status: 'PENDING',
+          scheduledFor,
+          priority: 1,
+          notes: 'Auto-created after maintenance room OOO clear event',
+          createdBy: SYSTEM_ACTOR_ID,
+        },
+      });
+    }
+
+    logger.info('Maintenance room OOO cleared event processed', {
+      requestId: parsed.requestId,
+      roomId: parsed.roomId,
+      housekeepingTaskCreated: !existing,
+    });
+  }
+
+  private async handleMaintenanceCompleted(payload: unknown): Promise<void> {
+    const parsed = MaintenanceCompletedPayloadSchema.parse(payload);
+
+    logger.info('Maintenance completed event processed', {
+      requestId: parsed.requestId,
+      roomId: parsed.roomId ?? null,
+      totalCost: parsed.totalCost ?? null,
+    });
+  }
+
+  private async handleMaintenanceEscalated(payload: unknown): Promise<void> {
+    const parsed = MaintenanceEscalatedPayloadSchema.parse(payload);
+
+    logger.warn('Maintenance escalated event processed', {
+      requestId: parsed.requestId,
+      fromPriority: parsed.fromPriority,
+      toPriority: parsed.toPriority,
+      escalationLevel: parsed.escalationLevel,
+      reason: parsed.reason ?? null,
+    });
+  }
+
+  private async handleMaintenanceGuestCharge(payload: unknown): Promise<void> {
+    const parsed = MaintenanceGuestChargePayloadSchema.parse(payload);
+
+    logger.info('Maintenance guest charge event processed', {
+      requestId: parsed.requestId,
+      reservationId: parsed.reservationId,
+      folioItemId: parsed.folioItemId,
+      amount: parsed.amount,
+      taxAmount: parsed.taxAmount ?? 0,
+    });
+  }
+
+  private async handleInventoryLowStock(payload: unknown): Promise<void> {
+    const parsed = InventoryLowStockPayloadSchema.parse(payload);
+
+    logger.warn('Inventory low stock event processed', {
+      itemId: parsed.itemId,
+      sku: parsed.sku,
+      availableStock: parsed.availableStock,
+      reorderPoint: parsed.reorderPoint,
+      refType: parsed.refType ?? null,
+      refId: parsed.refId ?? null,
+    });
+  }
+
+  private async handleNightAuditCompleted(payload: unknown): Promise<void> {
+    const parsed = NightAuditCompletedPayloadSchema.parse(payload);
+
+    const dueThrough =
+      parsed.completedAt ??
+      new Date(
+        Date.UTC(
+          parsed.businessDate.getUTCFullYear(),
+          parsed.businessDate.getUTCMonth(),
+          parsed.businessDate.getUTCDate(),
+          23,
+          59,
+          59,
+          999
+        )
+      );
+
+    const preventiveResult = await maintenanceService.generateDuePreventiveTasks(
+      parsed.organizationId,
+      parsed.hotelId,
+      {
+        date: dueThrough,
+      }
+    );
+
+    logger.info('Night audit completed event processed', {
+      organizationId: parsed.organizationId,
+      hotelId: parsed.hotelId,
+      businessDate: parsed.businessDate.toISOString(),
+      completedAt: parsed.completedAt?.toISOString() ?? null,
+      preventiveRequestsCreated: preventiveResult.createdCount,
     });
   }
 
