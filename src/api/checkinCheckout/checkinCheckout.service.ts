@@ -294,6 +294,7 @@ export class CheckinCheckoutService {
       organizationId,
       hotelId
     );
+    const previousRoomId = currentReservation.rooms[0]?.roomId;
 
     const reservation = await this.assignRoom(
       organizationId,
@@ -304,9 +305,7 @@ export class CheckinCheckoutService {
         assignmentType: 'UPGRADE',
         force: true,
         ...(upgradeReason !== undefined ? { reason: upgradeReason } : {}),
-        ...(currentReservation.rooms[0]?.roomId
-          ? { previousRoomId: currentReservation.rooms[0]?.roomId }
-          : {}),
+        ...(previousRoomId ? { previousRoomId } : {}),
       },
       userId
     );
@@ -346,6 +345,7 @@ export class CheckinCheckoutService {
       organizationId,
       hotelId
     );
+    const previousRoomId = currentReservation.rooms[0]?.roomId;
 
     return this.assignRoom(
       organizationId,
@@ -356,9 +356,7 @@ export class CheckinCheckoutService {
         assignmentType: 'CHANGE',
         force: true,
         ...(changeReason !== undefined ? { reason: changeReason } : {}),
-        ...(currentReservation.rooms[0]?.roomId
-          ? { previousRoomId: currentReservation.rooms[0]?.roomId }
-          : {}),
+        ...(previousRoomId ? { previousRoomId } : {}),
       },
       userId
     );
@@ -386,8 +384,11 @@ export class CheckinCheckoutService {
   ) {
     const validation = await folioService.validateCheckout(reservationId, organizationId, hotelId);
 
+    const outstandingBalancePattern = /outstanding balance/i;
     const issues = validation.issues ?? [];
-    const nonBalanceIssues = issues.filter((issue: string) => !/outstanding balance/i.test(issue));
+    const nonBalanceIssues = issues.filter(
+      (issue: string) => !outstandingBalancePattern.test(issue)
+    );
 
     if (!validation.canCheckout && nonBalanceIssues.length > 0) {
       throw new ConflictError(`Cannot check out: ${nonBalanceIssues.join('; ')}`);
