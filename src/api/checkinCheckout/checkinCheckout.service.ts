@@ -384,10 +384,10 @@ export class CheckinCheckoutService {
   ) {
     const validation = await folioService.validateCheckout(reservationId, organizationId, hotelId);
 
-    const outstandingBalancePattern = /outstanding balance/i;
+    const OUTSTANDING_BALANCE_ISSUE = 'outstanding balance';
     const issues = validation.issues ?? [];
     const nonBalanceIssues = issues.filter(
-      (issue: string) => !outstandingBalancePattern.test(issue)
+      (issue) => !issue.toLowerCase().includes(OUTSTANDING_BALANCE_ISSUE)
     );
 
     if (!validation.canCheckout && nonBalanceIssues.length > 0) {
