@@ -268,6 +268,54 @@ async function main() {
                 level: 30,
             },
         }),
+        prisma.role.upsert({
+            where: { uq_role_org_code: { organizationId: org.id, code: 'MAINT_MANAGER' } },
+            update: {},
+            create: {
+                organizationId: org.id,
+                code: 'MAINT_MANAGER',
+                name: 'Maintenance Manager',
+                description: 'Manage maintenance operations and escalations',
+                isSystem: true,
+                level: 70,
+            },
+        }),
+        prisma.role.upsert({
+            where: { uq_role_org_code: { organizationId: org.id, code: 'MAINT_STAFF' } },
+            update: {},
+            create: {
+                organizationId: org.id,
+                code: 'MAINT_STAFF',
+                name: 'Maintenance Staff',
+                description: 'Execute maintenance work orders',
+                isSystem: true,
+                level: 40,
+            },
+        }),
+        prisma.role.upsert({
+            where: { uq_role_org_code: { organizationId: org.id, code: 'GENERAL_MANAGER' } },
+            update: {},
+            create: {
+                organizationId: org.id,
+                code: 'GENERAL_MANAGER',
+                name: 'General Manager',
+                description: 'Operational and financial oversight across departments',
+                isSystem: true,
+                level: 90,
+            },
+        }),
+        prisma.role.upsert({
+            where: { uq_role_org_code: { organizationId: org.id, code: 'ACCOUNTANT' } },
+            update: {},
+            create: {
+                organizationId: org.id,
+                code: 'ACCOUNTANT',
+                name: 'Accountant',
+                description: 'Manage and audit billing and posted charges',
+                isSystem: true,
+                level: 55,
+            },
+        }),
     ]);
 
     console.log('✅ Roles created:', roles.length);
@@ -296,6 +344,14 @@ async function main() {
         'HOUSEKEEPING.INSPECT', 'HOUSEKEEPING.REPORT', 'HOUSEKEEPING.SHIFT_MANAGE',
         'HOUSEKEEPING.DASHBOARD_READ', 'HOUSEKEEPING.LOST_FOUND_LOG',
         'HOUSEKEEPING.LOST_FOUND_UPDATE', 'HOUSEKEEPING.LOST_FOUND_NOTIFY',
+        'INVENTORY.READ', 'INVENTORY.UPDATE', 'INVENTORY.CONSUME',
+        'MAINTENANCE.READ', 'MAINTENANCE.CREATE', 'MAINTENANCE.UPDATE', 'MAINTENANCE.ASSIGN',
+        'MAINTENANCE.START', 'MAINTENANCE.PAUSE', 'MAINTENANCE.COMPLETE', 'MAINTENANCE.VERIFY',
+        'MAINTENANCE.CANCEL', 'MAINTENANCE.ESCALATE', 'MAINTENANCE.PARTS_LOG',
+        'MAINTENANCE.GUEST_CHARGE', 'MAINTENANCE.DASHBOARD_READ',
+        'PREVENTIVE.READ', 'PREVENTIVE.CREATE', 'PREVENTIVE.UPDATE', 'PREVENTIVE.PAUSE',
+        'PREVENTIVE.GENERATE',
+        'ASSET.READ', 'ASSET.CREATE', 'ASSET.UPDATE', 'ASSET.DELETE', 'ASSET.EVALUATE',
         'BILLING.READ', 'BILLING.CREATE', 'BILLING.UPDATE',
         'REPORT.READ',
     ];
@@ -382,6 +438,14 @@ async function main() {
         'HOUSEKEEPING.CANCEL', 'HOUSEKEEPING.AUTO_GENERATE', 'HOUSEKEEPING.INSPECT',
         'HOUSEKEEPING.REPORT', 'HOUSEKEEPING.SHIFT_MANAGE', 'HOUSEKEEPING.DASHBOARD_READ',
         'HOUSEKEEPING.LOST_FOUND_LOG', 'HOUSEKEEPING.LOST_FOUND_UPDATE', 'HOUSEKEEPING.LOST_FOUND_NOTIFY',
+        'INVENTORY.READ', 'INVENTORY.UPDATE',
+        'MAINTENANCE.READ', 'MAINTENANCE.CREATE', 'MAINTENANCE.UPDATE', 'MAINTENANCE.ASSIGN',
+        'MAINTENANCE.START', 'MAINTENANCE.PAUSE', 'MAINTENANCE.COMPLETE', 'MAINTENANCE.VERIFY',
+        'MAINTENANCE.CANCEL', 'MAINTENANCE.ESCALATE', 'MAINTENANCE.PARTS_LOG',
+        'MAINTENANCE.GUEST_CHARGE', 'MAINTENANCE.DASHBOARD_READ',
+        'PREVENTIVE.READ', 'PREVENTIVE.CREATE', 'PREVENTIVE.UPDATE', 'PREVENTIVE.PAUSE',
+        'PREVENTIVE.GENERATE',
+        'ASSET.READ', 'ASSET.CREATE', 'ASSET.UPDATE', 'ASSET.EVALUATE',
     ]);
 
     await grantPermissions('FRONT_DESK', [
@@ -413,6 +477,39 @@ async function main() {
     await grantPermissions('HK_STAFF', [
         'HOUSEKEEPING.READ', 'HOUSEKEEPING.START_TASK', 'HOUSEKEEPING.COMPLETE_TASK',
         'HOUSEKEEPING.MARK_DND', 'HOUSEKEEPING.LOST_FOUND_LOG',
+    ]);
+
+    await grantPermissions('MAINT_MANAGER', [
+        'MAINTENANCE.READ', 'MAINTENANCE.CREATE', 'MAINTENANCE.UPDATE', 'MAINTENANCE.ASSIGN',
+        'MAINTENANCE.START', 'MAINTENANCE.PAUSE', 'MAINTENANCE.COMPLETE', 'MAINTENANCE.VERIFY',
+        'MAINTENANCE.CANCEL', 'MAINTENANCE.ESCALATE', 'MAINTENANCE.PARTS_LOG',
+        'MAINTENANCE.GUEST_CHARGE', 'MAINTENANCE.DASHBOARD_READ',
+        'PREVENTIVE.READ', 'PREVENTIVE.CREATE', 'PREVENTIVE.UPDATE', 'PREVENTIVE.PAUSE',
+        'PREVENTIVE.GENERATE',
+        'ASSET.READ', 'ASSET.CREATE', 'ASSET.UPDATE', 'ASSET.EVALUATE',
+        'INVENTORY.READ', 'INVENTORY.UPDATE', 'INVENTORY.CONSUME',
+        'ROOM.OOO_MANAGE',
+    ]);
+
+    await grantPermissions('MAINT_STAFF', [
+        'MAINTENANCE.READ', 'MAINTENANCE.UPDATE', 'MAINTENANCE.START', 'MAINTENANCE.PAUSE',
+        'MAINTENANCE.COMPLETE', 'MAINTENANCE.PARTS_LOG',
+        'PREVENTIVE.READ',
+        'ASSET.READ',
+        'INVENTORY.READ', 'INVENTORY.CONSUME',
+    ]);
+
+    await grantPermissions('GENERAL_MANAGER', [
+        'MAINTENANCE.READ', 'MAINTENANCE.ASSIGN', 'MAINTENANCE.ESCALATE', 'MAINTENANCE.VERIFY',
+        'MAINTENANCE.DASHBOARD_READ', 'MAINTENANCE.GUEST_CHARGE',
+        'PREVENTIVE.READ', 'PREVENTIVE.GENERATE',
+        'ASSET.READ', 'ASSET.EVALUATE',
+        'REPORT.READ',
+    ]);
+
+    await grantPermissions('ACCOUNTANT', [
+        'MAINTENANCE.READ', 'MAINTENANCE.DASHBOARD_READ', 'MAINTENANCE.GUEST_CHARGE',
+        'BILLING.READ', 'BILLING.UPDATE', 'REPORT.READ',
     ]);
 
     console.log('✅ Permissions assigned to operational roles');

@@ -417,6 +417,17 @@ enum MaintenanceRequestStatus {
   @@map("maintenance_request_status")
 }
 
+enum RecurrenceFrequency {
+  DAILY
+  WEEKLY
+  MONTHLY
+  QUARTERLY
+  YEARLY
+  CUSTOM
+
+  @@map("recurrence_frequency")
+}
+
 enum InventoryCategory {
   ROOM_SUPPLIES
   MINIBAR
@@ -1524,6 +1535,8 @@ model Room {
   hkInspections   HousekeepingInspection[]
   lostFoundItems  LostFoundItem[]
   maintenanceReqs MaintenanceRequest[]
+  preventiveSchedules PreventiveSchedule[]
+  assets         Asset[]
 
   @@unique([hotelId, roomNumber], name: "uq_room_hotel_number")
   @@index([hotelId, status], name: "idx_room_status")
@@ -1958,17 +1971,23 @@ model MaintenanceRequest {
   organizationId String  @map("organization_id") @db.Uuid
   hotelId        String  @map("hotel_id") @db.Uuid
   roomId         String? @map("room_id") @db.Uuid
+  reservationId  String? @map("reservation_id") @db.Uuid
+  assetId        String? @map("asset_id") @db.Uuid
+  preventiveScheduleId String? @map("preventive_schedule_id") @db.Uuid
 
   // Classification
   category    MaintenanceCategory
   priority    MaintenancePriority @default(LOW)
   title       String              @db.VarChar(255)
   description String              @db.Text
+  source      String              @default("MANUAL") @db.VarChar(30)
+  locationDetails String?         @map("location_details") @db.VarChar(255)
 
   // Reporting
   reportedBy     String   @map("reported_by") @db.Uuid
   reportedByType String   @map("reported_by_type") @db.VarChar(20) // STAFF, GUEST, SYSTEM
   reportedAt     DateTime @default(now()) @map("reported_at") @db.Timestamptz(6)
+  guestReported  Boolean  @default(false) @map("guest_reported")
 
   // Assignment
   assignedTo String?   @map("assigned_to") @db.Uuid
@@ -1977,19 +1996,32 @@ model MaintenanceRequest {
   // Scheduling
   scheduledFor   DateTime? @map("scheduled_for") @db.Timestamptz(6)
   estimatedHours Float?    @map("estimated_hours")
+  targetCompletionAt DateTime? @map("target_completion_at") @db.Timestamptz(6)
 
   // Execution
   startedAt   DateTime? @map("started_at") @db.Timestamptz(6)
+  pausedAt    DateTime? @map("paused_at") @db.Timestamptz(6)
+  pauseReason String?   @map("pause_reason") @db.Text
   completedAt DateTime? @map("completed_at") @db.Timestamptz(6)
   resolution  String?   @db.Text
+  verifiedBy  String?   @map("verified_by") @db.Uuid
+  verifiedAt  DateTime? @map("verified_at") @db.Timestamptz(6)
+  cancelledBy String?   @map("cancelled_by") @db.Uuid
+  cancellationReason String? @map("cancellation_reason") @db.Text
 
   // Costs
   partsUsed Json?    @map("parts_used") @db.JsonB // [{itemId, qty, cost}]
   laborCost Decimal? @map("labor_cost") @db.Decimal(10, 2)
   partsCost Decimal? @map("parts_cost") @db.Decimal(10, 2)
+  vendorCost Decimal? @map("vendor_cost") @db.Decimal(10, 2)
+  totalCost Decimal?  @map("total_cost") @db.Decimal(10, 2)
+  guestChargePosted Boolean @default(false) @map("guest_charge_posted")
+  guestChargeFolioItemId String? @map("guest_charge_folio_item_id") @db.Uuid
 
   // Status
   status MaintenanceRequestStatus @default(REPORTED)
+  escalationLevel Int             @default(0) @map("escalation_level")
+  escalatedAt     DateTime?       @map("escalated_at") @db.Timestamptz(6)
 
   // Impact
   roomOutOfOrder Boolean   @default(false) @map("room_out_of_order")
@@ -1998,11 +2030,90 @@ model MaintenanceRequest {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  room Room? @relation(fields: [roomId], references: [id])
+  room               Room?               @relation(fields: [roomId], references: [id])
+  asset              Asset?              @relation(fields: [assetId], references: [id])
+  preventiveSchedule PreventiveSchedule? @relation(fields: [preventiveScheduleId], references: [id])
 
   @@index([hotelId, status, priority], name: "idx_maint_hotel_status")
   @@index([roomId, status], name: "idx_maint_room")
+  @@index([hotelId, status, targetCompletionAt], name: "idx_maint_hotel_sla")
+  @@index([assignedTo, status, priority], name: "idx_maint_assigned")
+  @@index([hotelId, status, escalationLevel], name: "idx_maint_escalation")
+  @@index([preventiveScheduleId, status], name: "idx_maint_schedule")
   @@map("maintenance_requests")
+}
+
+model PreventiveSchedule {
+  id             String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  hotelId        String @map("hotel_id") @db.Uuid
+  roomId         String? @map("room_id") @db.Uuid
+  assetId        String? @map("asset_id") @db.Uuid
+
+  title       String              @db.VarChar(255)
+  description String?             @db.Text
+  category    MaintenanceCategory
+  priority    MaintenancePriority @default(MEDIUM)
+
+  frequency      RecurrenceFrequency
+  frequencyValue Int                 @default(1) @map("frequency_value")
+  startDate      DateTime            @map("start_date") @db.Date
+  endDate        DateTime?           @map("end_date") @db.Date
+  nextRunAt      DateTime            @map("next_run_at") @db.Timestamptz(6)
+  lastGeneratedAt DateTime?          @map("last_generated_at") @db.Timestamptz(6)
+
+  estimatedHours Float? @map("estimated_hours")
+  defaultTitle   String? @map("default_title") @db.VarChar(255)
+  defaultDescription String? @map("default_description") @db.Text
+  autoAssignTo   String? @map("auto_assign_to") @db.Uuid
+  isActive       Boolean @default(true) @map("is_active")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  room              Room?                @relation(fields: [roomId], references: [id])
+  asset             Asset?               @relation(fields: [assetId], references: [id])
+  generatedRequests MaintenanceRequest[]
+
+  @@index([hotelId, isActive, nextRunAt], name: "idx_preventive_hotel_due")
+  @@index([roomId, isActive], name: "idx_preventive_room")
+  @@index([assetId, isActive], name: "idx_preventive_asset")
+  @@map("preventive_schedules")
+}
+
+model Asset {
+  id             String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  hotelId        String @map("hotel_id") @db.Uuid
+  roomId         String? @map("room_id") @db.Uuid
+
+  assetTag      String @map("asset_tag") @db.VarChar(100)
+  name          String @db.VarChar(255)
+  category      String @db.VarChar(100)
+  manufacturer  String? @db.VarChar(100)
+  modelNumber   String? @map("model_number") @db.VarChar(100)
+  serialNumber  String? @map("serial_number") @db.VarChar(100)
+  status        String  @default("ACTIVE") @db.VarChar(30)
+  purchaseDate  DateTime? @map("purchase_date") @db.Date
+  installDate   DateTime? @map("install_date") @db.Date
+  warrantyUntil DateTime? @map("warranty_until") @db.Date
+  lifeExpectancyMonths Int? @map("life_expectancy_months")
+  accumulatedServiceCost Decimal @default(0) @map("accumulated_service_cost") @db.Decimal(12, 2)
+  notes         String? @db.Text
+  isActive      Boolean @default(true) @map("is_active")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  room         Room?                @relation(fields: [roomId], references: [id])
+  schedules    PreventiveSchedule[]
+  maintenanceReqs MaintenanceRequest[]
+
+  @@unique([hotelId, assetTag], name: "uq_asset_hotel_tag")
+  @@index([hotelId, isActive], name: "idx_asset_hotel_active")
+  @@index([roomId], name: "idx_asset_room")
+  @@map("assets")
 }
 
 // ============================================

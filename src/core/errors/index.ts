@@ -119,6 +119,45 @@ export class ExpressCheckoutNotEligibleError extends AppError {
   }
 }
 
+export class InvalidStatusTransitionError extends AppError {
+  constructor(message: string = 'Invalid status transition', details?: unknown) {
+    super(message, StatusCodes.CONFLICT, 'INVALID_STATUS_TRANSITION', true, details);
+  }
+}
+
+export class OOOReservationConflictError extends AppError {
+  constructor(
+    message: string = 'Room out-of-order window conflicts with reservation schedule',
+    details?: unknown
+  ) {
+    super(message, StatusCodes.CONFLICT, 'OOO_RESERVATION_CONFLICT', true, details);
+  }
+}
+
+export class InsufficientStockError extends AppError {
+  constructor(message: string = 'Insufficient inventory stock', details?: unknown) {
+    super(message, StatusCodes.CONFLICT, 'INSUFFICIENT_STOCK', true, details);
+  }
+}
+
+export class GuestChargeAlreadyPostedError extends AppError {
+  constructor(message: string = 'Guest charge already posted for this request', details?: unknown) {
+    super(message, StatusCodes.CONFLICT, 'GUEST_CHARGE_ALREADY_POSTED', true, details);
+  }
+}
+
+export class AssetTagAlreadyExistsError extends AppError {
+  constructor(message: string = 'Asset tag already exists for this hotel', details?: unknown) {
+    super(message, StatusCodes.CONFLICT, 'ASSET_TAG_ALREADY_EXISTS', true, details);
+  }
+}
+
+export class ScheduleNotDueError extends AppError {
+  constructor(message: string = 'Preventive schedule is not due yet', details?: unknown) {
+    super(message, StatusCodes.BAD_REQUEST, 'SCHEDULE_NOT_DUE', true, details);
+  }
+}
+
 export class UnprocessableEntityError extends AppError {
   constructor(message: string = ReasonPhrases.UNPROCESSABLE_ENTITY, details?: unknown) {
     super(message, StatusCodes.UNPROCESSABLE_ENTITY, 'UNPROCESSABLE_ENTITY', true, details);
