@@ -197,7 +197,7 @@ async function main() {
     // Create default roles
     const roles = await Promise.all([
         prisma.role.upsert({
-            where: { id: '' },
+            where: { uq_role_org_code: { organizationId: org.id, code: 'SUPER_ADMIN' } },
             update: {},
             create: {
                 organizationId: org.id,
@@ -209,7 +209,7 @@ async function main() {
             },
         }),
         prisma.role.upsert({
-            where: { id: '' },
+            where: { uq_role_org_code: { organizationId: org.id, code: 'HOTEL_MANAGER' } },
             update: {},
             create: {
                 organizationId: org.id,
@@ -221,7 +221,7 @@ async function main() {
             },
         }),
         prisma.role.upsert({
-            where: { id: '' },
+            where: { uq_role_org_code: { organizationId: org.id, code: 'FRONT_DESK' } },
             update: {},
             create: {
                 organizationId: org.id,
@@ -230,6 +230,42 @@ async function main() {
                 description: 'Handle check-ins and reservations',
                 isSystem: true,
                 level: 50,
+            },
+        }),
+        prisma.role.upsert({
+            where: { uq_role_org_code: { organizationId: org.id, code: 'HK_MANAGER' } },
+            update: {},
+            create: {
+                organizationId: org.id,
+                code: 'HK_MANAGER',
+                name: 'Housekeeping Manager',
+                description: 'Manage housekeeping operations and quality',
+                isSystem: true,
+                level: 70,
+            },
+        }),
+        prisma.role.upsert({
+            where: { uq_role_org_code: { organizationId: org.id, code: 'HK_SUPERVISOR' } },
+            update: {},
+            create: {
+                organizationId: org.id,
+                code: 'HK_SUPERVISOR',
+                name: 'Housekeeping Supervisor',
+                description: 'Supervise housekeeping task execution and inspections',
+                isSystem: true,
+                level: 60,
+            },
+        }),
+        prisma.role.upsert({
+            where: { uq_role_org_code: { organizationId: org.id, code: 'HK_STAFF' } },
+            update: {},
+            create: {
+                organizationId: org.id,
+                code: 'HK_STAFF',
+                name: 'Housekeeping Staff',
+                description: 'Perform room cleaning tasks',
+                isSystem: true,
+                level: 30,
             },
         }),
     ]);
@@ -242,8 +278,18 @@ async function main() {
         'HOTEL.READ', 'HOTEL.CREATE', 'HOTEL.UPDATE', 'HOTEL.DELETE',
         'USER.READ', 'USER.CREATE', 'USER.UPDATE', 'USER.DELETE',
         'GUEST.READ', 'GUEST.CREATE', 'GUEST.UPDATE',
+        'GUEST.DELETE', 'GUEST.MERGE', 'GUEST.UPDATE_VIP',
         'RESERVATION.READ', 'RESERVATION.CREATE', 'RESERVATION.UPDATE', 'RESERVATION.CANCEL',
-        'ROOM.READ', 'ROOM.CREATE', 'ROOM.UPDATE',
+        'RESERVATION.CHECK_IN', 'RESERVATION.CHECK_OUT', 'RESERVATION.ASSIGN_ROOM',
+        'RESERVATION.NO_SHOW', 'RESERVATION.SPLIT',
+        'ROOM.READ', 'ROOM.CREATE', 'ROOM.UPDATE', 'ROOM.DELETE', 'ROOM.BULK_UPDATE',
+        'ROOM.STATUS_UPDATE', 'ROOM.OOO_MANAGE', 'ROOM.HISTORY_READ',
+        'HOUSEKEEPING.READ', 'HOUSEKEEPING.CREATE', 'HOUSEKEEPING.UPDATE',
+        'HOUSEKEEPING.ASSIGN', 'HOUSEKEEPING.START_TASK', 'HOUSEKEEPING.COMPLETE_TASK',
+        'HOUSEKEEPING.MARK_DND', 'HOUSEKEEPING.CANCEL', 'HOUSEKEEPING.AUTO_GENERATE',
+        'HOUSEKEEPING.INSPECT', 'HOUSEKEEPING.REPORT', 'HOUSEKEEPING.SHIFT_MANAGE',
+        'HOUSEKEEPING.DASHBOARD_READ', 'HOUSEKEEPING.LOST_FOUND_LOG',
+        'HOUSEKEEPING.LOST_FOUND_UPDATE', 'HOUSEKEEPING.LOST_FOUND_NOTIFY',
         'BILLING.READ', 'BILLING.CREATE', 'BILLING.UPDATE',
         'REPORT.READ',
     ];
@@ -262,19 +308,26 @@ async function main() {
 
     console.log('✅ Permissions created:', permissions.length);
 
+    const roleByCode = Object.fromEntries(roles.map((role) => [role.code, role]));
+
     // Assign all permissions to SUPER_ADMIN
     const allPerms = await prisma.permission.findMany();
     for (const perm of allPerms) {
+        const superAdminRole = roleByCode['SUPER_ADMIN'];
+        if (!superAdminRole) {
+            continue;
+        }
+
         await prisma.rolePermission.upsert({
             where: {
                 roleId_permissionId: {
-                    roleId: roles[0].id,
+                    roleId: superAdminRole.id,
                     permissionId: perm.id,
                 },
             },
             update: {},
             create: {
-                roleId: roles[0].id,
+                roleId: superAdminRole.id,
                 permissionId: perm.id,
             },
         });
@@ -282,13 +335,80 @@ async function main() {
 
     console.log('✅ Permissions assigned to SUPER_ADMIN');
 
+    const permissionIdByCode = Object.fromEntries(allPerms.map((perm) => [perm.code, perm.id]));
+
+    const grantPermissions = async (roleCode: string, permissionCodes: string[]) => {
+        const role = roleByCode[roleCode];
+        if (!role) return;
+
+        for (const code of permissionCodes) {
+            const permissionId = permissionIdByCode[code];
+            if (!permissionId) continue;
+
+            await prisma.rolePermission.upsert({
+                where: {
+                    roleId_permissionId: {
+                        roleId: role.id,
+                        permissionId,
+                    },
+                },
+                update: {},
+                create: {
+                    roleId: role.id,
+                    permissionId,
+                },
+            });
+        }
+    };
+
+    await grantPermissions('HOTEL_MANAGER', [
+        'HOTEL.READ', 'HOTEL.UPDATE',
+        'ROOM.READ', 'ROOM.CREATE', 'ROOM.UPDATE', 'ROOM.DELETE',
+        'RESERVATION.READ', 'RESERVATION.UPDATE', 'RESERVATION.CHECK_IN', 'RESERVATION.CHECK_OUT',
+        'HOUSEKEEPING.READ', 'HOUSEKEEPING.CREATE', 'HOUSEKEEPING.UPDATE', 'HOUSEKEEPING.ASSIGN',
+        'HOUSEKEEPING.START_TASK', 'HOUSEKEEPING.COMPLETE_TASK', 'HOUSEKEEPING.MARK_DND',
+        'HOUSEKEEPING.CANCEL', 'HOUSEKEEPING.AUTO_GENERATE', 'HOUSEKEEPING.INSPECT',
+        'HOUSEKEEPING.REPORT', 'HOUSEKEEPING.SHIFT_MANAGE', 'HOUSEKEEPING.DASHBOARD_READ',
+        'HOUSEKEEPING.LOST_FOUND_LOG', 'HOUSEKEEPING.LOST_FOUND_UPDATE', 'HOUSEKEEPING.LOST_FOUND_NOTIFY',
+    ]);
+
+    await grantPermissions('FRONT_DESK', [
+        'GUEST.READ', 'GUEST.CREATE', 'GUEST.UPDATE',
+        'RESERVATION.READ', 'RESERVATION.CREATE', 'RESERVATION.UPDATE',
+        'RESERVATION.CHECK_IN', 'RESERVATION.CHECK_OUT',
+        'ROOM.READ',
+        'HOUSEKEEPING.MARK_DND', 'HOUSEKEEPING.DASHBOARD_READ', 'HOUSEKEEPING.LOST_FOUND_LOG',
+    ]);
+
+    await grantPermissions('HK_MANAGER', [
+        'HOUSEKEEPING.READ', 'HOUSEKEEPING.CREATE', 'HOUSEKEEPING.UPDATE', 'HOUSEKEEPING.ASSIGN',
+        'HOUSEKEEPING.START_TASK', 'HOUSEKEEPING.COMPLETE_TASK', 'HOUSEKEEPING.MARK_DND',
+        'HOUSEKEEPING.CANCEL', 'HOUSEKEEPING.AUTO_GENERATE', 'HOUSEKEEPING.INSPECT',
+        'HOUSEKEEPING.REPORT', 'HOUSEKEEPING.SHIFT_MANAGE', 'HOUSEKEEPING.DASHBOARD_READ',
+        'HOUSEKEEPING.LOST_FOUND_LOG', 'HOUSEKEEPING.LOST_FOUND_UPDATE', 'HOUSEKEEPING.LOST_FOUND_NOTIFY',
+    ]);
+
+    await grantPermissions('HK_SUPERVISOR', [
+        'HOUSEKEEPING.READ', 'HOUSEKEEPING.CREATE', 'HOUSEKEEPING.UPDATE', 'HOUSEKEEPING.ASSIGN',
+        'HOUSEKEEPING.START_TASK', 'HOUSEKEEPING.COMPLETE_TASK', 'HOUSEKEEPING.MARK_DND',
+        'HOUSEKEEPING.INSPECT', 'HOUSEKEEPING.REPORT', 'HOUSEKEEPING.DASHBOARD_READ',
+        'HOUSEKEEPING.LOST_FOUND_LOG', 'HOUSEKEEPING.LOST_FOUND_UPDATE',
+    ]);
+
+    await grantPermissions('HK_STAFF', [
+        'HOUSEKEEPING.READ', 'HOUSEKEEPING.START_TASK', 'HOUSEKEEPING.COMPLETE_TASK',
+        'HOUSEKEEPING.MARK_DND', 'HOUSEKEEPING.LOST_FOUND_LOG',
+    ]);
+
+    console.log('✅ Permissions assigned to operational roles');
+
     // Assign role to admin user
     // Note: Using findFirst + create pattern instead of upsert because hotelId can be null
     // and the unique constraint doesn't work with null values in compound keys
     const existingUserRole = await prisma.userRole.findFirst({
         where: {
             userId: admin.id,
-            roleId: roles[0].id,
+            roleId: roleByCode['SUPER_ADMIN'].id,
             hotelId: null,
         },
     });
@@ -297,7 +417,7 @@ async function main() {
         await prisma.userRole.create({
             data: {
                 userId: admin.id,
-                roleId: roles[0].id,
+                roleId: roleByCode['SUPER_ADMIN'].id,
                 organizationId: org.id,
                 assignedBy: admin.id,
             },

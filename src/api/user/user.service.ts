@@ -13,6 +13,15 @@ import type {
   UserWithRoles,
 } from './user.types';
 
+export function generateTemporaryPassword(): string {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
+  let password = '';
+  for (let index = 0; index < 12; index++) {
+    password += chars.charAt(crypto.randomInt(chars.length));
+  }
+  return password;
+}
+
 export class UserService {
   private userRepo: UserRepository;
   private orgService: OrganizationService;
@@ -360,13 +369,7 @@ export class UserService {
   // ============================================================================
 
   private generateTemporaryPassword(): string {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
-    const bytes = crypto.randomBytes(12);
-    let password = '';
-    for (let i = 0; i < 12; i++) {
-      password += chars.charAt(bytes.readUInt8(i) % chars.length);
-    }
-    return password;
+    return generateTemporaryPassword();
   }
 
   private async checkManagerCycle(userId: string, newManagerId: string): Promise<boolean> {

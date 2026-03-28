@@ -1,7 +1,7 @@
 import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from '../../core/errors';
 import { logger } from '../../core/logger';
 import { prisma } from '../../database/prisma';
-import type { Prisma } from '../../generated/prisma';
+import { Prisma } from '../../generated/prisma';
 import { type FolioRepository, folioRepository } from './folio.repository';
 import type {
   CreateInvoiceInput,
@@ -567,9 +567,10 @@ export class FolioService {
       status: 'OPEN',
       billToName:
         input.billToName || `${reservation.guest.firstName} ${reservation.guest.lastName}`,
-      billToAddress: input.billToAddress != null
-        ? (input.billToAddress as unknown as Prisma.InputJsonValue)
-        : Prisma.JsonNull,
+      billToAddress:
+        input.billToAddress != null
+          ? (input.billToAddress as unknown as Prisma.InputJsonValue)
+          : Prisma.JsonNull,
       documentUrl: null,
       sentAt: null,
       paidAt: null,

@@ -16,7 +16,8 @@ export const authMiddleware = async (req: Request, _res: Response, next: NextFun
   const authHeader = req.headers.authorization;
 
   if (!authHeader?.startsWith('Bearer ')) {
-    throw new Error('No token provided');
+    next(new UnauthorizedError('No token provided'));
+    return;
   }
 
   const token = authHeader.substring(7);
@@ -27,6 +28,6 @@ export const authMiddleware = async (req: Request, _res: Response, next: NextFun
     req.user = payload as unknown as AccessTokenPayload;
     next();
   } catch {
-    throw new UnauthorizedError('Invalid or expired token');
+    next(new UnauthorizedError('Invalid or expired token'));
   }
 };

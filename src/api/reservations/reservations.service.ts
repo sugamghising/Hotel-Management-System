@@ -250,19 +250,18 @@ export class ReservationsService {
 
     // Auto check-in: reuse existing check-in workflow so reservation, reservation_room,
     // and room statuses stay in sync.
-    return this.checkIn(
-      reservation.id,
-      organizationId,
-      { roomId: input.roomId },
-      createdBy
-    );
+    return this.checkIn(reservation.id, organizationId, { roomId: input.roomId }, createdBy);
   }
 
   // ============================================================================
   // READ
   // ============================================================================
 
-  async findById(id: string, organizationId: string, hotelId?: string): Promise<ReservationResponse> {
+  async findById(
+    id: string,
+    organizationId: string,
+    hotelId?: string
+  ): Promise<ReservationResponse> {
     const reservation = await this.reservationsRepo.findById(id);
 
     if (!reservation || reservation.deletedAt) {
@@ -565,7 +564,14 @@ export class ReservationsService {
       throw new NotFoundError('Assigned room');
     }
 
-    await this.reservationsRepo.checkOut(id, resRoom.id, resRoom.roomId, input.lateCheckOut);
+    await this.reservationsRepo.checkOut(
+      id,
+      resRoom.id,
+      resRoom.roomId,
+      organizationId,
+      hotelId,
+      input.lateCheckOut
+    );
 
     // Record payment if provided
     if (input.payment) {
@@ -644,7 +650,11 @@ export class ReservationsService {
     return this.findById(id, organizationId);
   }
 
-  async unassignRoom(id: string, organizationId: string, hotelId: string): Promise<ReservationResponse> {
+  async unassignRoom(
+    id: string,
+    organizationId: string,
+    hotelId: string
+  ): Promise<ReservationResponse> {
     const reservation = await this.reservationsRepo.findById(id);
 
     if (!reservation || reservation.deletedAt) {

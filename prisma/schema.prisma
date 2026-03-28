@@ -116,7 +116,6 @@ enum ReservationStatus {
   @@map("reservation_status")
 }
 
-
 enum CheckInStatus {
   NOT_CHECKED_IN
   EARLY_CHECK_IN
@@ -162,8 +161,6 @@ enum CancellationPolicy {
   @@map("cancellation_policy")
 }
 
-
-
 enum GuestType {
   TRANSIENT
   CORPORATE
@@ -187,7 +184,6 @@ enum VIPStatus {
   @@map("vip_status")
 }
 
-
 enum RoomReservationStatus {
   RESERVED
   ASSIGNED
@@ -197,9 +193,6 @@ enum RoomReservationStatus {
 
   @@map("room_reservation_status")
 }
-
-
-
 
 enum RoomStatus {
   VACANT_CLEAN
@@ -237,8 +230,6 @@ enum MaintenanceStatus {
   @@map("maintenance_status")
 }
 
-
-
 enum PricingType {
   DAILY
   PACKAGE
@@ -257,8 +248,6 @@ enum MealPlan {
 
   @@map("meal_plan")
 }
-
-
 
 enum FolioItemType {
   ROOM_CHARGE
@@ -305,7 +294,6 @@ enum PaymentStatus {
   @@map("payment_status")
 }
 
-
 enum InvoiceStatus {
   DRAFT
   OPEN
@@ -333,18 +321,51 @@ enum HousekeepingType {
   @@map("housekeeping_type")
 }
 
-
 enum HousekeepingStatus {
   PENDING
   IN_PROGRESS
   COMPLETED
   VERIFIED
   ISSUES_REPORTED
+  DND
   CANCELLED
 
   @@map("housekeeping_status")
 }
 
+enum HousekeepingInspectionOutcome {
+  PASSED
+  FAILED
+
+  @@map("housekeeping_inspection_outcome")
+}
+
+enum HousekeepingShiftStatus {
+  PLANNED
+  ACTIVE
+  COMPLETED
+  CANCELLED
+
+  @@map("housekeeping_shift_status")
+}
+
+enum LostFoundStatus {
+  REPORTED
+  STORED
+  CLAIMED
+  DISPOSED
+
+  @@map("lost_found_status")
+}
+
+enum OutboxEventStatus {
+  PENDING
+  PROCESSING
+  PROCESSED
+  DEAD_LETTER
+
+  @@map("outbox_event_status")
+}
 
 enum MaintenanceCategory {
   PLUMBING
@@ -424,7 +445,6 @@ enum PurchaseOrderStatus {
   @@map("purchase_order_status")
 }
 
-
 enum CommunicationType {
   RESERVATION_CONFIRMATION
   CHECKIN_REMINDER
@@ -460,8 +480,6 @@ enum CommunicationStatus {
   @@map("communication_status")
 }
 
-
-
 enum NightAuditStatus {
   PENDING
   IN_PROGRESS
@@ -471,7 +489,6 @@ enum NightAuditStatus {
 
   @@map("night_audit_status")
 }
-
 
 enum POSOrderStatus {
   OPEN
@@ -1096,8 +1113,6 @@ model SyncConflict {
   @@map("sync_conflicts")
 }
 
-
-
 model Guest {
   id             String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId String  @map("organization_id") @db.Uuid
@@ -1173,8 +1188,6 @@ model Guest {
   @@map("guests")
 }
 
-
-
 model Reservation {
   id             String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId String @map("organization_id") @db.Uuid
@@ -1233,9 +1246,10 @@ model Reservation {
   cardBrand       String? @map("card_brand") @db.VarChar(20)
 
   // Notes
-  guestNotes      String? @map("guest_notes") @db.Text
-  specialRequests String? @map("special_requests") @db.Text
-  internalNotes   String? @map("internal_notes") @db.Text
+  guestNotes          String? @map("guest_notes") @db.Text
+  specialRequests     String? @map("special_requests") @db.Text
+  internalNotes       String? @map("internal_notes") @db.Text
+  declineHousekeeping Boolean @default(false) @map("decline_housekeeping")
 
   // Cancellation
   cancelledAt        DateTime? @map("cancelled_at") @db.Timestamptz(6)
@@ -1272,8 +1286,6 @@ model Reservation {
   @@map("reservations")
 }
 
-
-
 model ReservationRoom {
   id            String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   reservationId String  @map("reservation_id") @db.Uuid
@@ -1304,8 +1316,6 @@ model ReservationRoom {
   @@index([roomId, checkInAt, checkOutAt], name: "idx_resroom_room_dates")
   @@map("reservation_rooms")
 }
-
-
 
 // ============================================
 // ROOMS & INVENTORY MODULE
@@ -1352,8 +1362,8 @@ model RoomType {
   deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
 
   // Relations
-  organization Organization    @relation(fields: [organizationId], references: [id])
-  hotel        Hotel           @relation(fields: [hotelId], references: [id])
+  organization Organization      @relation(fields: [organizationId], references: [id])
+  hotel        Hotel             @relation(fields: [hotelId], references: [id])
   rooms        Room[]
   ratePlans    RatePlan[]
   inventory    RoomInventory[]
@@ -1403,11 +1413,13 @@ model Room {
   deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
 
   // Relations
-  organization    Organization         @relation(fields: [organizationId], references: [id])
-  hotel           Hotel                @relation(fields: [hotelId], references: [id])
-  roomType        RoomType             @relation(fields: [roomTypeId], references: [id])
+  organization    Organization             @relation(fields: [organizationId], references: [id])
+  hotel           Hotel                    @relation(fields: [hotelId], references: [id])
+  roomType        RoomType                 @relation(fields: [roomTypeId], references: [id])
   reservations    ReservationRoom[]
   hkTasks         HousekeepingTask[]
+  hkInspections   HousekeepingInspection[]
+  lostFoundItems  LostFoundItem[]
   maintenanceReqs MaintenanceRequest[]
 
   @@unique([hotelId, roomNumber], name: "uq_room_hotel_number")
@@ -1415,8 +1427,6 @@ model Room {
   @@index([hotelId, roomTypeId, status], name: "idx_room_type_status")
   @@map("rooms")
 }
-
-
 
 model RoomInventory {
   id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
@@ -1454,8 +1464,6 @@ model RoomInventory {
 // ============================================
 // RATE & PRICING MODULE
 // ============================================
-
-
 
 model RatePlan {
   id             String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
@@ -1646,8 +1654,6 @@ model Invoice {
   @@map("invoices")
 }
 
-
-
 model HousekeepingTask {
   id             String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId String @map("organization_id") @db.Uuid
@@ -1665,16 +1671,30 @@ model HousekeepingTask {
   // Scheduling
   scheduledFor     DateTime @map("scheduled_for") @db.Date
   estimatedMinutes Int      @default(30) @map("estimated_minutes")
+  actualMinutes    Int?     @map("actual_minutes")
 
   // Execution
-  startedAt   DateTime? @map("started_at") @db.Timestamptz(6)
-  completedAt DateTime? @map("completed_at") @db.Timestamptz(6)
-  verifiedAt  DateTime? @map("verified_at") @db.Timestamptz(6)
-  verifiedBy  String?   @map("verified_by") @db.Uuid
+  startedAt        DateTime? @map("started_at") @db.Timestamptz(6)
+  completedAt      DateTime? @map("completed_at") @db.Timestamptz(6)
+  verifiedAt       DateTime? @map("verified_at") @db.Timestamptz(6)
+  verifiedBy       String?   @map("verified_by") @db.Uuid
+  completionNotes  String?   @map("completion_notes") @db.Text
+  completionPhotos Json?     @map("completion_photos") @db.JsonB
+  suppliesUsed     Json?     @map("supplies_used") @db.JsonB
 
   // Quality
   inspectionScore Int?    @map("inspection_score") // 1-100
   issuesFound     String? @map("issues_found") @db.Text
+
+  // DND handling
+  dndAt     DateTime? @map("dnd_at") @db.Timestamptz(6)
+  dndBy     String?   @map("dnd_by") @db.Uuid
+  dndReason String?   @map("dnd_reason") @db.Text
+
+  // Cancellation
+  cancelledAt        DateTime? @map("cancelled_at") @db.Timestamptz(6)
+  cancelledBy        String?   @map("cancelled_by") @db.Uuid
+  cancellationReason String?   @map("cancellation_reason") @db.Text
 
   // Notes
   notes         String? @db.Text
@@ -1683,17 +1703,152 @@ model HousekeepingTask {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   createdBy String   @map("created_by") @db.Uuid
 
-  room Room @relation(fields: [roomId], references: [id])
+  room        Room                     @relation(fields: [roomId], references: [id])
+  inspections HousekeepingInspection[]
 
   @@index([hotelId, scheduledFor, status], name: "idx_hk_hotel_date_status")
   @@index([assignedTo, status], name: "idx_hk_staff_status")
+  @@index([hotelId, roomId, scheduledFor, taskType], name: "idx_hk_room_date_type")
   @@map("housekeeping_tasks")
+}
+
+model HousekeepingInspection {
+  id             String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  hotelId        String @map("hotel_id") @db.Uuid
+  taskId         String @map("task_id") @db.Uuid
+  roomId         String @map("room_id") @db.Uuid
+
+  // Attribution
+  staffId     String? @map("staff_id") @db.Uuid
+  inspectedBy String  @map("inspected_by") @db.Uuid
+
+  // Result
+  scores       Json                          @db.JsonB
+  overallScore Int                           @map("overall_score")
+  outcome      HousekeepingInspectionOutcome
+  autoFailed   Boolean                       @default(false) @map("auto_failed")
+
+  // Findings
+  failureItems         Json?   @map("failure_items") @db.JsonB
+  feedbackToStaff      String? @map("feedback_to_staff") @db.Text
+  requiresMaintenance  Boolean @default(false) @map("requires_maintenance")
+  maintenanceRequestId String? @map("maintenance_request_id") @db.Uuid
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  task HousekeepingTask @relation(fields: [taskId], references: [id])
+  room Room             @relation(fields: [roomId], references: [id])
+
+  @@index([hotelId, createdAt], name: "idx_hki_hotel_created")
+  @@index([taskId, createdAt], name: "idx_hki_task_created")
+  @@index([staffId, createdAt], name: "idx_hki_staff_created")
+  @@index([roomId, createdAt], name: "idx_hki_room_created")
+  @@map("housekeeping_inspections")
+}
+
+model HousekeepingShift {
+  id             String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  hotelId        String @map("hotel_id") @db.Uuid
+
+  shiftDate DateTime @map("shift_date") @db.Date
+  startTime DateTime @map("start_time") @db.Timestamptz(6)
+  endTime   DateTime @map("end_time") @db.Timestamptz(6)
+
+  status       HousekeepingShiftStatus @default(PLANNED)
+  supervisorId String?                 @map("supervisor_id") @db.Uuid
+  notes        String?                 @db.Text
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  assignments HousekeepingShiftAssignment[]
+
+  @@index([hotelId, shiftDate, status], name: "idx_hks_hotel_date_status")
+  @@index([hotelId, supervisorId, shiftDate], name: "idx_hks_supervisor_date")
+  @@map("housekeeping_shifts")
+}
+
+model HousekeepingShiftAssignment {
+  id             String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  hotelId        String @map("hotel_id") @db.Uuid
+  shiftId        String @map("shift_id") @db.Uuid
+  staffId        String @map("staff_id") @db.Uuid
+
+  role String? @db.VarChar(40)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  shift HousekeepingShift @relation(fields: [shiftId], references: [id])
+
+  @@unique([shiftId, staffId], name: "uq_hkshift_staff")
+  @@index([hotelId, staffId], name: "idx_hksa_hotel_staff")
+  @@index([organizationId, hotelId, shiftId], name: "idx_hksa_scope_shift")
+  @@map("housekeeping_shift_assignments")
+}
+
+model LostFoundItem {
+  id             String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String  @map("organization_id") @db.Uuid
+  hotelId        String  @map("hotel_id") @db.Uuid
+  roomId         String? @map("room_id") @db.Uuid
+
+  itemName      String   @map("item_name") @db.VarChar(160)
+  category      String   @db.VarChar(80)
+  description   String?  @db.Text
+  locationFound String   @map("location_found") @db.VarChar(120)
+  foundBy       String   @map("found_by") @db.Uuid
+  foundAt       DateTime @default(now()) @map("found_at") @db.Timestamptz(6)
+
+  status          LostFoundStatus @default(REPORTED)
+  storageLocation String?         @map("storage_location") @db.VarChar(120)
+  custodyNotes    String?         @map("custody_notes") @db.Text
+
+  guestId        String?   @map("guest_id") @db.Uuid
+  claimedByName  String?   @map("claimed_by_name") @db.VarChar(180)
+  claimedAt      DateTime? @map("claimed_at") @db.Timestamptz(6)
+  disposedAt     DateTime? @map("disposed_at") @db.Timestamptz(6)
+  disposalMethod String?   @map("disposal_method") @db.VarChar(120)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  room Room? @relation(fields: [roomId], references: [id])
+
+  @@index([hotelId, status, foundAt], name: "idx_lf_hotel_status_found")
+  @@index([hotelId, roomId, foundAt], name: "idx_lf_hotel_room_found")
+  @@index([hotelId, category], name: "idx_lf_hotel_category")
+  @@map("lost_found_items")
+}
+
+model OutboxEvent {
+  id            String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  eventType     String @map("event_type") @db.VarChar(120)
+  aggregateType String @map("aggregate_type") @db.VarChar(80)
+  aggregateId   String @map("aggregate_id") @db.Uuid
+
+  payload Json @db.JsonB
+
+  status        OutboxEventStatus @default(PENDING)
+  attempts      Int               @default(0)
+  maxAttempts   Int               @default(8) @map("max_attempts")
+  nextAttemptAt DateTime          @default(now()) @map("next_attempt_at") @db.Timestamptz(6)
+  lastError     String?           @map("last_error") @db.Text
+
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  processedAt DateTime? @map("processed_at") @db.Timestamptz(6)
+
+  @@index([status, nextAttemptAt], name: "idx_outbox_status_next")
+  @@index([eventType, createdAt], name: "idx_outbox_type_created")
+  @@index([aggregateType, aggregateId], name: "idx_outbox_aggregate")
+  @@map("outbox_events")
 }
 
 // ============================================
 // MAINTENANCE MODULE
 // ============================================
-
 
 model MaintenanceRequest {
   id             String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
@@ -1750,8 +1905,6 @@ model MaintenanceRequest {
 // ============================================
 // INVENTORY & PROCUREMENT MODULE
 // ============================================
-
-
 
 model InventoryItem {
   id             String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
@@ -1859,8 +2012,6 @@ model Vendor {
   @@map("vendors")
 }
 
-
-
 model PurchaseOrder {
   id             String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId String @map("organization_id") @db.Uuid
@@ -1919,7 +2070,6 @@ model PurchaseOrderItem {
 // COMMUNICATIONS MODULE
 // ============================================
 
-
 model Communication {
   id             String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId String  @map("organization_id") @db.Uuid
@@ -1964,7 +2114,6 @@ model Communication {
 // NIGHT AUDIT MODULE
 // ============================================
 
-
 model NightAudit {
   id      String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   hotelId String @map("hotel_id") @db.Uuid
@@ -2003,8 +2152,6 @@ model NightAudit {
 // ============================================
 // POS MODULE (Restaurant/Outlets)
 // ============================================
-
-
 
 model POSOrder {
   id             String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
