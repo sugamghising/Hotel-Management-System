@@ -307,7 +307,7 @@ export class MaintenanceRepository {
         organizationId,
         hotelId,
         preventiveScheduleId,
-        reportedAt: {
+        scheduledFor: {
           gte: start,
           lt: end,
         },

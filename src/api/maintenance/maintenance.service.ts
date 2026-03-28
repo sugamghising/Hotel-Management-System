@@ -1552,10 +1552,49 @@ export class MaintenanceService {
 
   private computeInitialNextRun(startDate: Date, frequency: string, value: number): Date {
     const now = new Date();
-    let cursor = startDate;
 
-    while (cursor <= now) {
-      cursor = this.calculateNextRun(cursor, frequency, value);
+    if (startDate > now) {
+      return startDate;
+    }
+
+    if (value > 0) {
+      const startTime = startDate.getTime();
+      const nowTime = now.getTime();
+
+      if (frequency === 'DAILY') {
+        const intervalMs = value * 24 * 60 * 60 * 1000;
+        const elapsed = nowTime - startTime;
+        if (elapsed >= 0) {
+          const intervalsPassed = Math.floor(elapsed / intervalMs) + 1;
+          return new Date(startTime + intervalsPassed * intervalMs);
+        }
+      } else if (frequency === 'WEEKLY') {
+        const intervalMs = value * 7 * 24 * 60 * 60 * 1000;
+        const elapsed = nowTime - startTime;
+        if (elapsed >= 0) {
+          const intervalsPassed = Math.floor(elapsed / intervalMs) + 1;
+          return new Date(startTime + intervalsPassed * intervalMs);
+        }
+      }
+    }
+
+    let cursor = startDate;
+    const MAX_ITERATIONS = 10000;
+    let iterations = 0;
+
+    while (cursor <= now && iterations < MAX_ITERATIONS) {
+      const next = this.calculateNextRun(cursor, frequency, value);
+
+      if (next.getTime() === cursor.getTime()) {
+        break;
+      }
+
+      cursor = next;
+      iterations += 1;
+    }
+
+    if (cursor <= now) {
+      cursor = this.calculateNextRun(now, frequency, value);
     }
 
     return cursor;

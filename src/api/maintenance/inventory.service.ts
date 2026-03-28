@@ -1,5 +1,5 @@
 import { config } from '../../config';
-import { InsufficientStockError, NotFoundError } from '../../core';
+import { BadRequestError, InsufficientStockError, NotFoundError } from '../../core';
 import type { Prisma } from '../../generated/prisma';
 
 export interface StockCheckResult {
@@ -96,17 +96,27 @@ export class InventoryService {
       throw new NotFoundError(`Inventory item '${input.itemId}' not found`);
     }
 
-    if (item.availableStock < input.qty) {
-      throw new InsufficientStockError('Insufficient stock for requested part consumption', {
+    if (!Number.isInteger(input.qty) || input.qty <= 0) {
+      throw new BadRequestError('Quantity must be a positive integer', {
         itemId: item.id,
         sku: item.sku,
         requestedQty: input.qty,
+      });
+    }
+
+    const qty = input.qty;
+
+    if (item.availableStock < qty) {
+      throw new InsufficientStockError('Insufficient stock for requested part consumption', {
+        itemId: item.id,
+        sku: item.sku,
+        requestedQty: qty,
         availableStock: item.availableStock,
       });
     }
 
     const unitCost = item.avgUnitCost;
-    const totalCost = unitCost.mul(input.qty);
+    const totalCost = unitCost.mul(qty);
 
     const updatedCount = await tx.inventoryItem.updateMany({
       where: {
@@ -114,18 +124,18 @@ export class InventoryService {
         organizationId: input.organizationId,
         hotelId: input.hotelId,
         availableStock: {
-          gte: input.qty,
+          gte: qty,
         },
         currentStock: {
-          gte: input.qty,
+          gte: qty,
         },
       },
       data: {
         currentStock: {
-          decrement: input.qty,
+          decrement: qty,
         },
         availableStock: {
-          decrement: input.qty,
+          decrement: qty,
         },
       },
     });
@@ -134,7 +144,7 @@ export class InventoryService {
       throw new InsufficientStockError('Insufficient stock for requested part consumption', {
         itemId: item.id,
         sku: item.sku,
-        requestedQty: input.qty,
+        requestedQty: qty,
         availableStock: item.availableStock,
       });
     }
@@ -143,7 +153,7 @@ export class InventoryService {
       data: {
         itemId: item.id,
         type: 'CONSUMPTION',
-        quantity: -Math.abs(Math.trunc(input.qty)),
+        quantity: -qty,
         unitCost,
         totalCost,
         refType: input.refType,

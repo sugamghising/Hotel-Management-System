@@ -124,7 +124,7 @@ export const PauseMaintenanceRequestSchema = z.object({
 
 export const PartsUsageItemSchema = z.object({
   itemId: z.string().uuid(),
-  qty: z.number().positive(),
+  qty: z.coerce.number().int().positive(),
   notes: z.string().max(1000).optional(),
 });
 
