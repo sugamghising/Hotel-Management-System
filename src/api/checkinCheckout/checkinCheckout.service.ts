@@ -1,4 +1,13 @@
-import { BadRequestError, ConflictError, ForbiddenError, NotFoundError, logger } from '../../core';
+import {
+  BadRequestError,
+  ConflictError,
+  ExpressCheckoutNotEligibleError,
+  ForbiddenError,
+  NoRoomsAvailableError,
+  NotFoundError,
+  OutstandingBalanceError,
+  logger,
+} from '../../core';
 import { folioService } from '../folio/folio.service';
 import { reservationsService } from '../reservations/reservations.service';
 import {
@@ -11,6 +20,7 @@ import type {
   EarlyCheckInInput,
   ExtendStayInput,
   LateCheckoutInput,
+  NoShowInput,
   ShortenStayInput,
   WalkInCheckInInput,
 } from './checkinCheckout.schema';
@@ -38,7 +48,11 @@ export class CheckinCheckoutService {
   async getPreCheckInData(organizationId: string, hotelId: string, reservationId: string) {
     const reservation = await reservationsService.findById(reservationId, organizationId, hotelId);
 
-    const folioValidation = await folioService.validateCheckout(reservationId, organizationId, hotelId);
+    const folioValidation = await folioService.validateCheckout(
+      reservationId,
+      organizationId,
+      hotelId
+    );
 
     const availableRooms = await this.checkinCheckoutRepo.findAvailableRooms(
       organizationId,
@@ -60,27 +74,32 @@ export class CheckinCheckoutService {
     input: CheckInRequestInput,
     userId?: string
   ) {
-    const checkInInput = {
-      ...(input.roomId !== undefined ? { roomId: input.roomId } : {}),
-      ...(input.earlyCheckIn !== undefined ? { earlyCheckIn: input.earlyCheckIn } : {}),
-    };
-
-    const reservation = await reservationsService.checkIn(
+    const reservationSnapshot = await reservationsService.findById(
       reservationId,
       organizationId,
-      hotelId,
-      checkInInput,
-      userId
+      hotelId
     );
 
     let preAuth = null;
+    let preAuthAmount: number | undefined;
+    const assignmentType: 'INITIAL' | 'AUTO' | 'MANUAL' = input.roomId
+      ? 'MANUAL'
+      : reservationSnapshot.rooms[0]?.roomId
+        ? 'INITIAL'
+        : 'AUTO';
+
     if (input.cardToken) {
+      preAuthAmount = this.calculatePreAuthAmount(
+        reservationSnapshot.financial.totalAmount,
+        reservationSnapshot.dates.nights
+      );
+
       const paymentInput = {
-        amount: 1,
-        currencyCode: 'USD',
+        amount: preAuthAmount,
+        currencyCode: reservationSnapshot.financial.currencyCode,
         method: 'CREDIT_CARD' as const,
         cardToken: input.cardToken,
-        notes: 'Check-in card verification hold',
+        notes: 'Check-in authorization hold',
         ...(input.cardLastFour !== undefined ? { cardLastFour: input.cardLastFour } : {}),
         ...(input.cardBrand !== undefined ? { cardBrand: input.cardBrand } : {}),
       };
@@ -93,9 +112,29 @@ export class CheckinCheckoutService {
       );
     }
 
+    const checkInInput = {
+      ...(input.roomId !== undefined ? { roomId: input.roomId } : {}),
+      ...(input.earlyCheckIn !== undefined ? { earlyCheckIn: input.earlyCheckIn } : {}),
+      assignmentType,
+      ...(preAuthAmount !== undefined ? { preAuthAmount } : {}),
+      ...(input.keysIssued !== undefined ? { keysIssued: input.keysIssued } : {}),
+      ...(input.keyCardRef !== undefined ? { keyCardRef: input.keyCardRef } : {}),
+      ...(input.idDocumentId !== undefined ? { idDocumentId: input.idDocumentId } : {}),
+      ...(input.checkInNotes !== undefined ? { notes: input.checkInNotes } : {}),
+    };
+
+    const reservation = await reservationsService.checkIn(
+      reservationId,
+      organizationId,
+      hotelId,
+      checkInInput,
+      userId
+    );
+
     return {
       reservation,
       preAuth,
+      ...(preAuthAmount !== undefined ? { preAuthAmount } : {}),
     };
   }
 
@@ -117,17 +156,21 @@ export class CheckinCheckoutService {
       userId
     );
 
-    if (input.earlyFeeAmount && input.earlyFeeAmount > 0) {
+    const feeAmount =
+      input.earlyFeeAmount ??
+      this.calculateEarlyCheckInFee(result.reservation.financial.averageRate);
+
+    if (feeAmount > 0) {
       await folioService.postCharge(
         reservationId,
         organizationId,
         {
           itemType: 'SERVICE_CHARGE',
           description: input.earlyFeeReason || 'Early check-in fee',
-          amount: input.earlyFeeAmount,
+          amount: feeAmount,
           taxAmount: 0,
           quantity: 1,
-          unitPrice: input.earlyFeeAmount,
+          unitPrice: feeAmount,
           revenueCode: 'EARLY_CI',
           department: 'ROOMS',
           source: 'CHECKIN',
@@ -183,11 +226,17 @@ export class CheckinCheckoutService {
     reservationId: string,
     roomId: string,
     userId?: string,
-    force?: boolean
+    force?: boolean,
+    assignmentType?: 'INITIAL' | 'AUTO' | 'MANUAL' | 'UPGRADE' | 'CHANGE' | 'WALK_IN',
+    reason?: string,
+    previousRoomId?: string
   ) {
     const assignmentInput = {
       roomId,
       ...(force !== undefined ? { force } : {}),
+      ...(assignmentType !== undefined ? { assignmentType } : {}),
+      ...(reason !== undefined ? { reason } : {}),
+      ...(previousRoomId !== undefined ? { previousRoomId } : {}),
     };
 
     return reservationsService.assignRoom(
@@ -227,10 +276,18 @@ export class CheckinCheckoutService {
     );
 
     if (!room) {
-      throw new ConflictError('No suitable room available for auto-assignment');
+      throw new NoRoomsAvailableError('No suitable room available for auto-assignment');
     }
 
-    const updated = await this.assignRoom(organizationId, hotelId, reservationId, room.id, userId);
+    const updated = await this.assignRoom(
+      organizationId,
+      hotelId,
+      reservationId,
+      room.id,
+      userId,
+      false,
+      'AUTO'
+    );
     return {
       reservation: updated,
       assignedRoomId: room.id,
@@ -244,15 +301,25 @@ export class CheckinCheckoutService {
     reservationId: string,
     roomId: string,
     userId?: string,
-    upgradeFee?: number
+    upgradeFee?: number,
+    upgradeReason?: string
   ) {
+    const currentReservation = await reservationsService.findById(
+      reservationId,
+      organizationId,
+      hotelId
+    );
+
     const reservation = await this.assignRoom(
       organizationId,
       hotelId,
       reservationId,
       roomId,
       userId,
-      true
+      true,
+      'UPGRADE',
+      upgradeReason,
+      currentReservation.rooms[0]?.roomId || undefined
     );
 
     if (upgradeFee && upgradeFee > 0) {
@@ -282,9 +349,26 @@ export class CheckinCheckoutService {
     hotelId: string,
     reservationId: string,
     roomId: string,
-    userId?: string
+    userId?: string,
+    changeReason?: string
   ) {
-    return this.assignRoom(organizationId, hotelId, reservationId, roomId, userId, true);
+    const currentReservation = await reservationsService.findById(
+      reservationId,
+      organizationId,
+      hotelId
+    );
+
+    return this.assignRoom(
+      organizationId,
+      hotelId,
+      reservationId,
+      roomId,
+      userId,
+      true,
+      'CHANGE',
+      changeReason,
+      currentReservation.rooms[0]?.roomId || undefined
+    );
   }
 
   async checkoutPreview(organizationId: string, hotelId: string, reservationId: string) {
@@ -309,13 +393,13 @@ export class CheckinCheckoutService {
   ) {
     const validation = await folioService.validateCheckout(reservationId, organizationId, hotelId);
 
-    if (!validation.canCheckout) {
-      throw new ConflictError(`Cannot check out: ${validation.issues.join('; ')}`);
+    if (validation.balance > 0 && !input.paymentMethod) {
+      throw new OutstandingBalanceError('Outstanding balance requires a payment method', {
+        balance: validation.balance,
+      });
     }
 
-    if (validation.balance > 0 && !input.paymentMethod) {
-      throw new ConflictError('Outstanding balance requires a payment method');
-    }
+    const settlementAmount = validation.balance > 0 ? validation.balance : 0;
 
     if (validation.balance > 0 && input.paymentMethod) {
       const paymentInput = {
@@ -326,7 +410,23 @@ export class CheckinCheckoutService {
         ...(input.cardToken !== undefined ? { cardToken: input.cardToken } : {}),
       };
 
-      await folioService.processPayment(reservationId, organizationId, paymentInput, userId, hotelId);
+      await folioService.processPayment(
+        reservationId,
+        organizationId,
+        paymentInput,
+        userId,
+        hotelId
+      );
+    }
+
+    const finalValidation = await folioService.validateCheckout(
+      reservationId,
+      organizationId,
+      hotelId
+    );
+
+    if (!finalValidation.canCheckout) {
+      throw new ConflictError(`Cannot check out: ${finalValidation.issues.join('; ')}`);
     }
 
     const reservation = await reservationsService.checkOut(
@@ -335,6 +435,14 @@ export class CheckinCheckoutService {
       hotelId,
       {
         lateCheckOut: false,
+        finalBalance: finalValidation.balance,
+        ...(settlementAmount > 0 ? { settlementAmount } : {}),
+        ...(input.paymentMethod !== undefined ? { paymentMethod: input.paymentMethod } : {}),
+        ...(input.keysReturned !== undefined ? { keysReturned: input.keysReturned } : {}),
+        ...(input.satisfactionScore !== undefined
+          ? { satisfactionScore: input.satisfactionScore }
+          : {}),
+        ...(input.checkOutNotes !== undefined ? { notes: input.checkOutNotes } : {}),
       },
       userId
     );
@@ -369,13 +477,20 @@ export class CheckinCheckoutService {
     input: CheckoutInput,
     userId?: string
   ) {
-    return this.checkOut(
-      organizationId,
-      hotelId,
-      reservationId,
-      input,
-      userId
-    );
+    const validation = await folioService.validateCheckout(reservationId, organizationId, hotelId);
+
+    if (!validation.canCheckout || Math.abs(validation.balance) > 0.01) {
+      throw new ExpressCheckoutNotEligibleError('Express checkout requires a zero-balance folio', {
+        balance: validation.balance,
+        issues: validation.issues,
+      });
+    }
+
+    const checkoutInput: CheckoutInput = {
+      ...(input.invoiceEmail !== undefined ? { invoiceEmail: input.invoiceEmail } : {}),
+    };
+
+    return this.checkOut(organizationId, hotelId, reservationId, checkoutInput, userId);
   }
 
   async lateCheckout(
@@ -412,14 +527,17 @@ export class CheckinCheckoutService {
     organizationId: string,
     hotelId: string,
     reservationId: string,
-    chargeNoShowFee: boolean,
+    input: NoShowInput,
     userId?: string
   ) {
     return reservationsService.markNoShow(
       reservationId,
       organizationId,
       hotelId,
-      { chargeNoShowFee },
+      {
+        chargeNoShowFee: input.chargeNoShowFee,
+        ...(input.reason !== undefined ? { reason: input.reason } : {}),
+      },
       userId
     );
   }
@@ -523,7 +641,11 @@ export class CheckinCheckoutService {
     reservationId: string
   ): Promise<ReservationStatusResponse> {
     const reservation = await reservationsService.findById(reservationId, organizationId, hotelId);
-    const folioValidation = await folioService.validateCheckout(reservationId, organizationId, hotelId);
+    const folioValidation = await folioService.validateCheckout(
+      reservationId,
+      organizationId,
+      hotelId
+    );
 
     return { reservation, folioValidation };
   }
@@ -578,6 +700,25 @@ export class CheckinCheckoutService {
       },
       userId
     );
+  }
+
+  private calculatePreAuthAmount(totalAmount: number, nights: number): number {
+    const incidentalHoldPerNight = 25;
+    const baseHold = totalAmount * 1.2;
+    return Number((baseHold + nights * incidentalHoldPerNight).toFixed(2));
+  }
+
+  private calculateEarlyCheckInFee(averageRate: number, now: Date = new Date()): number {
+    const hour = now.getHours();
+    if (hour < 6) {
+      return Number((averageRate * 0.5).toFixed(2));
+    }
+
+    if (hour < 10) {
+      return Number((averageRate * 0.25).toFixed(2));
+    }
+
+    return 0;
   }
 }
 

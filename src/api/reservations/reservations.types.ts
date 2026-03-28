@@ -50,6 +50,8 @@ export type RoomReservationStatus =
   | 'CHECKED_OUT'
   | 'NO_SHOW';
 
+export type AssignmentType = 'INITIAL' | 'AUTO' | 'MANUAL' | 'UPGRADE' | 'CHANGE' | 'WALK_IN';
+
 // ============================================================================
 // DOMAIN ENTITY
 // ============================================================================
@@ -329,6 +331,12 @@ export interface ReservationResponse {
 export interface CheckInInput {
   roomId?: string; // If specific room assignment needed
   earlyCheckIn?: boolean;
+  assignmentType?: AssignmentType;
+  preAuthAmount?: number;
+  keysIssued?: number;
+  keyCardRef?: string;
+  idDocumentId?: string;
+  notes?: string;
   idVerification?: {
     idType: string;
     idNumber: string;
@@ -342,6 +350,13 @@ export interface CheckInInput {
 
 export interface CheckOutInput {
   lateCheckOut?: boolean;
+  lateFeeAmount?: number;
+  finalBalance?: number;
+  settlementAmount?: number;
+  paymentMethod?: string;
+  keysReturned?: number;
+  satisfactionScore?: number;
+  notes?: string;
   payment?: {
     amount: number;
     method: string;
@@ -351,6 +366,9 @@ export interface CheckOutInput {
 export interface RoomAssignmentInput {
   roomId: string;
   force?: boolean; // Override conflicts
+  assignmentType?: AssignmentType;
+  reason?: string;
+  previousRoomId?: string;
 }
 
 export interface ReservationSearchFilters {
@@ -375,6 +393,7 @@ export interface WalkInInput extends CreateReservationInput {
 
 export interface NoShowInput {
   chargeNoShowFee?: boolean;
+  reason?: string;
   waiveReason?: string;
 }
 

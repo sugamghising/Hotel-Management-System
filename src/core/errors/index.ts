@@ -77,6 +77,48 @@ export class ConflictError extends AppError {
   }
 }
 
+export class InvalidStatusError extends AppError {
+  constructor(message: string = 'Invalid status transition', details?: unknown) {
+    super(message, StatusCodes.CONFLICT, 'INVALID_STATUS', true, details);
+  }
+}
+
+export class BlacklistedGuestError extends AppError {
+  constructor(message: string = 'Guest is blacklisted', details?: unknown) {
+    super(message, StatusCodes.FORBIDDEN, 'BLACKLISTED_GUEST', true, details);
+  }
+}
+
+export class NoRoomsAvailableError extends AppError {
+  constructor(message: string = 'No rooms available for assignment') {
+    super(message, StatusCodes.CONFLICT, 'NO_ROOMS_AVAILABLE', true);
+  }
+}
+
+export class RoomNotAvailableError extends AppError {
+  constructor(message: string = 'Requested room is not available', details?: unknown) {
+    super(message, StatusCodes.CONFLICT, 'ROOM_NOT_AVAILABLE', true, details);
+  }
+}
+
+export class OutstandingBalanceError extends AppError {
+  constructor(
+    message: string = 'Outstanding balance must be settled before checkout',
+    details?: unknown
+  ) {
+    super(message, StatusCodes.CONFLICT, 'OUTSTANDING_BALANCE', true, details);
+  }
+}
+
+export class ExpressCheckoutNotEligibleError extends AppError {
+  constructor(
+    message: string = 'Reservation is not eligible for express checkout',
+    details?: unknown
+  ) {
+    super(message, StatusCodes.CONFLICT, 'EXPRESS_CHECKOUT_NOT_ELIGIBLE', true, details);
+  }
+}
+
 export class UnprocessableEntityError extends AppError {
   constructor(message: string = ReasonPhrases.UNPROCESSABLE_ENTITY, details?: unknown) {
     super(message, StatusCodes.UNPROCESSABLE_ENTITY, 'UNPROCESSABLE_ENTITY', true, details);

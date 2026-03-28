@@ -250,7 +250,13 @@ export class ReservationsService {
 
     // Auto check-in: reuse existing check-in workflow so reservation, reservation_room,
     // and room statuses stay in sync.
-    return this.checkIn(reservation.id, organizationId, { roomId: input.roomId }, createdBy);
+    return this.checkIn(
+      reservation.id,
+      organizationId,
+      hotelId,
+      { roomId: input.roomId, assignmentType: 'WALK_IN' },
+      createdBy
+    );
   }
 
   // ============================================================================
@@ -511,7 +517,24 @@ export class ReservationsService {
       }
     }
 
-    await this.reservationsRepo.checkIn(id, resRoom.id, roomId, resolvedInput.earlyCheckIn);
+    await this.reservationsRepo.checkIn(id, resRoom.id, roomId, {
+      ...(resolvedInput.earlyCheckIn !== undefined
+        ? { earlyCheckIn: resolvedInput.earlyCheckIn }
+        : {}),
+      ...(_checkedInBy !== undefined ? { checkedInBy: _checkedInBy } : {}),
+      ...(resolvedInput.preAuthAmount !== undefined
+        ? { preAuthAmount: resolvedInput.preAuthAmount }
+        : {}),
+      ...(resolvedInput.keysIssued !== undefined ? { keysIssued: resolvedInput.keysIssued } : {}),
+      ...(resolvedInput.keyCardRef !== undefined ? { keyCardRef: resolvedInput.keyCardRef } : {}),
+      ...(resolvedInput.idDocumentId !== undefined
+        ? { idDocumentId: resolvedInput.idDocumentId }
+        : {}),
+      ...(resolvedInput.notes !== undefined ? { notes: resolvedInput.notes } : {}),
+      ...(resolvedInput.assignmentType !== undefined
+        ? { assignmentType: resolvedInput.assignmentType }
+        : {}),
+    });
 
     // Create folio if not exists
     // await this.folioService.createForReservation(id);
@@ -564,13 +587,28 @@ export class ReservationsService {
       throw new NotFoundError('Assigned room');
     }
 
+    const settlementAmount = input.settlementAmount ?? input.payment?.amount;
+    const paymentMethod = input.paymentMethod ?? input.payment?.method;
+
     await this.reservationsRepo.checkOut(
       id,
       resRoom.id,
       resRoom.roomId,
       organizationId,
       hotelId,
-      input.lateCheckOut
+      input.lateCheckOut,
+      {
+        ...(_checkedOutBy !== undefined ? { checkedOutBy: _checkedOutBy } : {}),
+        ...(input.lateFeeAmount !== undefined ? { lateFeeAmount: input.lateFeeAmount } : {}),
+        finalBalance: input.finalBalance ?? reservation.balance,
+        ...(settlementAmount !== undefined ? { settlementAmount } : {}),
+        ...(paymentMethod !== undefined ? { paymentMethod } : {}),
+        ...(input.keysReturned !== undefined ? { keysReturned: input.keysReturned } : {}),
+        ...(input.satisfactionScore !== undefined
+          ? { satisfactionScore: input.satisfactionScore }
+          : {}),
+        ...(input.notes !== undefined ? { notes: input.notes } : {}),
+      }
     );
 
     // Record payment if provided
@@ -640,7 +678,11 @@ export class ReservationsService {
       );
     }
 
-    await this.reservationsRepo.assignRoom(resRoom.id, input.roomId, assignedBy || 'SYSTEM');
+    await this.reservationsRepo.assignRoom(resRoom.id, input.roomId, assignedBy || 'SYSTEM', {
+      assignmentType: input.assignmentType ?? 'MANUAL',
+      ...(input.reason !== undefined ? { reason: input.reason } : {}),
+      ...(input.previousRoomId !== undefined ? { previousRoomId: input.previousRoomId } : {}),
+    });
 
     logger.info(`Room assigned: ${reservation.confirmationNumber} -> ${room.roomNumber}`, {
       reservationId: id,
@@ -778,7 +820,15 @@ export class ReservationsService {
       throw new ConflictError('Cannot mark future reservation as no-show');
     }
 
-    await this.reservationsRepo.markNoShow(id, input.chargeNoShowFee ?? false);
+    const shouldChargeNoShow = input.chargeNoShowFee ?? false;
+    const noShowFee = shouldChargeNoShow ? this.calculateNoShowFee(reservation) : undefined;
+
+    await this.reservationsRepo.markNoShow(id, shouldChargeNoShow, {
+      ...(noShowFee !== undefined ? { noShowFee } : {}),
+      ...(input.reason !== undefined || input.waiveReason !== undefined
+        ? { reason: input.reason ?? input.waiveReason }
+        : {}),
+    });
 
     logger.info(`No-show marked: ${reservation.confirmationNumber}`, {
       reservationId: id,
@@ -1061,6 +1111,16 @@ export class ReservationsService {
         return reservation.totalAmount;
       default:
         return 0;
+    }
+  }
+
+  private calculateNoShowFee(reservation: Reservation): number {
+    switch (reservation.cancellationPolicy) {
+      case 'NON_REFUNDABLE':
+      case 'STRICT':
+        return Math.round(reservation.totalAmount * 100) / 100;
+      default:
+        return Math.round(reservation.averageRate * 100) / 100;
     }
   }
 
