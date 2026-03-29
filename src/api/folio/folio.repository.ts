@@ -439,7 +439,8 @@ export class FolioRepository {
   async postRoomChargesForNightAudit(
     hotelId: string,
     businessDate: Date,
-    postedBy: string
+    postedBy: string,
+    sourceRef?: string
   ): Promise<{ posted: number; totalAmount: number }> {
     // Find all in-house reservations
     const inHouseReservations = await prisma.reservation.findMany({
@@ -467,6 +468,25 @@ export class FolioRepository {
         const roomRate = Number.parseFloat(reservation.averageRate.toString());
 
         if (roomRate > 0) {
+          if (sourceRef) {
+            const existing = await tx.folioItem.findFirst({
+              where: {
+                hotelId,
+                reservationId: reservation.id,
+                itemType: 'ROOM_CHARGE',
+                businessDate,
+                source: 'NIGHT_AUDIT',
+                sourceRef,
+                isVoided: false,
+              },
+              select: { id: true },
+            });
+
+            if (existing) {
+              continue;
+            }
+          }
+
           await tx.folioItem.create({
             data: {
               organizationId: reservation.organizationId,
@@ -484,6 +504,8 @@ export class FolioRepository {
               postedBy,
               businessDate,
               isVoided: false,
+              source: 'NIGHT_AUDIT',
+              sourceRef: sourceRef ?? null,
             },
           });
 

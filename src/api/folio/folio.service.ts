@@ -1,3 +1,4 @@
+﻿import { config } from '../../config';
 import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from '../../core/errors';
 import { logger } from '../../core/logger';
 import { prisma } from '../../database/prisma';
@@ -184,7 +185,7 @@ export class FolioService {
     postedBy?: string,
     hotelId?: string
   ): Promise<FolioItem> {
-    const actorId = postedBy ?? 'system';
+    const actorId = postedBy ?? config.system.userId;
     const reservation = await this.verifyReservationAccess(reservationId, organizationId, hotelId);
 
     // Validate reservation can accept charges
@@ -231,7 +232,7 @@ export class FolioService {
     postedBy?: string,
     hotelId?: string
   ): Promise<FolioItem[]> {
-    const actorId = postedBy ?? 'system';
+    const actorId = postedBy ?? config.system.userId;
     const reservation = await this.verifyReservationAccess(reservationId, organizationId, hotelId);
     const businessDate = new Date();
     businessDate.setHours(0, 0, 0, 0);
@@ -275,7 +276,7 @@ export class FolioService {
     reason: string,
     voidedBy?: string
   ): Promise<FolioItem> {
-    const actorId = voidedBy ?? 'system';
+    const actorId = voidedBy ?? config.system.userId;
     const item = await this.folioRepo.findFolioItemById(itemId);
 
     if (!item) {
@@ -317,7 +318,7 @@ export class FolioService {
     reason: string,
     adjustedBy?: string
   ): Promise<FolioItem> {
-    const actorId = adjustedBy ?? 'system';
+    const actorId = adjustedBy ?? config.system.userId;
     const item = await this.folioRepo.findFolioItemById(itemId);
 
     if (!item) {
@@ -344,7 +345,7 @@ export class FolioService {
     processedBy?: string,
     hotelId?: string
   ): Promise<PaymentResponse> {
-    const actorId = processedBy ?? 'system';
+    const actorId = processedBy ?? config.system.userId;
     const reservation = await this.verifyReservationAccess(reservationId, organizationId, hotelId);
 
     // Check for existing authorization if using card
@@ -431,7 +432,7 @@ export class FolioService {
     input: RefundPaymentInput,
     processedBy?: string
   ): Promise<PaymentResponse> {
-    const actorId = processedBy ?? 'system';
+    const actorId = processedBy ?? config.system.userId;
     const originalPayment = await this.folioRepo.findPaymentById(paymentId);
 
     if (!originalPayment) {
@@ -674,7 +675,7 @@ export class FolioService {
     transferredBy?: string,
     hotelId?: string
   ): Promise<void> {
-    const actorId = transferredBy ?? 'system';
+    const actorId = transferredBy ?? config.system.userId;
     // Verify both reservations exist and user has access
     const fromRes = await this.verifyReservationAccess(fromReservationId, organizationId, hotelId);
     const toRes = await this.verifyReservationAccess(input.targetReservationId, organizationId);
@@ -741,17 +742,28 @@ export class FolioService {
   // NIGHT AUDIT SUPPORT
   // ============================================================================
 
+  async getFolioBalance(
+    reservationId: string,
+    organizationId: string,
+    hotelId?: string
+  ): Promise<number> {
+    await this.verifyReservationAccess(reservationId, organizationId, hotelId);
+    const summary = await this.folioRepo.getFolioSummary(reservationId);
+    return summary.balance;
+  }
+
   async postRoomCharges(
     hotelId: string,
     _organizationId: string,
     businessDate: Date,
-    postedBy?: string
+    postedBy?: string,
+    sourceRef?: string
   ): Promise<{ posted: number; totalAmount: number }> {
-    const actorId = postedBy ?? 'system';
+    const actorId = postedBy ?? config.system.userId;
     // Verify hotel access
     // TODO: Add hotel access verification
 
-    return this.folioRepo.postRoomChargesForNightAudit(hotelId, businessDate, actorId);
+    return this.folioRepo.postRoomChargesForNightAudit(hotelId, businessDate, actorId, sourceRef);
   }
 
   // ============================================================================

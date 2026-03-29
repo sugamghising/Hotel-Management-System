@@ -1200,7 +1200,7 @@ export class MaintenanceService {
   async generateDuePreventiveTasks(
     organizationId: string,
     hotelId: string,
-    input: GenerateDuePreventiveInput
+    input: GenerateDuePreventiveInput & { sourceRef?: string }
   ) {
     const at = input.date ?? new Date();
     const dueSchedules = await this.maintenanceRepo.listDuePreventiveSchedules(
@@ -1251,6 +1251,7 @@ export class MaintenanceService {
               schedule.description ??
               'Auto-generated from preventive maintenance schedule',
             source: 'PREVENTIVE',
+            ...(input.sourceRef ? { sourceRef: input.sourceRef } : {}),
             reportedBy: config.system.userId,
             reportedByType: 'SYSTEM',
             guestReported: false,

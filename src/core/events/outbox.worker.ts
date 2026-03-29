@@ -1,5 +1,4 @@
 import { z } from 'zod';
-import { maintenanceService } from '../../api/maintenance/maintenance.service';
 import { config } from '../../config';
 import { prisma } from '../../database/prisma';
 import { logger } from '../logger';
@@ -136,8 +135,30 @@ const InventoryLowStockPayloadSchema = z.object({
 const NightAuditCompletedPayloadSchema = z.object({
   organizationId: z.string().uuid(),
   hotelId: z.string().uuid(),
+  auditId: z.string().uuid().optional(),
   businessDate: z.coerce.date(),
   completedAt: z.coerce.date().optional(),
+  nextBusinessDate: z.coerce.date().optional(),
+  warningCount: z.number().int().nonnegative().optional(),
+});
+
+const NightAuditFailedPayloadSchema = z.object({
+  organizationId: z.string().uuid(),
+  hotelId: z.string().uuid(),
+  auditId: z.string().uuid().optional(),
+  businessDate: z.coerce.date().optional(),
+  failedAt: z.coerce.date().optional(),
+  reason: z.string().optional(),
+});
+
+const NightAuditRolledBackPayloadSchema = z.object({
+  organizationId: z.string().uuid(),
+  hotelId: z.string().uuid(),
+  auditId: z.string().uuid().optional(),
+  businessDate: z.coerce.date(),
+  rolledBackAt: z.coerce.date().optional(),
+  rolledBackBy: z.string().uuid().optional(),
+  reason: z.string().optional(),
 });
 
 class OutboxWorker {
@@ -274,6 +295,12 @@ class OutboxWorker {
           break;
         case 'night_audit.completed':
           await this.handleNightAuditCompleted(payload);
+          break;
+        case 'night_audit.failed':
+          await this.handleNightAuditFailed(payload);
+          break;
+        case 'night_audit.rolled_back':
+          await this.handleNightAuditRolledBack(payload);
           break;
         default:
           logger.warn('Unhandled outbox event type', { eventType, eventId });
@@ -516,34 +543,41 @@ class OutboxWorker {
   private async handleNightAuditCompleted(payload: unknown): Promise<void> {
     const parsed = NightAuditCompletedPayloadSchema.parse(payload);
 
-    const dueThrough =
-      parsed.completedAt ??
-      new Date(
-        Date.UTC(
-          parsed.businessDate.getUTCFullYear(),
-          parsed.businessDate.getUTCMonth(),
-          parsed.businessDate.getUTCDate(),
-          23,
-          59,
-          59,
-          999
-        )
-      );
-
-    const preventiveResult = await maintenanceService.generateDuePreventiveTasks(
-      parsed.organizationId,
-      parsed.hotelId,
-      {
-        date: dueThrough,
-      }
-    );
-
     logger.info('Night audit completed event processed', {
       organizationId: parsed.organizationId,
       hotelId: parsed.hotelId,
+      auditId: parsed.auditId ?? null,
       businessDate: parsed.businessDate.toISOString(),
       completedAt: parsed.completedAt?.toISOString() ?? null,
-      preventiveRequestsCreated: preventiveResult.createdCount,
+      nextBusinessDate: parsed.nextBusinessDate?.toISOString() ?? null,
+      warningCount: parsed.warningCount ?? 0,
+    });
+  }
+
+  private async handleNightAuditFailed(payload: unknown): Promise<void> {
+    const parsed = NightAuditFailedPayloadSchema.parse(payload);
+
+    logger.warn('Night audit failed event processed', {
+      organizationId: parsed.organizationId,
+      hotelId: parsed.hotelId,
+      auditId: parsed.auditId ?? null,
+      businessDate: parsed.businessDate?.toISOString() ?? null,
+      failedAt: parsed.failedAt?.toISOString() ?? null,
+      reason: parsed.reason ?? null,
+    });
+  }
+
+  private async handleNightAuditRolledBack(payload: unknown): Promise<void> {
+    const parsed = NightAuditRolledBackPayloadSchema.parse(payload);
+
+    logger.info('Night audit rollback event processed', {
+      organizationId: parsed.organizationId,
+      hotelId: parsed.hotelId,
+      auditId: parsed.auditId ?? null,
+      businessDate: parsed.businessDate.toISOString(),
+      rolledBackAt: parsed.rolledBackAt?.toISOString() ?? null,
+      rolledBackBy: parsed.rolledBackBy ?? null,
+      reason: parsed.reason ?? null,
     });
   }
 

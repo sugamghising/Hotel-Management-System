@@ -233,6 +233,18 @@ async function main() {
             },
         }),
         prisma.role.upsert({
+            where: { uq_role_org_code: { organizationId: org.id, code: 'NIGHT_AUDITOR' } },
+            update: {},
+            create: {
+                organizationId: org.id,
+                code: 'NIGHT_AUDITOR',
+                name: 'Night Auditor',
+                description: 'Execute and monitor end-of-day night audit operations',
+                isSystem: true,
+                level: 50,
+            },
+        }),
+        prisma.role.upsert({
             where: { uq_role_org_code: { organizationId: org.id, code: 'HK_MANAGER' } },
             update: {},
             create: {
@@ -352,6 +364,8 @@ async function main() {
         'PREVENTIVE.READ', 'PREVENTIVE.CREATE', 'PREVENTIVE.UPDATE', 'PREVENTIVE.PAUSE',
         'PREVENTIVE.GENERATE',
         'ASSET.READ', 'ASSET.CREATE', 'ASSET.UPDATE', 'ASSET.DELETE', 'ASSET.EVALUATE',
+        'NIGHT_AUDIT.RUN', 'NIGHT_AUDIT.PRE_CHECK', 'NIGHT_AUDIT.VIEW_STATUS',
+        'NIGHT_AUDIT.VIEW_HISTORY', 'NIGHT_AUDIT.VIEW_REPORT', 'NIGHT_AUDIT.ROLLBACK',
         'BILLING.READ', 'BILLING.CREATE', 'BILLING.UPDATE',
         'REPORT.READ',
     ];
@@ -446,6 +460,8 @@ async function main() {
         'PREVENTIVE.READ', 'PREVENTIVE.CREATE', 'PREVENTIVE.UPDATE', 'PREVENTIVE.PAUSE',
         'PREVENTIVE.GENERATE',
         'ASSET.READ', 'ASSET.CREATE', 'ASSET.UPDATE', 'ASSET.EVALUATE',
+        'NIGHT_AUDIT.RUN', 'NIGHT_AUDIT.PRE_CHECK', 'NIGHT_AUDIT.VIEW_STATUS',
+        'NIGHT_AUDIT.VIEW_HISTORY', 'NIGHT_AUDIT.VIEW_REPORT', 'NIGHT_AUDIT.ROLLBACK',
     ]);
 
     await grantPermissions('FRONT_DESK', [
@@ -456,7 +472,12 @@ async function main() {
         'CHECKOUT.PERFORM', 'CHECKOUT.EXPRESS', 'CHECKOUT.LATE', 'CHECKOUT.NO_SHOW',
         'ROOM.READ', 'ROOM.ASSIGN', 'ROOM.CHANGE',
         'FRONTDESK.DASHBOARD',
+        'NIGHT_AUDIT.PRE_CHECK', 'NIGHT_AUDIT.VIEW_STATUS',
         'HOUSEKEEPING.MARK_DND', 'HOUSEKEEPING.DASHBOARD_READ', 'HOUSEKEEPING.LOST_FOUND_LOG',
+    ]);
+
+    await grantPermissions('NIGHT_AUDITOR', [
+        'NIGHT_AUDIT.RUN', 'NIGHT_AUDIT.PRE_CHECK', 'NIGHT_AUDIT.VIEW_STATUS',
     ]);
 
     await grantPermissions('HK_MANAGER', [
@@ -504,11 +525,14 @@ async function main() {
         'MAINTENANCE.DASHBOARD_READ', 'MAINTENANCE.GUEST_CHARGE',
         'PREVENTIVE.READ', 'PREVENTIVE.GENERATE',
         'ASSET.READ', 'ASSET.EVALUATE',
+        'NIGHT_AUDIT.RUN', 'NIGHT_AUDIT.PRE_CHECK', 'NIGHT_AUDIT.VIEW_STATUS',
+        'NIGHT_AUDIT.VIEW_HISTORY', 'NIGHT_AUDIT.VIEW_REPORT', 'NIGHT_AUDIT.ROLLBACK',
         'REPORT.READ',
     ]);
 
     await grantPermissions('ACCOUNTANT', [
         'MAINTENANCE.READ', 'MAINTENANCE.DASHBOARD_READ', 'MAINTENANCE.GUEST_CHARGE',
+        'NIGHT_AUDIT.VIEW_HISTORY', 'NIGHT_AUDIT.VIEW_REPORT',
         'BILLING.READ', 'BILLING.UPDATE', 'REPORT.READ',
     ]);
 

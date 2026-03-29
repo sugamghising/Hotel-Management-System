@@ -371,7 +371,8 @@ export class HousekeepingService {
     organizationId: string,
     hotelId: string,
     input: AutoGenerateTasksInput,
-    userId?: string
+    userId?: string,
+    options?: { nightAuditBatchId?: string }
   ) {
     const date = this.asDateOnly(input.date);
     const reservations = await this.housekeepingRepo.listStayoverRoomsForDate(
@@ -410,6 +411,7 @@ export class HousekeepingService {
         priority: 0,
         scheduledFor: date,
         createdBy: userId ?? SYSTEM_ACTOR_ID,
+        ...(options?.nightAuditBatchId ? { nightAuditBatchId: options.nightAuditBatchId } : {}),
       });
 
       created += 1;
