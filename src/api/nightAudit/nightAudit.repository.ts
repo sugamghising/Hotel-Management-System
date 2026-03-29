@@ -6,6 +6,7 @@ import {
 } from '../../core/errors';
 import { prisma } from '../../database/prisma';
 import { type NightAudit, Prisma } from '../../generated/prisma';
+import type { NightAuditRollbackSummary } from './nightAudit.rollback';
 import type { NightAuditHistoryQueryInput } from './nightAudit.schema';
 import type {
   NightAuditActionSummary,
@@ -50,6 +51,9 @@ const nextDay = (value: Date): Date => {
 
 const toNumber = (value: Prisma.Decimal | null): number =>
   value ? Number.parseFloat(value.toString()) : 0;
+
+const asJson = (value: unknown): Prisma.InputJsonValue =>
+  JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 
 export class NightAuditRepository {
   async findHotelScope(organizationId: string, hotelId: string): Promise<NightAuditHotelScope> {
@@ -266,13 +270,27 @@ export class NightAuditRepository {
       });
     }
 
-    return prisma.nightAudit.create({
-      data: {
-        hotelId,
-        businessDate: auditDate,
-        ...data,
-      },
-    });
+    return prisma.nightAudit
+      .create({
+        data: {
+          hotelId,
+          businessDate: auditDate,
+          ...data,
+        },
+      })
+      .catch((error: unknown) => {
+        if (error instanceof Prisma.PrismaClientKnownRequestError) {
+          const prismaError = error as Prisma.PrismaClientKnownRequestError;
+          if (prismaError.code === 'P2002') {
+            const target = (prismaError.meta as { target?: unknown } | undefined)?.target;
+            const targets = Array.isArray(target) ? target : [target];
+            if (targets.filter(Boolean).includes('uq_night_audit_hotel_in_progress')) {
+              throw new AuditAlreadyInProgressError();
+            }
+          }
+        }
+        throw error;
+      });
   }
 
   async completeAudit(
@@ -613,6 +631,150 @@ export class NightAuditRepository {
 
   getSystemActorId(): string {
     return config.system.userId;
+  }
+
+  async performRollbackTransaction(params: {
+    targetAuditId: string;
+    businessDate: Date;
+    organizationId: string;
+    hotelId: string;
+    actorId: string;
+    reason: string;
+    previousStatus: string;
+  }): Promise<{
+    rollbackSummary: NightAuditRollbackSummary;
+    rolledBackAudit: NightAudit;
+  }> {
+    const {
+      targetAuditId,
+      businessDate,
+      organizationId,
+      hotelId,
+      actorId,
+      reason,
+      previousStatus,
+    } = params;
+
+    return prisma.$transaction(async (tx) => {
+      // 1. Void all NIGHT_AUDIT room charges for this audit
+      const chargeWhere = {
+        source: 'NIGHT_AUDIT' as const,
+        sourceRef: targetAuditId,
+        isVoided: false,
+        itemType: 'ROOM_CHARGE' as const,
+      };
+      const chargeSummary = await tx.folioItem.aggregate({
+        where: chargeWhere,
+        _count: { _all: true },
+        _sum: { amount: true, taxAmount: true },
+      });
+      if (chargeSummary._count._all > 0) {
+        await tx.folioItem.updateMany({
+          where: chargeWhere,
+          data: {
+            isVoided: true,
+            voidedAt: new Date(),
+            voidedBy: actorId,
+            voidReason: `Rolled back by night audit ${targetAuditId}`,
+          },
+        });
+      }
+      const voidedRoomCharges = chargeSummary._count._all;
+
+      // 2. Revert no-show reservations
+      const noShowResult = await tx.reservation.updateMany({
+        where: { noShowAuditId: targetAuditId, status: 'NO_SHOW' },
+        data: {
+          status: 'CONFIRMED',
+          noShow: false,
+          noShowAuditId: null,
+          cancellationReason: null,
+          cancellationFee: null,
+          modifiedAt: new Date(),
+        },
+      });
+      const revertedNoShows = noShowResult.count;
+
+      // 3. Cancel stayover housekeeping tasks
+      const stayoverResult = await tx.housekeepingTask.updateMany({
+        where: {
+          nightAuditBatchId: targetAuditId,
+          status: { in: ['PENDING', 'IN_PROGRESS', 'DND', 'ISSUES_REPORTED'] },
+        },
+        data: {
+          status: 'CANCELLED',
+          cancelledAt: new Date(),
+          cancelledBy: actorId,
+          cancellationReason: reason,
+        },
+      });
+      const cancelledStayoverTasks = stayoverResult.count;
+
+      // 4. Cancel preventive maintenance requests
+      const preventiveResult = await tx.maintenanceRequest.updateMany({
+        where: {
+          source: 'PREVENTIVE',
+          sourceRef: targetAuditId,
+          status: { in: [...OPEN_MAINTENANCE_STATUSES] },
+        },
+        data: { status: 'CANCELLED', cancelledBy: actorId, cancellationReason: reason },
+      });
+      const cancelledPreventiveRequests = preventiveResult.count;
+
+      // 5. Revert hotel business date back to the audit's business date
+      const targetDate = asDateOnly(businessDate);
+      const hotelResult = await tx.hotel.updateMany({
+        where: { id: hotelId, organizationId, deletedAt: null },
+        data: { currentBusinessDate: targetDate },
+      });
+      if (hotelResult.count !== 1) {
+        throw new NotFoundError(`Hotel not found with id: ${hotelId}`);
+      }
+
+      const rollbackSummary: NightAuditRollbackSummary = {
+        voidedRoomCharges,
+        revertedNoShows,
+        cancelledStayoverTasks,
+        cancelledPreventiveRequests,
+      };
+
+      const rollbackPayload = asJson({
+        rolledBackAt: new Date().toISOString(),
+        rolledBackBy: actorId,
+        reason,
+        rollback: rollbackSummary,
+        previousStatus,
+      });
+
+      // 6. Mark the audit as ROLLED_BACK
+      const rolledBackAudit = await tx.nightAudit.update({
+        where: { id: targetAuditId },
+        data: { status: 'ROLLED_BACK', errors: rollbackPayload, notes: reason ?? null },
+      });
+
+      // 7. Create outbox event (inside transaction for atomicity)
+      await tx.outboxEvent.create({
+        data: {
+          eventType: 'night_audit.rolled_back',
+          aggregateType: 'NIGHT_AUDIT',
+          aggregateId: targetAuditId,
+          payload: asJson({
+            organizationId,
+            hotelId,
+            auditId: targetAuditId,
+            businessDate: businessDate.toISOString(),
+            rolledBackAt: new Date().toISOString(),
+            rolledBackBy: actorId,
+            reason,
+            rollback: rollbackSummary,
+          }),
+          maxAttempts: 5,
+          status: 'PENDING',
+        },
+      });
+
+      return { rollbackSummary, rolledBackAudit };
+    });
   }
 }
 

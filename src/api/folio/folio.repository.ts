@@ -463,28 +463,33 @@ export class FolioRepository {
     let posted = 0;
     let totalAmount = 0;
 
-    await prisma.$transaction(async (tx) => {
-      for (const reservation of inHouseReservations) {
-        const roomRate = Number.parseFloat(reservation.averageRate.toString());
-
-        if (roomRate > 0) {
-          if (sourceRef) {
-            const existing = await tx.folioItem.findFirst({
+    // Pre-fetch all existing NIGHT_AUDIT room charges for this sourceRef in one query
+    // to avoid an N+1 pattern inside the transaction loop.
+    const alreadyPostedReservationIds = sourceRef
+      ? new Set(
+          (
+            await prisma.folioItem.findMany({
               where: {
                 hotelId,
-                reservationId: reservation.id,
                 itemType: 'ROOM_CHARGE',
                 businessDate,
                 source: 'NIGHT_AUDIT',
                 sourceRef,
                 isVoided: false,
               },
-              select: { id: true },
-            });
+              select: { reservationId: true },
+            })
+          ).map((item) => item.reservationId)
+        )
+      : null;
 
-            if (existing) {
-              continue;
-            }
+    await prisma.$transaction(async (tx) => {
+      for (const reservation of inHouseReservations) {
+        const roomRate = Number.parseFloat(reservation.averageRate.toString());
+
+        if (roomRate > 0) {
+          if (alreadyPostedReservationIds?.has(reservation.id)) {
+            continue;
           }
 
           await tx.folioItem.create({

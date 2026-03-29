@@ -17,7 +17,7 @@ export const NIGHT_AUDIT_STEPS: ReadonlyArray<{
   { step: 5, code: 'GENERATE_STAYOVER_TASKS', hardFail: false },
   { step: 6, code: 'GENERATE_PREVENTIVE_TASKS', hardFail: false },
   { step: 7, code: 'RUN_ESCALATION_SWEEP', hardFail: false },
-  { step: 8, code: 'ADVANCE_BUSINESS_DATE', hardFail: false },
+  { step: 8, code: 'ADVANCE_BUSINESS_DATE', hardFail: true },
 ] as const;
 
 export const createStepSuccess = (

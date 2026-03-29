@@ -1,4 +1,4 @@
-﻿import { config } from '../../config';
+import { config } from '../../config';
 import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from '../../core/errors';
 import { logger } from '../../core/logger';
 import { prisma } from '../../database/prisma';

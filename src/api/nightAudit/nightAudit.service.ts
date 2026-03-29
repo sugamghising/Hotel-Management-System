@@ -6,7 +6,7 @@ import { housekeepingService } from '../housekeeping';
 import { maintenanceService } from '../maintenance';
 import { notificationService } from '../notification';
 import { type NightAuditRepositoryType, nightAuditRepository } from './nightAudit.repository';
-import { type NightAuditRollbackSummary, assertRollbackAllowed } from './nightAudit.rollback';
+import { assertRollbackAllowed } from './nightAudit.rollback';
 import type {
   NightAuditDateQueryInput,
   NightAuditHistoryQueryInput,
@@ -14,7 +14,12 @@ import type {
   RollbackNightAuditInput,
   RunNightAuditInput,
 } from './nightAudit.schema';
-import { createStepFailure, createStepSuccess, runStep } from './nightAudit.steps';
+import {
+  NIGHT_AUDIT_STEPS,
+  createStepFailure,
+  createStepSuccess,
+  runStep,
+} from './nightAudit.steps';
 import type {
   NightAuditActionSummary,
   NightAuditHistoryResponse,
@@ -159,121 +164,164 @@ export class NightAuditService {
 
     const warningSteps: NightAuditStepResult[] = [];
 
-    const roomChargeStep = await runStep(3, 'POST_ROOM_CHARGES', async () => {
-      const result = await folioService.postRoomCharges(
-        hotelId,
-        organizationId,
-        businessDate,
-        actorId,
-        audit.id
-      );
-      actions.autoPostedCharges = result.posted;
+    const stepConfig = new Map(NIGHT_AUDIT_STEPS.map((s) => [s.code, s]));
 
-      return {
-        message: `Posted ${result.posted} room charge(s)`,
-        details: {
-          posted: result.posted,
-          totalAmount: result.totalAmount,
-        },
-      };
-    });
-    stepResults.push(roomChargeStep.stepResult);
-    if (roomChargeStep.error) warningSteps.push(roomChargeStep.stepResult);
+    const handleStepOutcome = async (outcome: {
+      stepResult: NightAuditStepResult;
+      error?: unknown;
+    }): Promise<void> => {
+      stepResults.push(outcome.stepResult);
+      if (!outcome.error) return;
 
-    const noShowStep = await runStep(4, 'MARK_NO_SHOWS', async () => {
-      const result = await this.nightAuditRepo.markNoShowsForAudit(
-        audit.id,
-        organizationId,
-        hotelId,
-        businessDate
-      );
-      actions.noShowsMarked = result.count;
+      if (stepConfig.get(outcome.stepResult.code)?.hardFail) {
+        const payload = {
+          phase: outcome.stepResult.code,
+          steps: stepResults,
+          warningCount: warningSteps.length,
+          reason: outcome.stepResult.message,
+        };
+        await this.nightAuditRepo.failAudit(audit.id, asJson(payload));
+        await this.nightAuditRepo.createOutboxEvent(
+          'night_audit.failed',
+          audit.id,
+          asJson({
+            organizationId,
+            hotelId,
+            auditId: audit.id,
+            businessDate: businessDate.toISOString(),
+            failedAt: new Date().toISOString(),
+            reason: outcome.stepResult.message,
+          })
+        );
+        throw new AuditStepFailedError({
+          step: outcome.stepResult.step,
+          stepName: outcome.stepResult.code,
+          originalError: outcome.stepResult.message,
+        });
+      }
 
-      return {
-        message: `Marked ${result.count} reservation(s) as no-show`,
-        details: {
-          count: result.count,
-          reservationIds: result.reservationIds,
-        },
-      };
-    });
-    stepResults.push(noShowStep.stepResult);
-    if (noShowStep.error) warningSteps.push(noShowStep.stepResult);
+      warningSteps.push(outcome.stepResult);
+    };
 
-    const stayoverStep = await runStep(5, 'GENERATE_STAYOVER_TASKS', async () => {
-      const result = await housekeepingService.autoGenerateStayoverTasks(
-        organizationId,
-        hotelId,
-        { date: businessDate },
-        actorId,
-        { nightAuditBatchId: audit.id }
-      );
-      actions.stayoverTasksGenerated = result.created;
+    await handleStepOutcome(
+      await runStep(3, 'POST_ROOM_CHARGES', async () => {
+        const result = await folioService.postRoomCharges(
+          hotelId,
+          organizationId,
+          businessDate,
+          actorId,
+          audit.id
+        );
+        actions.autoPostedCharges = result.posted;
 
-      return {
-        message: `Generated ${result.created} stayover task(s)`,
-        details: {
-          created: result.created,
-        },
-      };
-    });
-    stepResults.push(stayoverStep.stepResult);
-    if (stayoverStep.error) warningSteps.push(stayoverStep.stepResult);
+        return {
+          message: `Posted ${result.posted} room charge(s)`,
+          details: {
+            posted: result.posted,
+            totalAmount: result.totalAmount,
+          },
+        };
+      })
+    );
 
-    const preventiveStep = await runStep(6, 'GENERATE_PREVENTIVE_TASKS', async () => {
-      const result = await maintenanceService.generateDuePreventiveTasks(organizationId, hotelId, {
-        date: endOfDayUtc(businessDate),
-        sourceRef: audit.id,
-      });
-      actions.preventiveTasksGenerated = result.createdCount;
+    await handleStepOutcome(
+      await runStep(4, 'MARK_NO_SHOWS', async () => {
+        const result = await this.nightAuditRepo.markNoShowsForAudit(
+          audit.id,
+          organizationId,
+          hotelId,
+          businessDate
+        );
+        actions.noShowsMarked = result.count;
 
-      return {
-        message: `Generated ${result.createdCount} preventive request(s)`,
-        details: {
-          createdCount: result.createdCount,
-        },
-      };
-    });
-    stepResults.push(preventiveStep.stepResult);
-    if (preventiveStep.error) warningSteps.push(preventiveStep.stepResult);
+        return {
+          message: `Marked ${result.count} reservation(s) as no-show`,
+          details: {
+            count: result.count,
+            reservationIds: result.reservationIds,
+          },
+        };
+      })
+    );
 
-    const escalationStep = await runStep(7, 'RUN_ESCALATION_SWEEP', async () => {
-      const result = await maintenanceService.runEscalationSweep({
-        organizationId,
-        hotelId,
-        reason: 'NIGHT_AUDIT_AUTO_ESCALATION',
-      });
-      actions.escalationsProcessed = result.escalatedCount;
+    await handleStepOutcome(
+      await runStep(5, 'GENERATE_STAYOVER_TASKS', async () => {
+        const result = await housekeepingService.autoGenerateStayoverTasks(
+          organizationId,
+          hotelId,
+          { date: businessDate },
+          actorId,
+          { nightAuditBatchId: audit.id }
+        );
+        actions.stayoverTasksGenerated = result.created;
 
-      return {
-        message: `Escalation sweep processed ${result.escalatedCount} request(s)`,
-        details: {
-          checkedCount: result.checkedCount,
-          escalatedCount: result.escalatedCount,
-          skippedEmergencyCount: result.skippedEmergencyCount,
-        },
-      };
-    });
-    stepResults.push(escalationStep.stepResult);
-    if (escalationStep.error) warningSteps.push(escalationStep.stepResult);
+        return {
+          message: `Generated ${result.created} stayover task(s)`,
+          details: {
+            created: result.created,
+          },
+        };
+      })
+    );
+
+    await handleStepOutcome(
+      await runStep(6, 'GENERATE_PREVENTIVE_TASKS', async () => {
+        const result = await maintenanceService.generateDuePreventiveTasks(
+          organizationId,
+          hotelId,
+          {
+            date: endOfDayUtc(businessDate),
+            sourceRef: audit.id,
+          }
+        );
+        actions.preventiveTasksGenerated = result.createdCount;
+
+        return {
+          message: `Generated ${result.createdCount} preventive request(s)`,
+          details: {
+            createdCount: result.createdCount,
+          },
+        };
+      })
+    );
+
+    await handleStepOutcome(
+      await runStep(7, 'RUN_ESCALATION_SWEEP', async () => {
+        const result = await maintenanceService.runEscalationSweep({
+          organizationId,
+          hotelId,
+          reason: 'NIGHT_AUDIT_AUTO_ESCALATION',
+        });
+        actions.escalationsProcessed = result.escalatedCount;
+
+        return {
+          message: `Escalation sweep processed ${result.escalatedCount} request(s)`,
+          details: {
+            checkedCount: result.checkedCount,
+            escalatedCount: result.escalatedCount,
+            skippedEmergencyCount: result.skippedEmergencyCount,
+          },
+        };
+      })
+    );
 
     let nextBusinessDate = hotel.currentBusinessDate;
-    const advanceBusinessDateStep = await runStep(8, 'ADVANCE_BUSINESS_DATE', async () => {
-      nextBusinessDate = await this.nightAuditRepo.advanceHotelBusinessDate(
-        organizationId,
-        hotelId,
-        businessDate
-      );
+    await handleStepOutcome(
+      await runStep(8, 'ADVANCE_BUSINESS_DATE', async () => {
+        nextBusinessDate = await this.nightAuditRepo.advanceHotelBusinessDate(
+          organizationId,
+          hotelId,
+          businessDate
+        );
 
-      return {
-        message: `Business date advanced to ${nextBusinessDate.toISOString().slice(0, 10)}`,
-        details: {
-          nextBusinessDate,
-        },
-      };
-    });
-    stepResults.push(advanceBusinessDateStep.stepResult);
-    if (advanceBusinessDateStep.error) warningSteps.push(advanceBusinessDateStep.stepResult);
+        return {
+          message: `Business date advanced to ${nextBusinessDate.toISOString().slice(0, 10)}`,
+          details: {
+            nextBusinessDate,
+          },
+        };
+      })
+    );
 
     try {
       const financial = await this.nightAuditRepo.computeFinancialSummary(hotelId, businessDate);
@@ -427,60 +475,16 @@ export class NightAuditService {
 
     assertRollbackAllowed(targetAudit, latestAudit, hotel.currentBusinessDate);
 
-    const voidedCharges = await this.nightAuditRepo.rollbackRoomCharges(targetAudit.id, actorId);
-    const revertedNoShows = await this.nightAuditRepo.rollbackNoShows(targetAudit.id);
-    const cancelledStayoverTasks = await this.nightAuditRepo.rollbackStayoverTasks(
-      targetAudit.id,
-      actorId,
-      reason
-    );
-    const cancelledPreventiveRequests = await this.nightAuditRepo.rollbackPreventiveRequests(
-      targetAudit.id,
-      actorId,
-      reason
-    );
-
-    await this.nightAuditRepo.updateHotelBusinessDate(
-      organizationId,
-      hotelId,
-      asDateOnly(targetAudit.businessDate)
-    );
-
-    const rollbackSummary: NightAuditRollbackSummary = {
-      voidedRoomCharges: voidedCharges.voidedRoomCharges,
-      revertedNoShows,
-      cancelledStayoverTasks,
-      cancelledPreventiveRequests,
-    };
-
-    const rollbackPayload = {
-      rolledBackAt: new Date().toISOString(),
-      rolledBackBy: actorId,
-      reason,
-      rollback: rollbackSummary,
-      previousStatus: targetAudit.status,
-    };
-
-    const rolledBackAudit = await this.nightAuditRepo.markRolledBack(
-      targetAudit.id,
-      asJson(rollbackPayload),
-      reason
-    );
-
-    await this.nightAuditRepo.createOutboxEvent(
-      'night_audit.rolled_back',
-      targetAudit.id,
-      asJson({
+    const { rollbackSummary, rolledBackAudit } =
+      await this.nightAuditRepo.performRollbackTransaction({
+        targetAuditId: targetAudit.id,
+        businessDate: targetAudit.businessDate,
         organizationId,
         hotelId,
-        auditId: targetAudit.id,
-        businessDate: targetAudit.businessDate.toISOString(),
-        rolledBackAt: new Date().toISOString(),
-        rolledBackBy: actorId,
+        actorId,
         reason,
-        rollback: rollbackSummary,
-      })
-    );
+        previousStatus: targetAudit.status,
+      });
 
     if (userId) {
       await notificationService.send([userId], {
