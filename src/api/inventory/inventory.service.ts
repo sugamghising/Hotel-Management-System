@@ -340,7 +340,7 @@ export class InventoryService {
           type: 'CONSUMPTION',
           quantity: -input.quantity,
           unitCost: item.avgUnitCost,
-          totalCost: item.avgUnitCost.mul(input.quantity),
+          totalCost: item.avgUnitCost.mul(input.quantity).neg(),
           refType: input.refType,
           refId: input.refId,
           notes: input.notes ?? null,
@@ -396,8 +396,18 @@ export class InventoryService {
 
       return {
         ...item,
-        unitCost: typed.unitCost !== undefined ? this.repo.toApiNumber(typed.unitCost) : null,
-        totalCost: typed.totalCost !== undefined ? this.repo.toApiNumber(typed.totalCost) : null,
+        unitCost:
+          typed.unitCost === null
+            ? null
+            : typed.unitCost !== undefined
+              ? this.repo.toApiNumber(typed.unitCost)
+              : undefined,
+        totalCost:
+          typed.totalCost === null
+            ? null
+            : typed.totalCost !== undefined
+              ? this.repo.toApiNumber(typed.totalCost)
+              : undefined,
       };
     });
 
@@ -537,81 +547,111 @@ export class InventoryService {
 
     const actorId = userId ?? config.system.userId;
 
-    const purchaseOrder = await this.repo.runInTransaction(async (tx) => {
-      const vendor = await this.repo.findVendorById(organizationId, hotelId, input.vendorId, tx);
-      if (!vendor || !vendor.isActive) {
-        throw new NotFoundError(`Vendor ${input.vendorId} not found`);
+    const MAX_PO_NUMBER_RETRIES = 5;
+    let purchaseOrder: Awaited<ReturnType<typeof this.repo.findPurchaseOrderById>> | undefined =
+      undefined;
+
+    for (let attempt = 0; attempt <= MAX_PO_NUMBER_RETRIES; attempt++) {
+      try {
+        purchaseOrder = await this.repo.runInTransaction(async (tx) => {
+          const vendor = await this.repo.findVendorById(
+            organizationId,
+            hotelId,
+            input.vendorId,
+            tx
+          );
+          if (!vendor || !vendor.isActive) {
+            throw new NotFoundError(`Vendor ${input.vendorId} not found`);
+          }
+
+          const itemIds = input.items.map((item) => item.itemId);
+          const inventoryItems = await this.repo.findInventoryItemsByIds(
+            organizationId,
+            hotelId,
+            itemIds,
+            tx
+          );
+          if (inventoryItems.length !== itemIds.length) {
+            throw new NotFoundError('One or more purchase order items do not exist in inventory');
+          }
+
+          const invalidItem = inventoryItems.find((item) => item.deletedAt || !item.isActive);
+          if (invalidItem) {
+            throw new ConflictError(
+              `Inventory item ${invalidItem.id} is inactive and cannot be ordered`
+            );
+          }
+
+          const now = new Date();
+          const baseSequence = await this.repo.countTodayPurchaseOrdersForHotel(hotelId, now, tx);
+          const sequence = baseSequence + 1 + attempt;
+          const poNumber = this.generatePurchaseOrderNumber(hotelId, now, sequence);
+
+          const subtotal = input.items.reduce(
+            (acc, line) => acc.plus(asDecimal(line.unitPrice).mul(line.quantity)),
+            ZERO
+          );
+          const taxAmount = asDecimal(input.taxAmount);
+          const shippingCost = asDecimal(input.shippingCost);
+          const total = subtotal.plus(taxAmount).plus(shippingCost);
+
+          const created = await this.repo.createPurchaseOrder(
+            {
+              organizationId,
+              hotelId,
+              vendorId: vendor.id,
+              poNumber,
+              status: 'DRAFT',
+              orderDate: asDateOnly(now),
+              expectedDelivery: input.expectedDelivery ? asDateOnly(input.expectedDelivery) : null,
+              subtotal,
+              taxAmount,
+              shippingCost,
+              total,
+              requestedBy: actorId,
+              approvedBy: null,
+              approvedAt: null,
+              notes: input.notes?.trim() ?? null,
+            },
+            tx
+          );
+
+          for (const line of input.items) {
+            const unitPrice = asDecimal(line.unitPrice);
+            await this.repo.createPurchaseOrderItem(
+              {
+                poId: created.id,
+                itemId: line.itemId,
+                quantity: line.quantity,
+                unitPrice,
+                totalPrice: unitPrice.mul(line.quantity),
+                receivedQty: 0,
+              },
+              tx
+            );
+          }
+
+          const orderWithItems = await this.repo.recomputePurchaseOrderTotals(created.id, tx);
+          return orderWithItems;
+        });
+        break;
+      } catch (error) {
+        if (
+          attempt < MAX_PO_NUMBER_RETRIES &&
+          error instanceof Prisma.PrismaClientKnownRequestError
+        ) {
+          const prismaError = error as Prisma.PrismaClientKnownRequestError;
+          if (prismaError.code === 'P2002') {
+            continue;
+          }
+        }
+        throw error;
       }
+    }
 
-      const itemIds = input.items.map((item) => item.itemId);
-      const inventoryItems = await this.repo.findInventoryItemsByIds(
-        organizationId,
-        hotelId,
-        itemIds,
-        tx
-      );
-      if (inventoryItems.length !== itemIds.length) {
-        throw new NotFoundError('One or more purchase order items do not exist in inventory');
-      }
-
-      const invalidItem = inventoryItems.find((item) => item.deletedAt || !item.isActive);
-      if (invalidItem) {
-        throw new ConflictError(
-          `Inventory item ${invalidItem.id} is inactive and cannot be ordered`
-        );
-      }
-
-      const now = new Date();
-      const sequence = (await this.repo.countTodayPurchaseOrdersForHotel(hotelId, now, tx)) + 1;
-      const poNumber = this.generatePurchaseOrderNumber(hotelId, now, sequence);
-
-      const subtotal = input.items.reduce(
-        (acc, line) => acc.plus(asDecimal(line.unitPrice).mul(line.quantity)),
-        ZERO
-      );
-      const taxAmount = asDecimal(input.taxAmount);
-      const shippingCost = asDecimal(input.shippingCost);
-      const total = subtotal.plus(taxAmount).plus(shippingCost);
-
-      const created = await this.repo.createPurchaseOrder(
-        {
-          organizationId,
-          hotelId,
-          vendorId: vendor.id,
-          poNumber,
-          status: 'DRAFT',
-          orderDate: asDateOnly(now),
-          expectedDelivery: input.expectedDelivery ? asDateOnly(input.expectedDelivery) : null,
-          subtotal,
-          taxAmount,
-          shippingCost,
-          total,
-          requestedBy: actorId,
-          approvedBy: null,
-          approvedAt: null,
-          notes: input.notes?.trim() ?? null,
-        },
-        tx
-      );
-
-      for (const line of input.items) {
-        const unitPrice = asDecimal(line.unitPrice);
-        await this.repo.createPurchaseOrderItem(
-          {
-            poId: created.id,
-            itemId: line.itemId,
-            quantity: line.quantity,
-            unitPrice,
-            totalPrice: unitPrice.mul(line.quantity),
-            receivedQty: 0,
-          },
-          tx
-        );
-      }
-
-      const orderWithItems = await this.repo.recomputePurchaseOrderTotals(created.id, tx);
-      return orderWithItems;
-    });
+    if (!purchaseOrder) {
+      throw new ConflictError('Failed to generate a unique purchase order number after retries');
+    }
 
     return this.toApiPurchaseOrder(purchaseOrder);
   }
@@ -1273,7 +1313,7 @@ export class InventoryService {
       receivedTransactions,
       topLowStock,
     ] = await Promise.all([
-      inventoryRepository.runInTransaction((tx) =>
+      this.repo.runInTransaction((tx) =>
         tx.inventoryItem.count({
           where: {
             organizationId,
@@ -1282,7 +1322,7 @@ export class InventoryService {
           },
         })
       ),
-      inventoryRepository.runInTransaction((tx) =>
+      this.repo.runInTransaction((tx) =>
         tx.inventoryItem.count({
           where: {
             organizationId,
@@ -1295,7 +1335,7 @@ export class InventoryService {
           },
         })
       ),
-      inventoryRepository.runInTransaction((tx) =>
+      this.repo.runInTransaction((tx) =>
         tx.vendor.count({
           where: {
             organizationId,
@@ -1304,7 +1344,7 @@ export class InventoryService {
           },
         })
       ),
-      inventoryRepository.runInTransaction((tx) =>
+      this.repo.runInTransaction((tx) =>
         tx.purchaseOrder.count({
           where: {
             organizationId,
@@ -1313,7 +1353,7 @@ export class InventoryService {
           },
         })
       ),
-      inventoryRepository.runInTransaction((tx) =>
+      this.repo.runInTransaction((tx) =>
         tx.purchaseOrder.count({
           where: {
             organizationId,
@@ -1322,7 +1362,7 @@ export class InventoryService {
           },
         })
       ),
-      inventoryRepository.runInTransaction((tx) =>
+      this.repo.runInTransaction((tx) =>
         tx.purchaseOrder.count({
           where: {
             organizationId,
@@ -1333,7 +1373,7 @@ export class InventoryService {
           },
         })
       ),
-      inventoryRepository.runInTransaction((tx) =>
+      this.repo.runInTransaction((tx) =>
         tx.purchaseOrder.count({
           where: {
             organizationId,
@@ -1346,7 +1386,7 @@ export class InventoryService {
           },
         })
       ),
-      inventoryRepository.runInTransaction((tx) =>
+      this.repo.runInTransaction((tx) =>
         tx.inventoryItem.findMany({
           where: {
             organizationId,
@@ -1360,7 +1400,7 @@ export class InventoryService {
           },
         })
       ),
-      inventoryRepository.runInTransaction((tx) =>
+      this.repo.runInTransaction((tx) =>
         tx.purchaseOrder.aggregate({
           where: {
             organizationId,
@@ -1374,7 +1414,7 @@ export class InventoryService {
           },
         })
       ),
-      inventoryRepository.runInTransaction((tx) =>
+      this.repo.runInTransaction((tx) =>
         tx.inventoryTransaction.aggregate({
           where: {
             type: 'PURCHASE',
@@ -1392,7 +1432,7 @@ export class InventoryService {
           },
         })
       ),
-      inventoryRepository.runInTransaction((tx) =>
+      this.repo.runInTransaction((tx) =>
         tx.inventoryItem.findMany({
           where: {
             organizationId,
