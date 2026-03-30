@@ -132,6 +132,56 @@ const InventoryLowStockPayloadSchema = z.object({
   refId: z.string().uuid().optional(),
 });
 
+const InventoryPurchaseOrderSubmittedPayloadSchema = z.object({
+  organizationId: z.string().uuid(),
+  hotelId: z.string().uuid(),
+  purchaseOrderId: z.string().uuid(),
+  poNumber: z.string(),
+  submittedBy: z.string().uuid(),
+  submittedAt: z.coerce.date().optional(),
+  total: z.number(),
+});
+
+const InventoryPurchaseOrderApprovedPayloadSchema = z.object({
+  organizationId: z.string().uuid(),
+  hotelId: z.string().uuid(),
+  purchaseOrderId: z.string().uuid(),
+  poNumber: z.string(),
+  approvedBy: z.string().uuid(),
+  approvedAt: z.coerce.date().optional(),
+  total: z.number(),
+});
+
+const InventoryPurchaseOrderReceivedPayloadSchema = z.object({
+  organizationId: z.string().uuid(),
+  hotelId: z.string().uuid(),
+  purchaseOrderId: z.string().uuid(),
+  poNumber: z.string(),
+  receivedDate: z.coerce.date(),
+  status: z.enum(['PARTIALLY_RECEIVED', 'RECEIVED']),
+  receiptTotalCost: z.number(),
+  lines: z.array(
+    z.object({
+      poItemId: z.string().uuid(),
+      itemId: z.string().uuid(),
+      receivedQty: z.number().int(),
+      cumulativeReceivedQty: z.number().int(),
+      unitCost: z.number(),
+      totalCost: z.number(),
+    })
+  ),
+});
+
+const InventoryPurchaseOrderCancelledPayloadSchema = z.object({
+  organizationId: z.string().uuid(),
+  hotelId: z.string().uuid(),
+  purchaseOrderId: z.string().uuid(),
+  poNumber: z.string(),
+  cancelledBy: z.string().uuid(),
+  cancelledAt: z.coerce.date().optional(),
+  reason: z.string(),
+});
+
 const NightAuditCompletedPayloadSchema = z.object({
   organizationId: z.string().uuid(),
   hotelId: z.string().uuid(),
@@ -370,6 +420,18 @@ class OutboxWorker {
           break;
         case 'inventory.low_stock':
           await this.handleInventoryLowStock(payload);
+          break;
+        case 'inventory.purchase_order_submitted':
+          await this.handleInventoryPurchaseOrderSubmitted(payload);
+          break;
+        case 'inventory.purchase_order_approved':
+          await this.handleInventoryPurchaseOrderApproved(payload);
+          break;
+        case 'inventory.purchase_order_received':
+          await this.handleInventoryPurchaseOrderReceived(payload);
+          break;
+        case 'inventory.purchase_order_cancelled':
+          await this.handleInventoryPurchaseOrderCancelled(payload);
           break;
         case 'night_audit.completed':
           await this.handleNightAuditCompleted(payload);
@@ -645,6 +707,63 @@ class OutboxWorker {
       reorderPoint: parsed.reorderPoint,
       refType: parsed.refType ?? null,
       refId: parsed.refId ?? null,
+    });
+  }
+
+  private async handleInventoryPurchaseOrderSubmitted(payload: unknown): Promise<void> {
+    const parsed = InventoryPurchaseOrderSubmittedPayloadSchema.parse(payload);
+
+    logger.info('Inventory purchase order submitted event processed', {
+      organizationId: parsed.organizationId,
+      hotelId: parsed.hotelId,
+      purchaseOrderId: parsed.purchaseOrderId,
+      poNumber: parsed.poNumber,
+      submittedBy: parsed.submittedBy,
+      submittedAt: parsed.submittedAt?.toISOString() ?? null,
+      total: parsed.total,
+    });
+  }
+
+  private async handleInventoryPurchaseOrderApproved(payload: unknown): Promise<void> {
+    const parsed = InventoryPurchaseOrderApprovedPayloadSchema.parse(payload);
+
+    logger.info('Inventory purchase order approved event processed', {
+      organizationId: parsed.organizationId,
+      hotelId: parsed.hotelId,
+      purchaseOrderId: parsed.purchaseOrderId,
+      poNumber: parsed.poNumber,
+      approvedBy: parsed.approvedBy,
+      approvedAt: parsed.approvedAt?.toISOString() ?? null,
+      total: parsed.total,
+    });
+  }
+
+  private async handleInventoryPurchaseOrderReceived(payload: unknown): Promise<void> {
+    const parsed = InventoryPurchaseOrderReceivedPayloadSchema.parse(payload);
+
+    logger.info('Inventory purchase order received event processed', {
+      organizationId: parsed.organizationId,
+      hotelId: parsed.hotelId,
+      purchaseOrderId: parsed.purchaseOrderId,
+      poNumber: parsed.poNumber,
+      receivedDate: parsed.receivedDate.toISOString(),
+      status: parsed.status,
+      receiptTotalCost: parsed.receiptTotalCost,
+      lineCount: parsed.lines.length,
+    });
+  }
+
+  private async handleInventoryPurchaseOrderCancelled(payload: unknown): Promise<void> {
+    const parsed = InventoryPurchaseOrderCancelledPayloadSchema.parse(payload);
+
+    logger.warn('Inventory purchase order cancelled event processed', {
+      organizationId: parsed.organizationId,
+      hotelId: parsed.hotelId,
+      purchaseOrderId: parsed.purchaseOrderId,
+      poNumber: parsed.poNumber,
+      cancelledBy: parsed.cancelledBy,
+      cancelledAt: parsed.cancelledAt?.toISOString() ?? null,
+      reason: parsed.reason,
     });
   }
 

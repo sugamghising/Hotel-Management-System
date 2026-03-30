@@ -140,6 +140,27 @@ export class InsufficientStockError extends AppError {
   }
 }
 
+export class ProcurementInvalidPurchaseOrderStatusError extends AppError {
+  constructor(message: string = 'Invalid purchase order status', details?: unknown) {
+    super(message, StatusCodes.CONFLICT, 'PROCUREMENT_INVALID_PO_STATUS', true, details);
+  }
+}
+
+export class ProcurementOverReceiptError extends AppError {
+  constructor(message: string = 'Received quantity exceeds ordered quantity', details?: unknown) {
+    super(message, StatusCodes.CONFLICT, 'PROCUREMENT_PO_OVER_RECEIPT', true, details);
+  }
+}
+
+export class ProcurementPurchaseOrderClosedError extends AppError {
+  constructor(
+    message: string = 'Purchase order cannot be changed in current state',
+    details?: unknown
+  ) {
+    super(message, StatusCodes.CONFLICT, 'PROCUREMENT_PO_CLOSED', true, details);
+  }
+}
+
 export class GuestChargeAlreadyPostedError extends AppError {
   constructor(message: string = 'Guest charge already posted for this request', details?: unknown) {
     super(message, StatusCodes.CONFLICT, 'GUEST_CHARGE_ALREADY_POSTED', true, details);
