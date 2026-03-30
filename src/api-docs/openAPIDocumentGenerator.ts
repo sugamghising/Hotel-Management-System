@@ -5,6 +5,7 @@ import { guestsRegistry } from '@/api/guests/guests.registry';
 import { healthRegistry } from '@/api/health/health.registry';
 import { hotelRegistry } from '@/api/hotel/hotel.registry';
 import { housekeepingRegistry } from '@/api/housekeeping/housekeeping.registry';
+import { inventoryRegistry } from '@/api/inventory/inventory.registry';
 import { maintenanceRegistry } from '@/api/maintenance/maintenance.registry';
 import { nightAuditRegistry } from '@/api/nightAudit/nightAudit.registry';
 import { organizationRegistry } from '@/api/organizations/organization.registry';
@@ -34,6 +35,7 @@ export function generateOpenAPIDocument(): OpenAPIDocument {
     folioRegistry,
     checkinCheckoutRegistry,
     housekeepingRegistry,
+    inventoryRegistry,
     maintenanceRegistry,
     nightAuditRegistry,
     posRegistry,

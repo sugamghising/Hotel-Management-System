@@ -14,7 +14,7 @@ import {
   UnprocessableEntityError,
 } from '../../core/errors';
 import { prisma } from '../../database/prisma';
-import { type PaymentMethod, Prisma } from '../../generated/prisma';
+import { type POSOrderStatus, type PaymentMethod, Prisma } from '../../generated/prisma';
 import {
   type POSOrderWithRelations,
   type PosRepositoryType,
@@ -1304,9 +1304,7 @@ export class PosService {
       ...(query.outletId ? { outletId: query.outletId } : {}),
     };
 
-    const completedStatusFilter = {
-      in: ['CLOSED', 'PAID', 'COMPED'],
-    } as const;
+    const completedStatuses: POSOrderStatus[] = ['CLOSED', 'PAID', 'COMPED'];
 
     const ordersQuery = prisma.pOSOrder.findMany({
       where,
@@ -1325,7 +1323,9 @@ export class PosService {
       by: ['paymentMethod'],
       where: {
         ...where,
-        status: completedStatusFilter,
+        status: {
+          in: completedStatuses,
+        },
       },
       _sum: {
         total: true,
@@ -1341,7 +1341,9 @@ export class PosService {
             by: ['outletId'],
             where: {
               ...where,
-              status: completedStatusFilter,
+              status: {
+                in: completedStatuses,
+              },
             },
             _sum: {
               total: true,
@@ -1386,8 +1388,8 @@ export class PosService {
       byOutlet = outletGroups.map((group) => ({
         outletId: group.outletId,
         outletName: outletNameById.get(group.outletId) ?? 'Unknown outlet',
-        amount: this.repo.toApiNumber(group._sum.total ?? ZERO),
-        count: group._count._all,
+        amount: this.repo.toApiNumber(group._sum?.total ?? ZERO),
+        count: typeof group._count === 'object' && group._count ? (group._count._all ?? 0) : 0,
       }));
     } else {
       const byDayMap = new Map<
@@ -1418,7 +1420,7 @@ export class PosService {
       }));
     }
 
-    return {
+    const response: PosSalesReportResponse = {
       from: from.toISOString(),
       to: to.toISOString(),
       summary: {
@@ -1435,12 +1437,20 @@ export class PosService {
       },
       byPaymentMethod: paymentGroups.map((group) => ({
         method: group.paymentMethod ?? 'UNPAID',
-        amount: this.repo.toApiNumber(group._sum.total ?? ZERO),
-        count: group._count._all,
+        amount: this.repo.toApiNumber(group._sum?.total ?? ZERO),
+        count: typeof group._count === 'object' && group._count ? (group._count._all ?? 0) : 0,
       })),
-      byOutlet,
-      byDay,
     };
+
+    if (byOutlet) {
+      response.byOutlet = byOutlet;
+    }
+
+    if (byDay) {
+      response.byDay = byDay;
+    }
+
+    return response;
   }
 
   private async postToRoomInternal(
