@@ -311,6 +311,40 @@ export class FolioService {
     return voided as FolioItem;
   }
 
+  async voidChargeBySourceRef(
+    reservationId: string,
+    organizationId: string,
+    sourceRef: string,
+    reason: string,
+    voidedBy?: string,
+    options?: {
+      source?: string;
+      hotelId?: string;
+    }
+  ): Promise<FolioItem> {
+    await this.verifyReservationAccess(reservationId, organizationId, options?.hotelId);
+
+    const item = await prisma.folioItem.findFirst({
+      where: {
+        reservationId,
+        sourceRef,
+        isVoided: false,
+        ...(options?.source ? { source: options.source } : {}),
+      },
+      orderBy: {
+        postedAt: 'desc',
+      },
+    });
+
+    if (!item) {
+      throw new NotFoundError(
+        `No active folio charge found for reservation ${reservationId} and sourceRef ${sourceRef}`
+      );
+    }
+
+    return this.voidCharge(item.id, organizationId, reason, voidedBy);
+  }
+
   async adjustCharge(
     itemId: string,
     organizationId: string,
