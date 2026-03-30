@@ -305,6 +305,48 @@ export class ReservationsService {
     return this.mapToResponse(reservation as unknown as ReservationWithRelations);
   }
 
+  async findByRoomNumber(
+    organizationId: string,
+    hotelId: string,
+    roomNumber: string
+  ): Promise<ReservationResponse> {
+    await this.verifyHotelAccess(organizationId, hotelId);
+
+    const reservation = await prisma.reservation.findFirst({
+      where: {
+        organizationId,
+        hotelId,
+        deletedAt: null,
+        status: 'CHECKED_IN',
+        rooms: {
+          some: {
+            status: { in: ['ASSIGNED', 'OCCUPIED'] },
+            room: {
+              roomNumber,
+              deletedAt: null,
+            },
+          },
+        },
+      },
+      include: {
+        rooms: {
+          include: {
+            roomType: true,
+            room: true,
+          },
+        },
+        guest: true,
+      },
+      orderBy: [{ checkInDate: 'desc' }],
+    });
+
+    if (!reservation) {
+      throw new NotFoundError(`No checked-in reservation found for room ${roomNumber}`);
+    }
+
+    return this.mapToResponse(reservation as unknown as ReservationWithRelations);
+  }
+
   async search(
     hotelId: string,
     organizationId: string,

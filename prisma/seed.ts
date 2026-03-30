@@ -328,6 +328,30 @@ async function main() {
                 level: 55,
             },
         }),
+        prisma.role.upsert({
+            where: { uq_role_org_code: { organizationId: org.id, code: 'POS_STAFF' } },
+            update: {},
+            create: {
+                organizationId: org.id,
+                code: 'POS_STAFF',
+                name: 'POS Staff',
+                description: 'Operate POS orders and room posting workflows',
+                isSystem: true,
+                level: 40,
+            },
+        }),
+        prisma.role.upsert({
+            where: { uq_role_org_code: { organizationId: org.id, code: 'REST_MANAGER' } },
+            update: {},
+            create: {
+                organizationId: org.id,
+                code: 'REST_MANAGER',
+                name: 'Restaurant Manager',
+                description: 'Manage outlets, menus, and POS financial operations',
+                isSystem: true,
+                level: 70,
+            },
+        }),
     ]);
 
     console.log('✅ Roles created:', roles.length);
@@ -366,6 +390,10 @@ async function main() {
         'ASSET.READ', 'ASSET.CREATE', 'ASSET.UPDATE', 'ASSET.DELETE', 'ASSET.EVALUATE',
         'NIGHT_AUDIT.RUN', 'NIGHT_AUDIT.PRE_CHECK', 'NIGHT_AUDIT.VIEW_STATUS',
         'NIGHT_AUDIT.VIEW_HISTORY', 'NIGHT_AUDIT.VIEW_REPORT', 'NIGHT_AUDIT.ROLLBACK',
+        'POS.READ_ORDER', 'POS.CREATE_ORDER', 'POS.MODIFY_ORDER', 'POS.CLOSE_ORDER',
+        'POS.VOID_ORDER', 'POS.REOPEN_ORDER', 'POS.POST_ROOM_CHARGE', 'POS.SPLIT_ORDER',
+        'POS.TRANSFER_ORDER', 'POS.MANAGE_OUTLET', 'POS.MANAGE_MENU',
+        'POS.VIEW_DASHBOARD', 'POS.VIEW_REPORTS',
         'BILLING.READ', 'BILLING.CREATE', 'BILLING.UPDATE',
         'REPORT.READ',
     ];
@@ -462,6 +490,10 @@ async function main() {
         'ASSET.READ', 'ASSET.CREATE', 'ASSET.UPDATE', 'ASSET.EVALUATE',
         'NIGHT_AUDIT.RUN', 'NIGHT_AUDIT.PRE_CHECK', 'NIGHT_AUDIT.VIEW_STATUS',
         'NIGHT_AUDIT.VIEW_HISTORY', 'NIGHT_AUDIT.VIEW_REPORT', 'NIGHT_AUDIT.ROLLBACK',
+        'POS.READ_ORDER', 'POS.CREATE_ORDER', 'POS.MODIFY_ORDER', 'POS.CLOSE_ORDER',
+        'POS.VOID_ORDER', 'POS.REOPEN_ORDER', 'POS.POST_ROOM_CHARGE', 'POS.SPLIT_ORDER',
+        'POS.TRANSFER_ORDER', 'POS.MANAGE_OUTLET', 'POS.MANAGE_MENU',
+        'POS.VIEW_DASHBOARD', 'POS.VIEW_REPORTS',
     ]);
 
     await grantPermissions('FRONT_DESK', [
@@ -533,7 +565,22 @@ async function main() {
     await grantPermissions('ACCOUNTANT', [
         'MAINTENANCE.READ', 'MAINTENANCE.DASHBOARD_READ', 'MAINTENANCE.GUEST_CHARGE',
         'NIGHT_AUDIT.VIEW_HISTORY', 'NIGHT_AUDIT.VIEW_REPORT',
+        'POS.VIEW_REPORTS',
         'BILLING.READ', 'BILLING.UPDATE', 'REPORT.READ',
+    ]);
+
+    await grantPermissions('POS_STAFF', [
+        'POS.READ_ORDER', 'POS.CREATE_ORDER', 'POS.MODIFY_ORDER', 'POS.CLOSE_ORDER',
+        'POS.POST_ROOM_CHARGE', 'POS.SPLIT_ORDER', 'POS.TRANSFER_ORDER',
+        'POS.VIEW_DASHBOARD',
+    ]);
+
+    await grantPermissions('REST_MANAGER', [
+        'POS.READ_ORDER', 'POS.CREATE_ORDER', 'POS.MODIFY_ORDER', 'POS.CLOSE_ORDER',
+        'POS.VOID_ORDER', 'POS.REOPEN_ORDER', 'POS.POST_ROOM_CHARGE',
+        'POS.SPLIT_ORDER', 'POS.TRANSFER_ORDER',
+        'POS.MANAGE_OUTLET', 'POS.MANAGE_MENU',
+        'POS.VIEW_DASHBOARD', 'POS.VIEW_REPORTS',
     ]);
 
     console.log('✅ Permissions assigned to operational roles');

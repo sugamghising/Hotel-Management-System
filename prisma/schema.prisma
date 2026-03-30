@@ -663,6 +663,9 @@ model Hotel {
   roomTypes    RoomType[]
   rooms        Room[]
   ratePlans    RatePlan[]
+  posOutlets   POSOutlet[]
+  posMenuItems POSMenuItem[]
+  posOrders    POSOrder[]
 
   @@unique([organizationId, code], name: "uq_hotel_org_code") // Partial index in migration
   @@index([organizationId], name: "idx_hotel_org")
@@ -1193,6 +1196,8 @@ model Guest {
   // Notes
   internalNotes String? @map("internal_notes") @db.Text
   alertNotes    String? @map("alert_notes") @db.Text // Shows popup at check-in
+  isCreditStopped Boolean @default(false) @map("is_credit_stopped")
+  creditStopReason String? @map("credit_stop_reason") @db.Text
 
   // Audit
   createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
@@ -2374,10 +2379,66 @@ model NightAudit {
 // POS MODULE (Restaurant/Outlets)
 // ============================================
 
+model POSOutlet {
+  id             String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  hotelId        String @map("hotel_id") @db.Uuid
+
+  code        String  @db.VarChar(50)
+  name        String  @db.VarChar(100)
+  description String? @db.Text
+
+  allowRoomPosting Boolean @default(true) @map("allow_room_posting")
+  allowDirectBill  Boolean @default(true) @map("allow_direct_bill")
+  isActive         Boolean @default(true) @map("is_active")
+  openTime         DateTime? @map("open_time") @db.Time(6)
+  closeTime        DateTime? @map("close_time") @db.Time(6)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  hotel     Hotel         @relation(fields: [hotelId], references: [id], onDelete: Restrict)
+  menuItems POSMenuItem[]
+  orders    POSOrder[]    @relation("PosOutletOrders")
+
+  @@unique([hotelId, code], name: "uq_pos_outlet_hotel_code")
+  @@index([hotelId, isActive], name: "idx_pos_outlet_hotel_active")
+  @@map("pos_outlets")
+}
+
+model POSMenuItem {
+  id             String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  hotelId        String @map("hotel_id") @db.Uuid
+  outletId       String @map("outlet_id") @db.Uuid
+
+  sku         String  @db.VarChar(50)
+  name        String  @db.VarChar(150)
+  description String? @db.Text
+  category    String  @db.VarChar(100)
+  unitPrice   Decimal @map("unit_price") @db.Decimal(10, 2)
+  taxRate     Decimal @default(0) @map("tax_rate") @db.Decimal(5, 2)
+
+  isActive  Boolean @default(true) @map("is_active")
+  isDeleted Boolean @default(false) @map("is_deleted")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  hotel  Hotel     @relation(fields: [hotelId], references: [id], onDelete: Restrict)
+  outlet POSOutlet @relation(fields: [outletId], references: [id], onDelete: Restrict)
+
+  @@unique([hotelId, sku], name: "uq_pos_menu_hotel_sku")
+  @@index([outletId, isActive], name: "idx_pos_menu_outlet_active")
+  @@index([hotelId, category], name: "idx_pos_menu_hotel_category")
+  @@map("pos_menu_items")
+}
+
 model POSOrder {
   id             String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId String  @map("organization_id") @db.Uuid
   hotelId        String  @map("hotel_id") @db.Uuid
+  outletId       String  @map("outlet_id") @db.Uuid
   reservationId  String? @map("reservation_id") @db.Uuid
 
   orderNumber String  @unique @map("order_number") @db.VarChar(50)
@@ -2407,9 +2468,12 @@ model POSOrder {
   createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   closedAt  DateTime? @map("closed_at") @db.Timestamptz(6)
 
-  items POSOrderItem[]
+  hotel     Hotel      @relation(fields: [hotelId], references: [id], onDelete: Restrict)
+  outletRef POSOutlet  @relation("PosOutletOrders", fields: [outletId], references: [id], onDelete: Restrict)
+  items     POSOrderItem[]
 
   @@index([hotelId, createdAt], name: "idx_pos_hotel_date")
+  @@index([outletId, createdAt], name: "idx_pos_outlet_date")
   @@map("pos_orders")
 }
 

@@ -161,6 +161,84 @@ const NightAuditRolledBackPayloadSchema = z.object({
   reason: z.string().optional(),
 });
 
+const PosOrderCreatedPayloadSchema = z.object({
+  organizationId: z.string().uuid(),
+  hotelId: z.string().uuid(),
+  orderId: z.string().uuid(),
+  orderNumber: z.string(),
+  outletId: z.string().uuid(),
+  status: z.string(),
+  createdAt: z.coerce.date().optional(),
+});
+
+const PosOrderClosedPayloadSchema = z.object({
+  organizationId: z.string().uuid(),
+  hotelId: z.string().uuid(),
+  orderId: z.string().uuid(),
+  orderNumber: z.string(),
+  status: z.string(),
+  paymentMethod: z.string().nullable().optional(),
+  paidAmount: z.union([z.number(), z.string()]).optional(),
+  total: z.union([z.number(), z.string()]).optional(),
+  closedAt: z.coerce.date().optional(),
+});
+
+const PosOrderPostedToRoomPayloadSchema = z.object({
+  organizationId: z.string().uuid(),
+  hotelId: z.string().uuid(),
+  orderId: z.string().uuid(),
+  orderNumber: z.string(),
+  reservationId: z.string().uuid(),
+  roomNumber: z.string(),
+  folioItemId: z.string().uuid(),
+  postedAt: z.coerce.date().optional(),
+});
+
+const PosOrderVoidedPayloadSchema = z.object({
+  organizationId: z.string().uuid(),
+  hotelId: z.string().uuid(),
+  orderId: z.string().uuid(),
+  orderNumber: z.string(),
+  reason: z.string(),
+  voidedFolioCount: z.number().int().nonnegative().optional(),
+  refundPaymentId: z.string().uuid().nullable().optional(),
+  voidedAt: z.coerce.date().optional(),
+});
+
+const PosOrderReopenedPayloadSchema = z.object({
+  organizationId: z.string().uuid(),
+  hotelId: z.string().uuid(),
+  orderId: z.string().uuid(),
+  reopenedAt: z.coerce.date().optional(),
+});
+
+const PosOrderSplitPayloadSchema = z.object({
+  organizationId: z.string().uuid(),
+  hotelId: z.string().uuid(),
+  orderId: z.string().uuid(),
+  orderNumber: z.string(),
+  splits: z.array(
+    z.object({
+      reservationId: z.string().uuid(),
+      roomNumber: z.string(),
+      amount: z.number(),
+      folioItemId: z.string().uuid(),
+    })
+  ),
+});
+
+const PosOrderTransferredPayloadSchema = z.object({
+  organizationId: z.string().uuid(),
+  hotelId: z.string().uuid(),
+  orderId: z.string().uuid(),
+  fromReservationId: z.string().uuid(),
+  toReservationId: z.string().uuid(),
+  toRoomNumber: z.string(),
+  amount: z.union([z.number(), z.string()]),
+  sourceVoidedCount: z.number().int().nonnegative(),
+  targetFolioItemId: z.string().uuid(),
+});
+
 class OutboxWorker {
   private intervalId: NodeJS.Timeout | null = null;
   private isTicking = false;
@@ -301,6 +379,36 @@ class OutboxWorker {
           break;
         case 'night_audit.rolled_back':
           await this.handleNightAuditRolledBack(payload);
+          break;
+        case 'pos.order.created':
+          await this.handlePosOrderCreated(payload);
+          break;
+        case 'pos.order.closed':
+          await this.handlePosOrderClosed(payload);
+          break;
+        case 'pos.order.posted_to_room':
+          await this.handlePosOrderPostedToRoom(payload);
+          break;
+        case 'pos.order.voided':
+          await this.handlePosOrderVoided(payload);
+          break;
+        case 'pos.order.reopened':
+          await this.handlePosOrderReopened(payload);
+          break;
+        case 'pos.order.split':
+          await this.handlePosOrderSplit(payload);
+          break;
+        case 'pos.order.transferred':
+          await this.handlePosOrderTransferred(payload);
+          break;
+        case 'pos.order.items_added':
+          logger.debug('Received pos.order.items_added outbox event', { eventType, eventId });
+          break;
+        case 'pos.order.item_updated':
+          logger.debug('Received pos.order.item_updated outbox event', { eventType, eventId });
+          break;
+        case 'pos.order.item_voided':
+          logger.debug('Received pos.order.item_voided outbox event', { eventType, eventId });
           break;
         default:
           logger.warn('Unhandled outbox event type', { eventType, eventId });
@@ -578,6 +686,106 @@ class OutboxWorker {
       rolledBackAt: parsed.rolledBackAt?.toISOString() ?? null,
       rolledBackBy: parsed.rolledBackBy ?? null,
       reason: parsed.reason ?? null,
+    });
+  }
+
+  private async handlePosOrderCreated(payload: unknown): Promise<void> {
+    const parsed = PosOrderCreatedPayloadSchema.parse(payload);
+
+    logger.info('POS order created event processed', {
+      organizationId: parsed.organizationId,
+      hotelId: parsed.hotelId,
+      orderId: parsed.orderId,
+      orderNumber: parsed.orderNumber,
+      outletId: parsed.outletId,
+      status: parsed.status,
+      createdAt: parsed.createdAt?.toISOString() ?? null,
+    });
+  }
+
+  private async handlePosOrderClosed(payload: unknown): Promise<void> {
+    const parsed = PosOrderClosedPayloadSchema.parse(payload);
+
+    logger.info('POS order closed event processed', {
+      organizationId: parsed.organizationId,
+      hotelId: parsed.hotelId,
+      orderId: parsed.orderId,
+      orderNumber: parsed.orderNumber,
+      status: parsed.status,
+      paymentMethod: parsed.paymentMethod ?? null,
+      paidAmount: parsed.paidAmount ?? null,
+      total: parsed.total ?? null,
+      closedAt: parsed.closedAt?.toISOString() ?? null,
+    });
+  }
+
+  private async handlePosOrderPostedToRoom(payload: unknown): Promise<void> {
+    const parsed = PosOrderPostedToRoomPayloadSchema.parse(payload);
+
+    logger.info('POS order posted to room event processed', {
+      organizationId: parsed.organizationId,
+      hotelId: parsed.hotelId,
+      orderId: parsed.orderId,
+      orderNumber: parsed.orderNumber,
+      reservationId: parsed.reservationId,
+      roomNumber: parsed.roomNumber,
+      folioItemId: parsed.folioItemId,
+      postedAt: parsed.postedAt?.toISOString() ?? null,
+    });
+  }
+
+  private async handlePosOrderVoided(payload: unknown): Promise<void> {
+    const parsed = PosOrderVoidedPayloadSchema.parse(payload);
+
+    logger.warn('POS order voided event processed', {
+      organizationId: parsed.organizationId,
+      hotelId: parsed.hotelId,
+      orderId: parsed.orderId,
+      orderNumber: parsed.orderNumber,
+      reason: parsed.reason,
+      voidedFolioCount: parsed.voidedFolioCount ?? 0,
+      refundPaymentId: parsed.refundPaymentId ?? null,
+      voidedAt: parsed.voidedAt?.toISOString() ?? null,
+    });
+  }
+
+  private async handlePosOrderReopened(payload: unknown): Promise<void> {
+    const parsed = PosOrderReopenedPayloadSchema.parse(payload);
+
+    logger.info('POS order reopened event processed', {
+      organizationId: parsed.organizationId,
+      hotelId: parsed.hotelId,
+      orderId: parsed.orderId,
+      reopenedAt: parsed.reopenedAt?.toISOString() ?? null,
+    });
+  }
+
+  private async handlePosOrderSplit(payload: unknown): Promise<void> {
+    const parsed = PosOrderSplitPayloadSchema.parse(payload);
+
+    logger.info('POS order split event processed', {
+      organizationId: parsed.organizationId,
+      hotelId: parsed.hotelId,
+      orderId: parsed.orderId,
+      orderNumber: parsed.orderNumber,
+      splitCount: parsed.splits.length,
+      totalAmount: parsed.splits.reduce((sum, split) => sum + split.amount, 0),
+    });
+  }
+
+  private async handlePosOrderTransferred(payload: unknown): Promise<void> {
+    const parsed = PosOrderTransferredPayloadSchema.parse(payload);
+
+    logger.info('POS order transferred event processed', {
+      organizationId: parsed.organizationId,
+      hotelId: parsed.hotelId,
+      orderId: parsed.orderId,
+      fromReservationId: parsed.fromReservationId,
+      toReservationId: parsed.toReservationId,
+      toRoomNumber: parsed.toRoomNumber,
+      amount: parsed.amount,
+      sourceVoidedCount: parsed.sourceVoidedCount,
+      targetFolioItemId: parsed.targetFolioItemId,
     });
   }
 

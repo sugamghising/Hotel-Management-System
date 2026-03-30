@@ -210,6 +210,78 @@ export class AuditStepFailedError extends AppError {
   }
 }
 
+export class PosOrderNotOpenError extends AppError {
+  constructor(status: string) {
+    super(
+      `Order must be OPEN for this action. Current status: ${status}`,
+      StatusCodes.CONFLICT,
+      'POS_ORDER_NOT_OPEN',
+      true,
+      { status }
+    );
+  }
+}
+
+export class PosOrderAlreadyVoidedError extends AppError {
+  constructor(message: string = 'Order is already voided') {
+    super(message, StatusCodes.CONFLICT, 'POS_ORDER_ALREADY_VOIDED', true);
+  }
+}
+
+export class PosRoomPostingNotAllowedError extends AppError {
+  constructor(message: string = 'Room posting is disabled for this outlet') {
+    super(message, StatusCodes.CONFLICT, 'POS_ROOM_POSTING_NOT_ALLOWED', true);
+  }
+}
+
+export class PosAlreadyPostedToRoomError extends AppError {
+  constructor(message: string = 'Order is already posted to room') {
+    super(message, StatusCodes.CONFLICT, 'POS_ALREADY_POSTED_TO_ROOM', true);
+  }
+}
+
+export class PosReopenWindowExpiredError extends AppError {
+  constructor(minutes: number) {
+    super(
+      `Reopen window of ${minutes} minutes has expired`,
+      StatusCodes.CONFLICT,
+      'POS_REOPEN_WINDOW_EXPIRED',
+      true,
+      { minutes }
+    );
+  }
+}
+
+export class PosSplitValidationError extends AppError {
+  constructor(message: string = 'Split total must match order total', details?: unknown) {
+    super(message, StatusCodes.UNPROCESSABLE_ENTITY, 'POS_SPLIT_VALIDATION_FAILED', true, details);
+  }
+}
+
+export class PosCreditStopError extends AppError {
+  constructor(message: string = 'Guest credit stop active') {
+    super(message, StatusCodes.UNPROCESSABLE_ENTITY, 'POS_CREDIT_STOP_ACTIVE', true);
+  }
+}
+
+export class PosDirectBillNotAllowedError extends AppError {
+  constructor(message: string = 'Direct bill is disabled for this outlet') {
+    super(message, StatusCodes.CONFLICT, 'POS_DIRECT_BILL_NOT_ALLOWED', true);
+  }
+}
+
+export class PosTransferValidationError extends AppError {
+  constructor(message: string = 'Invalid transfer amount', details?: unknown) {
+    super(
+      message,
+      StatusCodes.UNPROCESSABLE_ENTITY,
+      'POS_TRANSFER_VALIDATION_FAILED',
+      true,
+      details
+    );
+  }
+}
+
 export class UnprocessableEntityError extends AppError {
   constructor(message: string = ReasonPhrases.UNPROCESSABLE_ENTITY, details?: unknown) {
     super(message, StatusCodes.UNPROCESSABLE_ENTITY, 'UNPROCESSABLE_ENTITY', true, details);
