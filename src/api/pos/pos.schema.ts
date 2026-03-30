@@ -179,9 +179,11 @@ export const UpdateOrderItemSchema = z
     message: 'At least one field must be provided',
   });
 
-export const VoidOrderItemSchema = z.object({
-  reason: z.string().min(3).max(2000).optional(),
-});
+export const VoidOrderItemSchema = z
+  .object({
+    reason: z.string().min(3).max(2000).optional(),
+  })
+  .optional();
 
 export const ListOrdersQuerySchema = z.object({
   status: z.preprocess(parseCsvArray, z.array(POSOrderStatusSchema).optional()),
@@ -193,12 +195,20 @@ export const ListOrdersQuerySchema = z.object({
   limit: z.coerce.number().int().positive().max(100).default(20),
 });
 
-export const CloseOrderSchema = z.object({
-  paymentMethod: PaymentMethodSchema.optional(),
-  paidAmount: z.number().min(0).optional(),
-  autoPostToRoom: z.boolean().optional(),
-  roomNumber: z.string().max(20).optional(),
-});
+export const CloseOrderSchema = z
+  .object({
+    paymentMethod: PaymentMethodSchema.optional(),
+    paidAmount: z.number().min(0).optional(),
+    autoPostToRoom: z.boolean().optional(),
+    roomNumber: z.string().max(20).optional(),
+  })
+  .refine(
+    (payload) => payload.paidAmount === undefined || payload.paymentMethod !== undefined,
+    {
+      message: 'paymentMethod is required when paidAmount is provided',
+      path: ['paymentMethod'],
+    }
+  );
 
 export const PostToRoomSchema = z.object({
   roomNumber: z.string().max(20).optional(),

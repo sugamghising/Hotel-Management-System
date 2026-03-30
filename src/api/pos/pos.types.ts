@@ -125,13 +125,13 @@ export interface PosSalesReportResponse {
     amount: number;
     count: number;
   }>;
-  byOutlet: Array<{
+  byOutlet?: Array<{
     outletId: string;
     outletName: string;
     amount: number;
     count: number;
   }>;
-  byDay: Array<{
+  byDay?: Array<{
     date: string;
     grossSales: number;
     netSales: number;

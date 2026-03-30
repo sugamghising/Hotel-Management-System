@@ -401,6 +401,15 @@ class OutboxWorker {
         case 'pos.order.transferred':
           await this.handlePosOrderTransferred(payload);
           break;
+        case 'pos.order.items_added':
+          logger.debug('Received pos.order.items_added outbox event', { eventType, eventId });
+          break;
+        case 'pos.order.item_updated':
+          logger.debug('Received pos.order.item_updated outbox event', { eventType, eventId });
+          break;
+        case 'pos.order.item_voided':
+          logger.debug('Received pos.order.item_voided outbox event', { eventType, eventId });
+          break;
         default:
           logger.warn('Unhandled outbox event type', { eventType, eventId });
           break;

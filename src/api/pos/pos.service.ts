@@ -554,7 +554,7 @@ export class PosService {
           where: { id: itemId },
           data: {
             isVoided: true,
-            voidReason: input.reason ?? 'Removed from order',
+            voidReason: input?.reason ?? 'Removed from order',
           },
         });
       }
@@ -570,7 +570,7 @@ export class PosService {
           hotelId,
           orderId,
           itemId,
-          reason: input.reason ?? 'Removed from order',
+          reason: input?.reason ?? 'Removed from order',
         }),
         tx
       );
@@ -747,6 +747,10 @@ export class PosService {
         throw new PosOrderAlreadyVoidedError('Cannot post a voided order to room');
       }
 
+      if (existing.status === 'OPEN') {
+        throw new ConflictError('Order must be closed or paid before posting to room');
+      }
+
       return this.postToRoomInternal(tx, organizationId, hotelId, existing, input, actorId);
     });
 
@@ -792,7 +796,7 @@ export class PosService {
           where: {
             reservationId: existing.reservationId,
             source: 'POS',
-            sourceRef: existing.id,
+            sourceRef: { startsWith: existing.id },
             isVoided: false,
           },
           data: {
@@ -964,6 +968,10 @@ export class PosService {
         throw new PosOrderAlreadyVoidedError('Cannot split a voided order');
       }
 
+      if (order.status === 'OPEN') {
+        throw new ConflictError('Order must be closed or paid before splitting');
+      }
+
       if (order.postedToRoom) {
         throw new ConflictError('Order already posted to room; split is no longer allowed');
       }
@@ -1116,7 +1124,7 @@ export class PosService {
         where: {
           reservationId: order.reservationId,
           source: 'POS',
-          sourceRef: order.id,
+          sourceRef: { startsWith: order.id },
           isVoided: false,
         },
         data: {
@@ -1296,49 +1304,58 @@ export class PosService {
       ...(query.outletId ? { outletId: query.outletId } : {}),
     };
 
-    const [orders, paymentGroups, outletGroups] = await Promise.all([
-      prisma.pOSOrder.findMany({
-        where,
-        include: {
-          outletRef: {
-            select: {
-              id: true,
-              name: true,
+    const completedStatusFilter = {
+      in: ['CLOSED', 'PAID', 'COMPED'],
+    } as const;
+
+    const ordersQuery = prisma.pOSOrder.findMany({
+      where,
+      include: {
+        outletRef: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+      orderBy: [{ createdAt: 'asc' }],
+    });
+
+    const paymentGroupsQuery = prisma.pOSOrder.groupBy({
+      by: ['paymentMethod'],
+      where: {
+        ...where,
+        status: completedStatusFilter,
+      },
+      _sum: {
+        total: true,
+      },
+      _count: {
+        _all: true,
+      },
+    });
+
+    const outletGroupsQuery =
+      query.groupBy === 'OUTLET'
+        ? prisma.pOSOrder.groupBy({
+            by: ['outletId'],
+            where: {
+              ...where,
+              status: completedStatusFilter,
             },
-          },
-        },
-        orderBy: [{ createdAt: 'asc' }],
-      }),
-      prisma.pOSOrder.groupBy({
-        by: ['paymentMethod'],
-        where: {
-          ...where,
-          status: {
-            in: ['CLOSED', 'PAID', 'COMPED'],
-          },
-        },
-        _sum: {
-          total: true,
-        },
-        _count: {
-          _all: true,
-        },
-      }),
-      prisma.pOSOrder.groupBy({
-        by: ['outletId'],
-        where: {
-          ...where,
-          status: {
-            in: ['CLOSED', 'PAID', 'COMPED'],
-          },
-        },
-        _sum: {
-          total: true,
-        },
-        _count: {
-          _all: true,
-        },
-      }),
+            _sum: {
+              total: true,
+            },
+            _count: {
+              _all: true,
+            },
+          })
+        : Promise.resolve(null);
+
+    const [orders, paymentGroups, outletGroups] = await Promise.all([
+      ordersQuery,
+      paymentGroupsQuery,
+      outletGroupsQuery,
     ]);
 
     const completedOrders = orders.filter((order) =>
@@ -1357,29 +1374,48 @@ export class PosService {
     );
     const netSales = grossSales.minus(discountTotal);
 
-    const outletNameById = new Map<string, string>();
-    for (const order of completedOrders) {
-      outletNameById.set(order.outletId, order.outletRef.name);
-    }
+    let byOutlet: PosSalesReportResponse['byOutlet'];
+    let byDay: PosSalesReportResponse['byDay'];
 
-    const byDayMap = new Map<
-      string,
-      { grossSales: Prisma.Decimal; netSales: Prisma.Decimal; count: number }
-    >();
+    if (query.groupBy === 'OUTLET' && outletGroups) {
+      const outletNameById = new Map<string, string>();
+      for (const order of completedOrders) {
+        outletNameById.set(order.outletId, order.outletRef.name);
+      }
 
-    for (const order of completedOrders) {
-      const dateKey = asDateOnly(order.createdAt).toISOString().slice(0, 10);
-      const current = byDayMap.get(dateKey) ?? {
-        grossSales: ZERO,
-        netSales: ZERO,
-        count: 0,
-      };
+      byOutlet = outletGroups.map((group) => ({
+        outletId: group.outletId,
+        outletName: outletNameById.get(group.outletId) ?? 'Unknown outlet',
+        amount: this.repo.toApiNumber(group._sum.total ?? ZERO),
+        count: group._count._all,
+      }));
+    } else {
+      const byDayMap = new Map<
+        string,
+        { grossSales: Prisma.Decimal; netSales: Prisma.Decimal; count: number }
+      >();
 
-      byDayMap.set(dateKey, {
-        grossSales: current.grossSales.plus(order.total),
-        netSales: current.netSales.plus(order.total.minus(order.discountTotal)),
-        count: current.count + 1,
-      });
+      for (const order of completedOrders) {
+        const dateKey = asDateOnly(order.createdAt).toISOString().slice(0, 10);
+        const current = byDayMap.get(dateKey) ?? {
+          grossSales: ZERO,
+          netSales: ZERO,
+          count: 0,
+        };
+
+        byDayMap.set(dateKey, {
+          grossSales: current.grossSales.plus(order.total),
+          netSales: current.netSales.plus(order.total.minus(order.discountTotal)),
+          count: current.count + 1,
+        });
+      }
+
+      byDay = Array.from(byDayMap.entries()).map(([date, value]) => ({
+        date,
+        grossSales: this.repo.toApiNumber(value.grossSales),
+        netSales: this.repo.toApiNumber(value.netSales),
+        count: value.count,
+      }));
     }
 
     return {
@@ -1402,18 +1438,8 @@ export class PosService {
         amount: this.repo.toApiNumber(group._sum.total ?? ZERO),
         count: group._count._all,
       })),
-      byOutlet: outletGroups.map((group) => ({
-        outletId: group.outletId,
-        outletName: outletNameById.get(group.outletId) ?? 'Unknown outlet',
-        amount: this.repo.toApiNumber(group._sum.total ?? ZERO),
-        count: group._count._all,
-      })),
-      byDay: Array.from(byDayMap.entries()).map(([date, value]) => ({
-        date,
-        grossSales: this.repo.toApiNumber(value.grossSales),
-        netSales: this.repo.toApiNumber(value.netSales),
-        count: value.count,
-      })),
+      byOutlet,
+      byDay,
     };
   }
 
