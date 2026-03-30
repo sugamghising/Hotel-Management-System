@@ -352,6 +352,30 @@ async function main() {
                 level: 70,
             },
         }),
+        prisma.role.upsert({
+            where: { uq_role_org_code: { organizationId: org.id, code: 'REV_MANAGER' } },
+            update: {},
+            create: {
+                organizationId: org.id,
+                code: 'REV_MANAGER',
+                name: 'Revenue Manager',
+                description: 'Manage pricing, revenue analytics, and demand forecasting',
+                isSystem: true,
+                level: 75,
+            },
+        }),
+        prisma.role.upsert({
+            where: { uq_role_org_code: { organizationId: org.id, code: 'OPS_MANAGER' } },
+            update: {},
+            create: {
+                organizationId: org.id,
+                code: 'OPS_MANAGER',
+                name: 'Operations Manager',
+                description: 'Oversee daily hotel operations across departments',
+                isSystem: true,
+                level: 80,
+            },
+        }),
     ]);
 
     console.log('✅ Roles created:', roles.length);
@@ -400,6 +424,11 @@ async function main() {
         'POS.VIEW_DASHBOARD', 'POS.VIEW_REPORTS',
         'BILLING.READ', 'BILLING.CREATE', 'BILLING.UPDATE',
         'REPORT.READ',
+        // Reports & Analytics (Module 17)
+        'REPORT.OCCUPANCY', 'REPORT.REVENUE', 'REPORT.ADR_REVPAR', 'REPORT.FOLIO_SUMMARY',
+        'REPORT.GUEST_STATS', 'REPORT.SOURCE_ANALYSIS', 'REPORT.HOUSEKEEPING', 'REPORT.MAINTENANCE',
+        'REPORT.NO_SHOWS',
+        'DASHBOARD.MANAGER', 'DASHBOARD.REVENUE', 'DASHBOARD.OPERATIONS',
     ];
 
     for (const permCode of permissions) {
@@ -502,6 +531,11 @@ async function main() {
         'POS.VOID_ORDER', 'POS.REOPEN_ORDER', 'POS.POST_ROOM_CHARGE', 'POS.SPLIT_ORDER',
         'POS.TRANSFER_ORDER', 'POS.MANAGE_OUTLET', 'POS.MANAGE_MENU',
         'POS.VIEW_DASHBOARD', 'POS.VIEW_REPORTS',
+        // Reports & Analytics
+        'REPORT.OCCUPANCY', 'REPORT.REVENUE', 'REPORT.ADR_REVPAR', 'REPORT.FOLIO_SUMMARY',
+        'REPORT.GUEST_STATS', 'REPORT.SOURCE_ANALYSIS', 'REPORT.HOUSEKEEPING', 'REPORT.MAINTENANCE',
+        'REPORT.NO_SHOWS',
+        'DASHBOARD.MANAGER', 'DASHBOARD.REVENUE', 'DASHBOARD.OPERATIONS',
     ]);
 
     await grantPermissions('FRONT_DESK', [
@@ -514,6 +548,8 @@ async function main() {
         'FRONTDESK.DASHBOARD',
         'NIGHT_AUDIT.PRE_CHECK', 'NIGHT_AUDIT.VIEW_STATUS',
         'HOUSEKEEPING.MARK_DND', 'HOUSEKEEPING.DASHBOARD_READ', 'HOUSEKEEPING.LOST_FOUND_LOG',
+        // Reports & Analytics
+        'REPORT.OCCUPANCY', 'REPORT.NO_SHOWS',
     ]);
 
     await grantPermissions('NIGHT_AUDITOR', [
@@ -526,6 +562,8 @@ async function main() {
         'HOUSEKEEPING.CANCEL', 'HOUSEKEEPING.AUTO_GENERATE', 'HOUSEKEEPING.INSPECT',
         'HOUSEKEEPING.REPORT', 'HOUSEKEEPING.SHIFT_MANAGE', 'HOUSEKEEPING.DASHBOARD_READ',
         'HOUSEKEEPING.LOST_FOUND_LOG', 'HOUSEKEEPING.LOST_FOUND_UPDATE', 'HOUSEKEEPING.LOST_FOUND_NOTIFY',
+        // Reports & Analytics
+        'REPORT.HOUSEKEEPING',
     ]);
 
     await grantPermissions('HK_SUPERVISOR', [
@@ -551,6 +589,8 @@ async function main() {
         'INVENTORY.READ', 'INVENTORY.UPDATE', 'INVENTORY.ADJUST', 'INVENTORY.CONSUME',
         'PROCUREMENT.READ',
         'ROOM.OOO_MANAGE',
+        // Reports & Analytics
+        'REPORT.MAINTENANCE',
     ]);
 
     await grantPermissions('MAINT_STAFF', [
@@ -571,6 +611,11 @@ async function main() {
         'NIGHT_AUDIT.RUN', 'NIGHT_AUDIT.PRE_CHECK', 'NIGHT_AUDIT.VIEW_STATUS',
         'NIGHT_AUDIT.VIEW_HISTORY', 'NIGHT_AUDIT.VIEW_REPORT', 'NIGHT_AUDIT.ROLLBACK',
         'REPORT.READ',
+        // Reports & Analytics
+        'REPORT.OCCUPANCY', 'REPORT.REVENUE', 'REPORT.ADR_REVPAR', 'REPORT.FOLIO_SUMMARY',
+        'REPORT.GUEST_STATS', 'REPORT.SOURCE_ANALYSIS', 'REPORT.HOUSEKEEPING', 'REPORT.MAINTENANCE',
+        'REPORT.NO_SHOWS',
+        'DASHBOARD.MANAGER', 'DASHBOARD.REVENUE', 'DASHBOARD.OPERATIONS',
     ]);
 
     await grantPermissions('ACCOUNTANT', [
@@ -579,6 +624,9 @@ async function main() {
         'PROCUREMENT.READ', 'PROCUREMENT.DASHBOARD',
         'POS.VIEW_REPORTS',
         'BILLING.READ', 'BILLING.UPDATE', 'REPORT.READ',
+        // Reports & Analytics
+        'REPORT.OCCUPANCY', 'REPORT.REVENUE', 'REPORT.ADR_REVPAR', 'REPORT.FOLIO_SUMMARY',
+        'DASHBOARD.REVENUE',
     ]);
 
     await grantPermissions('POS_STAFF', [
@@ -593,6 +641,27 @@ async function main() {
         'POS.SPLIT_ORDER', 'POS.TRANSFER_ORDER',
         'POS.MANAGE_OUTLET', 'POS.MANAGE_MENU',
         'POS.VIEW_DASHBOARD', 'POS.VIEW_REPORTS',
+    ]);
+
+    await grantPermissions('REV_MANAGER', [
+        'RESERVATION.READ',
+        'ROOM.READ',
+        'NIGHT_AUDIT.VIEW_REPORT', 'NIGHT_AUDIT.VIEW_HISTORY',
+        'POS.VIEW_REPORTS',
+        // Reports & Analytics
+        'REPORT.OCCUPANCY', 'REPORT.REVENUE', 'REPORT.ADR_REVPAR',
+        'REPORT.GUEST_STATS', 'REPORT.SOURCE_ANALYSIS', 'REPORT.NO_SHOWS',
+        'DASHBOARD.REVENUE',
+    ]);
+
+    await grantPermissions('OPS_MANAGER', [
+        'HOUSEKEEPING.READ', 'HOUSEKEEPING.DASHBOARD_READ',
+        'MAINTENANCE.READ', 'MAINTENANCE.DASHBOARD_READ',
+        'INVENTORY.DASHBOARD', 'PROCUREMENT.DASHBOARD',
+        'POS.VIEW_DASHBOARD',
+        // Reports & Analytics
+        'REPORT.HOUSEKEEPING', 'REPORT.MAINTENANCE',
+        'DASHBOARD.OPERATIONS',
     ]);
 
     console.log('✅ Permissions assigned to operational roles');
