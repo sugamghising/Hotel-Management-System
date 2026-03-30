@@ -6,6 +6,7 @@ import { healthRegistry } from '@/api/health/health.registry';
 import { hotelRegistry } from '@/api/hotel/hotel.registry';
 import { housekeepingRegistry } from '@/api/housekeeping/housekeeping.registry';
 import { maintenanceRegistry } from '@/api/maintenance/maintenance.registry';
+import { nightAuditRegistry } from '@/api/nightAudit/nightAudit.registry';
 import { organizationRegistry } from '@/api/organizations/organization.registry';
 import { ratePlansRegistry } from '@/api/ratePlans/ratePlans.registry';
 import { reservationsRegistry } from '@/api/reservations/reservations.registry';
@@ -33,6 +34,7 @@ export function generateOpenAPIDocument(): OpenAPIDocument {
     checkinCheckoutRegistry,
     housekeepingRegistry,
     maintenanceRegistry,
+    nightAuditRegistry,
   ]);
   const generator = new OpenApiGeneratorV3(registry.definitions);
 

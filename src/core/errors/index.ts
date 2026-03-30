@@ -158,6 +158,58 @@ export class ScheduleNotDueError extends AppError {
   }
 }
 
+export class AuditAlreadyInProgressError extends AppError {
+  constructor(message: string = 'Night audit is already in progress for this hotel') {
+    super(message, StatusCodes.CONFLICT, 'AUDIT_ALREADY_IN_PROGRESS', true);
+  }
+}
+
+export class AuditAlreadyCompletedError extends AppError {
+  constructor(businessDate?: string) {
+    super(
+      businessDate
+        ? `Night audit already completed for businessDate ${businessDate}`
+        : 'Night audit already completed for the selected business date',
+      StatusCodes.CONFLICT,
+      'AUDIT_ALREADY_COMPLETED',
+      true
+    );
+  }
+}
+
+export class AuditBlockedError extends AppError {
+  constructor(
+    message: string = 'Cannot run audit: guests must be checked out first',
+    details?: {
+      uncheckedOutRes: number;
+      reservationIds: string[];
+    }
+  ) {
+    super(message, StatusCodes.UNPROCESSABLE_ENTITY, 'AUDIT_BLOCKED', true, details);
+  }
+}
+
+export class AuditRollbackNotAllowedError extends AppError {
+  constructor(
+    message: string = "Can only rollback the most recent audit for today's business date"
+  ) {
+    super(message, StatusCodes.BAD_REQUEST, 'AUDIT_ROLLBACK_NOT_ALLOWED', true);
+  }
+}
+
+export class AuditStepFailedError extends AppError {
+  constructor(
+    details: {
+      step: number;
+      stepName: string;
+      originalError: string;
+    },
+    message: string = 'Night audit step failed'
+  ) {
+    super(message, StatusCodes.INTERNAL_SERVER_ERROR, 'AUDIT_STEP_FAILED', true, details);
+  }
+}
+
 export class UnprocessableEntityError extends AppError {
   constructor(message: string = ReasonPhrases.UNPROCESSABLE_ENTITY, details?: unknown) {
     super(message, StatusCodes.UNPROCESSABLE_ENTITY, 'UNPROCESSABLE_ENTITY', true, details);

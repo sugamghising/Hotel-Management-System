@@ -625,6 +625,7 @@ model Hotel {
   // Operational Settings
   checkInTime     DateTime @default(dbgenerated("'15:00:00'::time")) @map("check_in_time") @db.Time(6)
   checkOutTime    DateTime @default(dbgenerated("'11:00:00'::time")) @map("check_out_time") @db.Time(6)
+  currentBusinessDate DateTime @default(now()) @map("current_business_date") @db.Date
   currencyCode    String   @default("USD") @map("currency_code") @db.Char(3)
   defaultLanguage String   @default("en") @map("default_language") @db.Char(2)
 
@@ -1279,6 +1280,7 @@ model Reservation {
   cancellationReason String?   @map("cancellation_reason") @db.Text
   cancellationFee    Decimal?  @map("cancellation_fee") @db.Decimal(10, 2)
   noShow             Boolean   @default(false) @map("no_show")
+  noShowAuditId      String?   @map("no_show_audit_id") @db.Uuid
 
   // Metadata
   bookedAt   DateTime @default(now()) @map("booked_at") @db.Timestamptz(6)
@@ -1307,6 +1309,7 @@ model Reservation {
   @@index([hotelId, checkInDate, status], name: "idx_res_hotel_dates")
   @@index([hotelId, confirmationNumber], name: "idx_res_confirmation")
   @@index([guestId, checkInDate(sort: Desc)], name: "idx_res_guest")
+  @@index([noShowAuditId], name: "idx_res_no_show_audit")
   @@index([externalRef], name: "idx_res_external")
   @@map("reservations")
 }
@@ -1815,6 +1818,7 @@ model HousekeepingTask {
   // Notes
   notes         String? @db.Text
   guestRequests String? @map("guest_requests") @db.Text
+  nightAuditBatchId String? @map("night_audit_batch_id") @db.Uuid
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   createdBy String   @map("created_by") @db.Uuid
@@ -1825,6 +1829,7 @@ model HousekeepingTask {
   @@index([hotelId, scheduledFor, status], name: "idx_hk_hotel_date_status")
   @@index([assignedTo, status], name: "idx_hk_staff_status")
   @@index([hotelId, roomId, scheduledFor, taskType], name: "idx_hk_room_date_type")
+  @@index([nightAuditBatchId], name: "idx_hk_night_audit_batch")
   @@map("housekeeping_tasks")
 }
 
@@ -1981,6 +1986,7 @@ model MaintenanceRequest {
   title       String              @db.VarChar(255)
   description String              @db.Text
   source      String              @default("MANUAL") @db.VarChar(30)
+  sourceRef   String?             @map("source_ref") @db.VarChar(100)
   locationDetails String?         @map("location_details") @db.VarChar(255)
 
   // Reporting
@@ -2040,6 +2046,7 @@ model MaintenanceRequest {
   @@index([assignedTo, status, priority], name: "idx_maint_assigned")
   @@index([hotelId, status, escalationLevel], name: "idx_maint_escalation")
   @@index([preventiveScheduleId, status], name: "idx_maint_schedule")
+  @@index([sourceRef], name: "idx_maint_source_ref")
   @@map("maintenance_requests")
 }
 
