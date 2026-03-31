@@ -13,6 +13,7 @@ import { nightAuditRoutes } from '../api/nightAudit';
 import { organizationRoutes } from '../api/organizations';
 import { posRoutes } from '../api/pos';
 import { ratePlansRoutes } from '../api/ratePlans';
+import { reportsRoutes } from '../api/reports';
 import { reservationsRoutes } from '../api/reservations';
 import { roomTypesRoutes } from '../api/roomTypes';
 import { roomsRoutes } from '../api/rooms';
@@ -44,6 +45,7 @@ v1Router.use('/organizations/:organizationId/hotels/:hotelId/pos', posRoutes);
 v1Router.use('/organizations/:organizationId/hotels/:hotelId/inventory', inventoryRoutes);
 v1Router.use('/organizations/:organizationId/hotels/:hotelId/housekeeping', housekeepingRoutes);
 v1Router.use('/organizations/:organizationId/hotels/:hotelId/maintenance', maintenanceRoutes);
+v1Router.use('/organizations/:organizationId/hotels/:hotelId', reportsRoutes);
 v1Router.use('/organizations/:organizationId/guests', guestsRoutes);
 v1Router.use('/organizations/:organizationId/hotels/:hotelId/guests', guestsInHouseRouter);
 
