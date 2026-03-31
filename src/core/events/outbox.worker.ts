@@ -36,6 +36,33 @@ const ReservationNoShowPayloadSchema = z.object({
   reason: z.string().optional(),
 });
 
+const ReservationConfirmedPayloadSchema = z.object({
+  organizationId: z.string().uuid(),
+  hotelId: z.string().uuid(),
+  reservationId: z.string().uuid(),
+  guestId: z.string().uuid(),
+  confirmationNumber: z.string(),
+  confirmedAt: z.coerce.date().optional(),
+});
+
+const ReservationModifiedPayloadSchema = z.object({
+  organizationId: z.string().uuid(),
+  hotelId: z.string().uuid(),
+  reservationId: z.string().uuid(),
+  guestId: z.string().uuid(),
+  changes: z.record(z.unknown()).optional(),
+  modifiedAt: z.coerce.date().optional(),
+});
+
+const ReservationCancelledPayloadSchema = z.object({
+  organizationId: z.string().uuid(),
+  hotelId: z.string().uuid(),
+  reservationId: z.string().uuid(),
+  guestId: z.string().uuid(),
+  reason: z.string().optional(),
+  cancelledAt: z.coerce.date().optional(),
+});
+
 const RoomOccupiedPayloadSchema = z.object({
   organizationId: z.string().uuid(),
   hotelId: z.string().uuid(),
@@ -391,6 +418,15 @@ class OutboxWorker {
         case 'reservation.no_show':
           await this.handleReservationNoShow(payload);
           break;
+        case 'reservation.confirmed':
+          await this.handleReservationConfirmed(payload);
+          break;
+        case 'reservation.modified':
+          await this.handleReservationModified(payload);
+          break;
+        case 'reservation.cancelled':
+          await this.handleReservationCancelled(payload);
+          break;
         case 'room.occupied':
           await this.handleRoomOccupied(payload);
           break;
@@ -548,6 +584,28 @@ class OutboxWorker {
       reservationId: parsed.reservationId,
       roomId: parsed.roomId,
     });
+
+    // Schedule SURVEY to be sent 2 hours after checkout
+    try {
+      const { communicationsService } = await import('../../api/communications');
+      const scheduledFor = new Date(parsed.checkedOutAt.getTime() + 2 * 60 * 60 * 1000); // +2 hours
+      await communicationsService.scheduleForReservation(
+        parsed.reservationId,
+        'SURVEY',
+        scheduledFor,
+        undefined,
+        SYSTEM_ACTOR_ID
+      );
+      logger.info('Post-checkout survey scheduled', {
+        reservationId: parsed.reservationId,
+        scheduledFor: scheduledFor.toISOString(),
+      });
+    } catch (error) {
+      logger.warn('Failed to schedule post-checkout survey', {
+        reservationId: parsed.reservationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   private async handleReservationCheckedIn(payload: unknown): Promise<void> {
@@ -559,6 +617,25 @@ class OutboxWorker {
       earlyCheckIn: parsed.earlyCheckIn ?? false,
       assignmentType: parsed.assignmentType ?? 'INITIAL',
     });
+
+    // Auto-send WELCOME message
+    try {
+      const { communicationsService } = await import('../../api/communications');
+      await communicationsService.sendForReservation(
+        parsed.reservationId,
+        'WELCOME',
+        undefined,
+        SYSTEM_ACTOR_ID
+      );
+      logger.info('Welcome communication sent', {
+        reservationId: parsed.reservationId,
+      });
+    } catch (error) {
+      logger.warn('Failed to send welcome communication', {
+        reservationId: parsed.reservationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   private async handleReservationNoShow(payload: unknown): Promise<void> {
@@ -569,6 +646,94 @@ class OutboxWorker {
       chargeNoShowFee: parsed.chargeNoShowFee ?? false,
       noShowFee: parsed.noShowFee ?? null,
     });
+  }
+
+  private async handleReservationConfirmed(payload: unknown): Promise<void> {
+    const parsed = ReservationConfirmedPayloadSchema.parse(payload);
+
+    logger.info('Reservation confirmed event - triggering confirmation communication', {
+      reservationId: parsed.reservationId,
+      guestId: parsed.guestId,
+      confirmationNumber: parsed.confirmationNumber,
+    });
+
+    // Auto-send RESERVATION_CONFIRMATION via communications service
+    try {
+      const { communicationsService } = await import('../../api/communications');
+      await communicationsService.sendForReservation(
+        parsed.reservationId,
+        'RESERVATION_CONFIRMATION',
+        undefined, // Use guest's preferred channel
+        SYSTEM_ACTOR_ID
+      );
+      logger.info('Reservation confirmation communication sent', {
+        reservationId: parsed.reservationId,
+      });
+    } catch (error) {
+      // Log but don't fail the event - communication failure shouldn't block the workflow
+      logger.warn('Failed to send reservation confirmation communication', {
+        reservationId: parsed.reservationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  private async handleReservationModified(payload: unknown): Promise<void> {
+    const parsed = ReservationModifiedPayloadSchema.parse(payload);
+
+    logger.info('Reservation modified event - triggering modification communication', {
+      reservationId: parsed.reservationId,
+      guestId: parsed.guestId,
+      changes: parsed.changes,
+    });
+
+    // Auto-send MODIFICATION notice
+    try {
+      const { communicationsService } = await import('../../api/communications');
+      await communicationsService.sendForReservation(
+        parsed.reservationId,
+        'MODIFICATION',
+        undefined,
+        SYSTEM_ACTOR_ID
+      );
+      logger.info('Reservation modification communication sent', {
+        reservationId: parsed.reservationId,
+      });
+    } catch (error) {
+      logger.warn('Failed to send reservation modification communication', {
+        reservationId: parsed.reservationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  private async handleReservationCancelled(payload: unknown): Promise<void> {
+    const parsed = ReservationCancelledPayloadSchema.parse(payload);
+
+    logger.info('Reservation cancelled event - triggering cancellation communication', {
+      reservationId: parsed.reservationId,
+      guestId: parsed.guestId,
+      reason: parsed.reason,
+    });
+
+    // Auto-send CANCELLATION notice
+    try {
+      const { communicationsService } = await import('../../api/communications');
+      await communicationsService.sendForReservation(
+        parsed.reservationId,
+        'CANCELLATION',
+        undefined,
+        SYSTEM_ACTOR_ID
+      );
+      logger.info('Reservation cancellation communication sent', {
+        reservationId: parsed.reservationId,
+      });
+    } catch (error) {
+      logger.warn('Failed to send reservation cancellation communication', {
+        reservationId: parsed.reservationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   private async handleRoomOccupied(payload: unknown): Promise<void> {

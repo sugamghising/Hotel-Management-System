@@ -326,3 +326,55 @@ export class ServiceUnavailableError extends AppError {
     super(message, StatusCodes.SERVICE_UNAVAILABLE, 'SERVICE_UNAVAILABLE', false);
   }
 }
+
+// ============================================================================
+// COMMUNICATIONS MODULE ERRORS
+// ============================================================================
+
+export class TemplateMissingError extends AppError {
+  constructor(type: string, channel: string, language: string = 'en') {
+    super(
+      `No active template found for type=${type} channel=${channel} lang=${language}`,
+      StatusCodes.UNPROCESSABLE_ENTITY,
+      'TEMPLATE_MISSING',
+      true,
+      { type, channel, language }
+    );
+  }
+}
+
+export class GuestOptOutError extends AppError {
+  constructor(channel: string, guestId?: string) {
+    super(
+      `Guest has opted out of ${channel} communications`,
+      StatusCodes.UNPROCESSABLE_ENTITY,
+      'GUEST_OPT_OUT',
+      true,
+      { channel, guestId }
+    );
+  }
+}
+
+export class CommunicationDeliveryError extends AppError {
+  constructor(channel: string, providerError: string) {
+    super(
+      `Failed to deliver ${channel} communication: ${providerError}`,
+      StatusCodes.BAD_GATEWAY,
+      'COMMUNICATION_DELIVERY_FAILED',
+      true,
+      { channel, providerError }
+    );
+  }
+}
+
+export class InvalidTemplateVariableError extends AppError {
+  constructor(unknownVariables: string[]) {
+    super(
+      `Unknown template variables: ${unknownVariables.join(', ')}`,
+      StatusCodes.BAD_REQUEST,
+      'INVALID_TEMPLATE_VARIABLE',
+      true,
+      { unknownVariables }
+    );
+  }
+}
