@@ -12,6 +12,9 @@ import type { CommunicationChannel, CommunicationType } from '../../generated/pr
 import { type GuestsRepository, guestsRepository } from '../guests/guests.repository';
 import { type HotelRepository, hotelRepository } from '../hotel';
 import { type ReservationsRepository, reservationsRepository } from '../reservations';
+
+/** Express Request extended with an optional raw body for webhook signature verification. */
+type RequestWithRawBody = Request & { rawBody?: string | Buffer };
 import type {
   AnalyticsQueryInput,
   CommunicationQueryInput,
@@ -90,6 +93,22 @@ export class CommunicationsService {
       const template = await this.repo.findTemplateById(input.templateId);
       if (!template) {
         throw new NotFoundError(`Template ${input.templateId} not found`);
+      }
+
+      // Enforce tenant scoping: template must belong to the same organization
+      if (template.organizationId !== organizationId) {
+        throw new ForbiddenError(
+          `Template ${input.templateId} does not belong to organization ${organizationId}`
+        );
+      }
+
+      // Enforce hotel scoping: if the template is scoped to a specific hotel, it must match
+      if (template.hotelId) {
+        if (!hotel || template.hotelId !== hotel.id) {
+          throw new ForbiddenError(
+            `Template ${input.templateId} is not available for the current hotel context`
+          );
+        }
       }
 
       const context = buildContextFromData({
@@ -188,23 +207,19 @@ export class CommunicationsService {
         externalId,
       });
 
-      // Emit event
-      await this.emitEvent('communication.sent', {
-        communicationId: communication.id,
-        type: input.type,
-        channel: input.channel,
-        guestId: guest.id,
-      });
+      // Note: communication.sent outbox events are intentionally not emitted here
+      // because there is currently no OutboxWorker handler/consumer for them.
+      // Re-enable once a corresponding handler is wired up to avoid log noise and DB churn.
 
       return { communication: updatedComm, externalId };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
 
-      // Update to FAILED
+      // Update to FAILED - preserve existing metadata (e.g. createdBy)
       await this.repo.update(communication.id, {
         status: 'FAILED',
         metadata: {
-          ...(communication.status === 'PENDING' ? {} : {}),
+          ...(communication.metadata ?? {}),
           error: errorMessage,
           failedAt: new Date().toISOString(),
         },
@@ -216,13 +231,9 @@ export class CommunicationsService {
         error: errorMessage,
       });
 
-      // Emit failure event
-      await this.emitEvent('communication.failed', {
-        communicationId: communication.id,
-        type: input.type,
-        channel: input.channel,
-        error: errorMessage,
-      });
+      // Note: communication.failed outbox events are intentionally not emitted here
+      // because there is currently no OutboxWorker handler/consumer for them.
+      // Re-enable once a corresponding handler is wired up to avoid log noise and DB churn.
 
       throw new CommunicationDeliveryError(input.channel, errorMessage);
     }
@@ -307,67 +318,80 @@ export class CommunicationsService {
       throw new NotFoundError(`Template ${input.templateId} not found`);
     }
 
+    // Enforce tenant scoping for the bulk template
+    if (template.organizationId !== organizationId) {
+      throw new ForbiddenError(
+        `Template ${input.templateId} does not belong to organization ${organizationId}`
+      );
+    }
+
     const results: BulkSendResult['results'] = [];
     let sent = 0;
     let failed = 0;
     let skippedOptOut = 0;
 
-    // Process all guests using Promise.allSettled
-    const sendPromises = input.guestIds.map(async (guestId) => {
-      const guest = await this.guestRepo.findById(guestId);
-      if (!guest) {
-        return { guestId, status: 'failed' as const, error: 'Guest not found' };
-      }
+    // Process guests in batches to avoid overwhelming the system
+    const MAX_CONCURRENT_SENDS = 50;
 
-      // Check opt-in (ALERT bypasses)
-      if (input.type !== 'ALERT') {
-        const hasOptIn = this.hasOptIn(guest, input.channel);
-        if (!hasOptIn) {
-          return { guestId, status: 'skipped_opt_out' as const };
+    for (let i = 0; i < input.guestIds.length; i += MAX_CONCURRENT_SENDS) {
+      const batchGuestIds = input.guestIds.slice(i, i + MAX_CONCURRENT_SENDS);
+
+      const sendPromises = batchGuestIds.map(async (guestId) => {
+        const guest = await this.guestRepo.findById(guestId);
+        if (!guest) {
+          return { guestId, status: 'failed' as const, error: 'Guest not found' };
         }
-      }
 
-      try {
-        const result = await this.send(
-          organizationId,
-          {
-            channel: input.channel,
-            type: input.type,
+        // Check opt-in (ALERT bypasses)
+        if (input.type !== 'ALERT') {
+          const hasOptIn = this.hasOptIn(guest, input.channel);
+          if (!hasOptIn) {
+            return { guestId, status: 'skipped_opt_out' as const };
+          }
+        }
+
+        try {
+          const result = await this.send(
+            organizationId,
+            {
+              channel: input.channel,
+              type: input.type,
+              guestId,
+              templateId: input.templateId,
+            },
+            userId
+          );
+
+          return {
             guestId,
-            templateId: input.templateId,
-          },
-          userId
-        );
+            status: 'sent' as const,
+            communicationId: result.communication.id,
+          };
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          return { guestId, status: 'failed' as const, error: errorMessage };
+        }
+      });
 
-        return {
-          guestId,
-          status: 'sent' as const,
-          communicationId: result.communication.id,
-        };
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        return { guestId, status: 'failed' as const, error: errorMessage };
-      }
-    });
+      const settledResults = await Promise.allSettled(sendPromises);
 
-    const settledResults = await Promise.allSettled(sendPromises);
+      for (const result of settledResults) {
+        if (result.status === 'fulfilled') {
+          const value = result.value;
+          results.push(value);
 
-    for (const result of settledResults) {
-      if (result.status === 'fulfilled') {
-        const value = result.value;
-        results.push(value);
-
-        if (value.status === 'sent') sent++;
-        else if (value.status === 'failed') failed++;
-        else if (value.status === 'skipped_opt_out') skippedOptOut++;
-      } else {
-        // Promise rejected (shouldn't happen with our error handling)
-        failed++;
-        results.push({
-          guestId: 'unknown',
-          status: 'failed',
-          error: result.reason?.message ?? 'Unknown error',
-        });
+          if (value.status === 'sent') sent++;
+          else if (value.status === 'failed') failed++;
+          else if (value.status === 'skipped_opt_out') skippedOptOut++;
+        } else {
+          // Promise rejected (shouldn't happen with our error handling)
+          failed++;
+          results.push({
+            guestId: 'unknown',
+            status: 'failed',
+            error: result.reason?.message ?? 'Unknown error',
+          });
+        }
       }
     }
 
@@ -410,6 +434,11 @@ export class CommunicationsService {
     const effectiveChannel = channel ?? this.determinePreferredChannel(guest);
     if (!effectiveChannel) {
       throw new GuestOptOutError('all channels', guest.id);
+    }
+
+    // Check opt-in (unless ALERT type which bypasses)
+    if (type !== 'ALERT') {
+      this.checkOptIn(guest, effectiveChannel);
     }
 
     // Find template to get content
@@ -747,7 +776,11 @@ export class CommunicationsService {
         : getProviderForChannel(this.providers, 'SMS');
 
     if (!provider.verifyWebhookSignature) {
-      return true;
+      logger.warn(
+        'Rejected communications webhook: provider does not implement verifyWebhookSignature',
+        { channel }
+      );
+      return false;
     }
 
     const signatureHeader =
@@ -759,7 +792,13 @@ export class CommunicationsService {
     const signature = Array.isArray(signatureHeader)
       ? (signatureHeader[0] ?? '')
       : (signatureHeader ?? '');
-    const body = JSON.stringify(req.body ?? {});
+
+    // Use raw body bytes for signature verification; providers sign the raw payload
+    const rawBody = (req as RequestWithRawBody).rawBody;
+    const body =
+      typeof rawBody === 'string' || Buffer.isBuffer(rawBody)
+        ? rawBody.toString('utf8')
+        : JSON.stringify(req.body ?? {});
 
     const isValid = provider.verifyWebhookSignature(String(signature), body);
 
@@ -879,22 +918,6 @@ export class CommunicationsService {
       return 'SMS';
     }
     return null;
-  }
-
-  private async emitEvent(eventType: string, payload: Record<string, unknown>): Promise<void> {
-    try {
-      await prisma.outboxEvent.create({
-        data: {
-          eventType,
-          aggregateType: 'Communication',
-          aggregateId: payload['communicationId'] as string,
-          payload: payload as object,
-        },
-      });
-    } catch (error) {
-      logger.error('Failed to emit event', { eventType, error });
-      // Don't throw - event emission failure shouldn't fail the operation
-    }
   }
 
   private resolveToAddress(

@@ -1,9 +1,9 @@
 import { prisma } from '../../database/prisma';
+import { Prisma } from '../../generated/prisma';
 import type {
   CommunicationChannel,
   CommunicationStatus,
   CommunicationType,
-  Prisma,
 } from '../../generated/prisma';
 import type {
   AnalyticsQueryFilters,
@@ -417,9 +417,9 @@ export class CommunicationsRepository {
         AND direction = 'OUTBOUND'
         AND created_at >= ${filters.dateFrom}
         AND created_at <= ${filters.dateTo}
-        ${filters.channel ? prisma.$queryRaw`AND channel = ${filters.channel}::communication_channel` : prisma.$queryRaw``}
-        ${filters.type ? prisma.$queryRaw`AND type = ${filters.type}::communication_type` : prisma.$queryRaw``}
-        ${filters.hotelId ? prisma.$queryRaw`AND hotel_id = ${filters.hotelId}::uuid` : prisma.$queryRaw``}
+        ${filters.channel ? Prisma.sql`AND channel = ${filters.channel}::communication_channel` : Prisma.empty}
+        ${filters.type ? Prisma.sql`AND type = ${filters.type}::communication_type` : Prisma.empty}
+        ${filters.hotelId ? Prisma.sql`AND hotel_id = ${filters.hotelId}::uuid` : Prisma.empty}
       GROUP BY DATE(created_at)
       ORDER BY day ASC
     `;

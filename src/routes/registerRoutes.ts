@@ -34,7 +34,11 @@ const router = Router();
 router.use('/health', healthRoutes);
 
 // Webhooks (not versioned, no auth - signature verification only)
-router.use('/webhooks/communications', communicationsWebhookRoutes);
+// Only exposed in non-production environments until strict, fail-closed signature
+// verification is guaranteed in the communicationsWebhookRoutes implementation.
+if (process.env.NODE_ENV !== 'production') {
+  router.use('/webhooks/communications', communicationsWebhookRoutes);
+}
 
 // API v1 routes
 const v1Router = Router();

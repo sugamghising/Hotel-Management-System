@@ -218,6 +218,9 @@ const webhookRouter = Router();
 
 webhookRouter.post(
   '/email',
+  // Webhook validation is intentionally lenient: validation errors should not
+  // cause 4xx responses that trigger provider retry storms. The body is passed
+  // through as-is; the controller handles unknown/extra fields gracefully.
   validate({ body: EmailWebhookSchema }),
   communicationsController.handleEmailWebhook
 );

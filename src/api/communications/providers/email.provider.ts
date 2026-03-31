@@ -49,8 +49,8 @@ export class EmailProvider implements ICommunicationProvider {
 
     // In production, implement actual signature verification
     // e.g., for SendGrid: verify HMAC-SHA256 signature
-    logger.warn('📧 [EMAIL STUB] Webhook signature verification not implemented');
-    return true;
+    logger.warn('📧 [EMAIL STUB] Webhook signature verification not implemented; rejecting webhook in non-sandbox mode');
+    return false;
   }
 }
 

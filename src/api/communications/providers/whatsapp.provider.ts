@@ -50,8 +50,8 @@ export class WhatsAppProvider implements ICommunicationProvider {
 
     // In production, implement actual signature verification
     // e.g., for WhatsApp Business API: verify X-Hub-Signature header
-    logger.warn('💬 [WHATSAPP STUB] Webhook signature verification not implemented');
-    return true;
+    logger.warn('💬 [WHATSAPP STUB] Webhook signature verification not implemented; rejecting webhook in non-sandbox mode');
+    return false;
   }
 }
 

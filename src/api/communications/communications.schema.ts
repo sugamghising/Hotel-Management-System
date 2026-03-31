@@ -176,6 +176,7 @@ export const PreviewTemplateSchema = z.object({
           lastName: z.string().optional(),
           email: z.string().optional(),
           mobile: z.string().optional(),
+          languageCode: z.string().optional(),
         })
         .optional(),
       reservation: z
@@ -185,6 +186,8 @@ export const PreviewTemplateSchema = z.object({
           checkOutDate: z.string().optional(),
           nights: z.number().optional(),
           totalAmount: z.string().optional(),
+          currencyCode: z.string().optional(),
+          specialRequests: z.string().optional(),
         })
         .optional(),
       room: z
@@ -246,14 +249,19 @@ export const AnalyticsQuerySchema = z.object({
 // WEBHOOK SCHEMAS
 // ============================================================================
 
+// Webhook schemas are intentionally lenient: validation errors on incoming
+// provider webhooks must not cause 4xx responses that trigger aggressive
+// provider retries. All fields are accepted as optional strings/unknowns
+// and extra fields pass through freely.
+
 export const EmailWebhookSchema = z
   .object({
     // Generic schema - actual structure depends on provider
     // Providers: SendGrid, SES, Mailgun, Postmark, etc.
     externalId: z.string().optional(),
     event: z.string().optional(),
-    timestamp: z.coerce.date().optional(),
-    email: z.string().email().optional(),
+    timestamp: z.unknown().optional(),
+    email: z.string().optional(),
     reason: z.string().optional(),
     // Allow additional provider-specific fields
   })
@@ -265,7 +273,7 @@ export const SmsWebhookSchema = z
     // Providers: Twilio, Nexmo, MessageBird, etc.
     externalId: z.string().optional(),
     status: z.string().optional(),
-    timestamp: z.coerce.date().optional(),
+    timestamp: z.unknown().optional(),
     phoneNumber: z.string().optional(),
     errorCode: z.string().optional(),
     // Allow additional provider-specific fields

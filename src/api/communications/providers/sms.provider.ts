@@ -48,8 +48,8 @@ export class SmsProvider implements ICommunicationProvider {
 
     // In production, implement actual signature verification
     // e.g., for Twilio: verify X-Twilio-Signature header
-    logger.warn('📱 [SMS STUB] Webhook signature verification not implemented');
-    return true;
+    logger.warn('📱 [SMS STUB] Webhook signature verification not implemented; rejecting webhook in non-sandbox mode');
+    return false;
   }
 }
 

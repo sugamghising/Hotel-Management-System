@@ -151,7 +151,7 @@ const VARIABLE_PATTERN = /\{\{([a-zA-Z][a-zA-Z0-9_.]*)\}\}/g;
  * Rules:
  * - Unknown variables render as empty string (no error thrown)
  * - HTML entities are escaped for EMAIL channel
- * - Dates/currencies are formatted per guest's languageCode
+ * - Values are substituted as-is; no automatic date or currency formatting is applied
  *
  * @param template The template string with {{variable}} placeholders
  * @param context The context object with values

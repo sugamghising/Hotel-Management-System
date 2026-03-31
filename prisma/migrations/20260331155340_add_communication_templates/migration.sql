@@ -1,3 +1,4 @@
--- AlterTable
-ALTER TABLE "hotels" ALTER COLUMN "check_in_time" SET DEFAULT '15:00:00'::time,
-ALTER COLUMN "check_out_time" SET DEFAULT '11:00:00'::time;
+-- This migration was originally intended to add communication templates, but
+-- it only duplicated default time changes on the "hotels" table that are
+-- already applied in the earlier migration (20260331140547_add_communication_templates).
+-- It has been intentionally left empty to avoid duplicate schema changes and migration drift.
