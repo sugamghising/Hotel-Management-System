@@ -578,6 +578,8 @@ model Organization {
   roomTypes     RoomType[]
   rooms         Room[]
   ratePlans     RatePlan[]
+  communications         Communication[]
+  communicationTemplates CommunicationTemplate[]
 
   @@unique([code], name: "uq_org_code", map: "uq_org_code") // Partial index handled in migration
   @@index([subscriptionStatus], name: "idx_org_subscription_status")
@@ -666,6 +668,8 @@ model Hotel {
   posOutlets   POSOutlet[]
   posMenuItems POSMenuItem[]
   posOrders    POSOrder[]
+  communications         Communication[]
+  communicationTemplates CommunicationTemplate[]
 
   @@unique([organizationId, code], name: "uq_hotel_org_code") // Partial index in migration
   @@index([organizationId], name: "idx_hotel_org")
@@ -2318,6 +2322,9 @@ model Communication {
   deliveredAt DateTime? @map("delivered_at") @db.Timestamptz(6)
   openedAt    DateTime? @map("opened_at") @db.Timestamptz(6)
 
+  // Scheduled send (e.g., survey 2h after checkout)
+  scheduledFor DateTime? @map("scheduled_for") @db.Timestamptz(6)
+
   // Addresses
   fromAddress String? @map("from_address") @db.VarChar(255)
   toAddress   String? @map("to_address") @db.VarChar(255)
@@ -2328,12 +2335,46 @@ model Communication {
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  guest       Guest?       @relation(fields: [guestId], references: [id])
-  reservation Reservation? @relation(fields: [reservationId], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id])
+  hotel        Hotel?       @relation(fields: [hotelId], references: [id])
+  guest        Guest?       @relation(fields: [guestId], references: [id])
+  reservation  Reservation? @relation(fields: [reservationId], references: [id])
+  template     CommunicationTemplate? @relation(fields: [templateId], references: [id])
 
   @@index([guestId, createdAt(sort: Desc)], name: "idx_comm_guest")
   @@index([reservationId], name: "idx_comm_res")
+  @@index([status, scheduledFor], name: "idx_comm_scheduled")
   @@map("communications")
+}
+
+model CommunicationTemplate {
+  id             String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String  @map("organization_id") @db.Uuid
+  hotelId        String? @map("hotel_id") @db.Uuid
+
+  code    String               @db.VarChar(100)
+  name    String               @db.VarChar(255)
+  type    CommunicationType
+  channel CommunicationChannel
+
+  subject      String? @db.VarChar(255) // EMAIL only
+  bodyTemplate String  @map("body_template") @db.Text
+
+  language String  @default("en") @db.Char(2)
+  isActive Boolean @default(true) @map("is_active")
+  isSystem Boolean @default(false) @map("is_system")
+
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization   Organization    @relation(fields: [organizationId], references: [id])
+  hotel          Hotel?          @relation(fields: [hotelId], references: [id])
+  communications Communication[]
+
+  @@unique([organizationId, code, channel, language], name: "uq_template_code_channel_lang")
+  @@index([organizationId, type, channel], name: "idx_template_type_channel")
+  @@map("communication_templates")
 }
 
 // ============================================
