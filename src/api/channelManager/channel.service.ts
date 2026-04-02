@@ -1,5 +1,4 @@
 import type { Request } from 'express';
-import { config } from '../../config';
 import {
   BadRequestError,
   ChannelNotActiveError,
@@ -42,7 +41,7 @@ import type {
   WebhookProcessingResult,
 } from './channel.types';
 
-const CHANNEL_EVENT_ACTOR = config.system.userId;
+const CHANNEL_EVENT_ACTOR = 'SYSTEM';
 
 const addDays = (date: Date, days: number): Date => {
   const next = new Date(date);
@@ -602,14 +601,6 @@ export class ChannelService {
     try {
       const adapter = this.getAdapter(channelCode);
       const parsed = adapter.parseWebhookReservation(rawBody);
-
-      if (typeof parsed.externalRef !== 'string' || parsed.externalRef.trim().length === 0) {
-        await this.completeInboundSyncLog(syncLog, 'FAILED', 0, 1, {
-          error: 'Invalid or empty externalRef in inbound reservation',
-        });
-        return { handled: false, reason: 'invalid_external_ref' };
-      }
-
       const existing = await reservationsRepository.findByExternalRef(
         parsed.externalRef,
         connection.hotelId

@@ -60,7 +60,6 @@ export interface CommunicationResponse {
   fromAddress: string | null;
   toAddress: string | null;
   externalId: string | null;
-  metadata: Record<string, unknown> | null;
   createdAt: Date;
 }
 

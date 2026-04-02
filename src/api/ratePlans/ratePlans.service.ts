@@ -1,6 +1,5 @@
 import { BadRequestError, ConflictError, ForbiddenError, NotFoundError, logger } from '../../core';
 import { prisma } from '../../database/prisma';
-import type { Prisma } from '../../generated/prisma';
 import { type HotelRepository, hotelRepository } from '../hotel';
 import { type RoomTypesRepository, roomTypesRepository } from '../roomTypes';
 import type { RatePlanListResponse } from './ratePlans.dto';
@@ -231,22 +230,16 @@ export class RatePlansService {
           : (pricingRules as unknown as RatePlanCreateInput['pricingRules']);
     }
 
-    const updated = await prisma.$transaction(async (tx) => {
-      const ratePlan = await this.ratePlanRepo.update(
-        id,
-        updateData as unknown as import('./ratePlans.repository').RatePlanUpdateInput,
-        tx
-      );
-      await this.emitRatePlanUpdatedEvent(
-        {
-          organizationId,
-          hotelId: ratePlan.hotelId,
-          ratePlanId: ratePlan.id,
-          reason: 'rate_plan_updated',
-        },
-        tx
-      );
-      return ratePlan;
+    const updated = await this.ratePlanRepo.update(
+      id,
+      updateData as unknown as import('./ratePlans.repository').RatePlanUpdateInput
+    );
+
+    await this.emitRatePlanUpdatedEvent({
+      organizationId,
+      hotelId: updated.hotelId,
+      ratePlanId: updated.id,
+      reason: 'rate_plan_updated',
     });
 
     logger.info(`Rate plan updated: ${updated.name}`, { ratePlanId: id });
@@ -357,29 +350,14 @@ export class RatePlansService {
       throw new ForbiddenError('Access denied');
     }
 
-    const override = await prisma.$transaction(async (tx) => {
-      const result = await this.ratePlanRepo.upsertOverride(
-        ratePlanId,
-        input.date,
-        input.rate,
-        input.stopSell,
-        input.minStay,
-        input.reason,
-        tx
-      );
-      await this.emitRatePlanUpdatedEvent(
-        {
-          organizationId,
-          hotelId: ratePlan.hotelId,
-          ratePlanId,
-          dateFrom: input.date,
-          dateTo: input.date,
-          reason: 'rate_override_updated',
-        },
-        tx
-      );
-      return result;
-    });
+    const override = await this.ratePlanRepo.upsertOverride(
+      ratePlanId,
+      input.date,
+      input.rate,
+      input.stopSell,
+      input.minStay,
+      input.reason
+    );
 
     logger.info(
       `Rate override set: ${ratePlan.code} @ ${input.date.toISOString().split('T')[0]} = ${input.rate}`,
@@ -388,6 +366,15 @@ export class RatePlansService {
         date: input.date,
       }
     );
+
+    await this.emitRatePlanUpdatedEvent({
+      organizationId,
+      hotelId: ratePlan.hotelId,
+      ratePlanId,
+      dateFrom: input.date,
+      dateTo: input.date,
+      reason: 'rate_override_updated',
+    });
 
     return override;
   }
@@ -434,26 +421,21 @@ export class RatePlansService {
       return entry;
     });
 
-    const updatedCount = await prisma.$transaction(async (tx) => {
-      const count = await this.ratePlanRepo.bulkUpsertOverrides(ratePlanId, overrides, tx);
-      await this.emitRatePlanUpdatedEvent(
-        {
-          organizationId,
-          hotelId: ratePlan.hotelId,
-          ratePlanId,
-          dateFrom: input.startDate,
-          dateTo: input.endDate,
-          reason: 'rate_override_bulk_updated',
-        },
-        tx
-      );
-      return count;
-    });
+    const updatedCount = await this.ratePlanRepo.bulkUpsertOverrides(ratePlanId, overrides);
 
     logger.info(`Bulk rate overrides: ${updatedCount} days updated`, {
       ratePlanId,
       startDate: input.startDate,
       endDate: input.endDate,
+    });
+
+    await this.emitRatePlanUpdatedEvent({
+      organizationId,
+      hotelId: ratePlan.hotelId,
+      ratePlanId,
+      dateFrom: input.startDate,
+      dateTo: input.endDate,
+      reason: 'rate_override_bulk_updated',
     });
 
     return { updatedCount };
@@ -470,19 +452,15 @@ export class RatePlansService {
       throw new ForbiddenError('Access denied');
     }
 
-    await prisma.$transaction(async (tx) => {
-      await this.ratePlanRepo.deleteOverride(ratePlanId, date, tx);
-      await this.emitRatePlanUpdatedEvent(
-        {
-          organizationId,
-          hotelId: ratePlan.hotelId,
-          ratePlanId,
-          dateFrom: date,
-          dateTo: date,
-          reason: 'rate_override_deleted',
-        },
-        tx
-      );
+    await this.ratePlanRepo.deleteOverride(ratePlanId, date);
+
+    await this.emitRatePlanUpdatedEvent({
+      organizationId,
+      hotelId: ratePlan.hotelId,
+      ratePlanId,
+      dateFrom: date,
+      dateTo: date,
+      reason: 'rate_override_deleted',
     });
   }
 
@@ -682,36 +660,37 @@ export class RatePlansService {
   // PRIVATE HELPERS
   // ============================================================================
 
-  private async emitRatePlanUpdatedEvent(
-    payload: {
-      organizationId: string;
-      hotelId: string;
-      ratePlanId: string;
-      dateFrom?: Date;
-      dateTo?: Date;
-      reason?: string;
-    },
-    tx?: Prisma.TransactionClient
-  ): Promise<void> {
-    // Intentionally not wrapped in try/catch: when called within a transaction (tx),
-    // any failure here will roll back the entire transaction, ensuring the rate plan
-    // update and outbox event are always atomic (either both succeed or neither does).
-    const client = tx ?? prisma;
-    await client.outboxEvent.create({
-      data: {
-        eventType: 'rate_plan.updated',
-        aggregateType: 'RatePlan',
-        aggregateId: payload.ratePlanId,
-        payload: {
-          organizationId: payload.organizationId,
-          hotelId: payload.hotelId,
-          ratePlanId: payload.ratePlanId,
-          ...(payload.dateFrom ? { dateFrom: payload.dateFrom.toISOString() } : {}),
-          ...(payload.dateTo ? { dateTo: payload.dateTo.toISOString() } : {}),
-          ...(payload.reason ? { reason: payload.reason } : {}),
+  private async emitRatePlanUpdatedEvent(payload: {
+    organizationId: string;
+    hotelId: string;
+    ratePlanId: string;
+    dateFrom?: Date;
+    dateTo?: Date;
+    reason?: string;
+  }): Promise<void> {
+    try {
+      await prisma.outboxEvent.create({
+        data: {
+          eventType: 'rate_plan.updated',
+          aggregateType: 'RatePlan',
+          aggregateId: payload.ratePlanId,
+          payload: {
+            organizationId: payload.organizationId,
+            hotelId: payload.hotelId,
+            ratePlanId: payload.ratePlanId,
+            ...(payload.dateFrom ? { dateFrom: payload.dateFrom.toISOString() } : {}),
+            ...(payload.dateTo ? { dateTo: payload.dateTo.toISOString() } : {}),
+            ...(payload.reason ? { reason: payload.reason } : {}),
+          },
         },
-      },
-    });
+      });
+    } catch (error) {
+      logger.warn('Failed to create rate_plan.updated outbox event', {
+        ratePlanId: payload.ratePlanId,
+        hotelId: payload.hotelId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   private async verifyHotelAccess(organizationId: string, hotelId: string): Promise<void> {

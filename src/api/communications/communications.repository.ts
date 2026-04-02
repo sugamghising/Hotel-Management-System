@@ -482,10 +482,6 @@ export class CommunicationsRepository {
       fromAddress: communication.fromAddress,
       toAddress: communication.toAddress,
       externalId: communication.externalId,
-      metadata:
-        communication.metadata !== null && typeof communication.metadata === 'object'
-          ? (communication.metadata as Record<string, unknown>)
-          : null,
       createdAt: communication.createdAt,
     };
   }
