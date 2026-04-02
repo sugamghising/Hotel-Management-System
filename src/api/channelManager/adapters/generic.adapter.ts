@@ -139,6 +139,6 @@ export class GenericChannelAdapter implements IChannelAdapter {
   }
 
   verifyWebhookSignature(_req: Request): boolean {
-    return true;
+    return false;
   }
 }

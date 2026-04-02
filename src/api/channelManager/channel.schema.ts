@@ -73,6 +73,15 @@ export const MapRatesSchema = z
       message: 'Duplicate internalRatePlanId values are not allowed',
       path: ['mappings'],
     }
+  )
+  .refine(
+    (data) =>
+      new Set(data.mappings.map((m) => m.externalRatePlanCode.toLowerCase())).size ===
+      data.mappings.length,
+    {
+      message: 'Duplicate externalRatePlanCode values are not allowed',
+      path: ['mappings'],
+    }
   );
 
 export const SyncSchema = z
@@ -96,10 +105,7 @@ export const SyncSchema = z
     }
   );
 
-export const SyncAllSchema = z.object({
-  dateFrom: z.coerce.date(),
-  dateTo: z.coerce.date(),
-});
+export const SyncAllSchema = SyncSchema;
 
 export const SyncLogQuerySchema = z.object({
   syncType: z.string().max(50).optional(),

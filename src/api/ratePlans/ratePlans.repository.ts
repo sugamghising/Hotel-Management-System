@@ -110,8 +110,12 @@ export class RatePlansRepository {
     }) as unknown as Promise<RatePlan>;
   }
 
-  async update(id: string, data: RatePlanUpdateInput): Promise<RatePlan> {
-    return prisma.ratePlan.update({
+  async update(
+    id: string,
+    data: RatePlanUpdateInput,
+    tx?: Prisma.TransactionClient
+  ): Promise<RatePlan> {
+    return (tx ?? prisma).ratePlan.update({
       where: { id },
       data,
     }) as unknown as Promise<RatePlan>;
@@ -151,11 +155,12 @@ export class RatePlansRepository {
     rate: number,
     stopSell: boolean = false,
     minStay?: number | null,
-    reason?: string
+    reason?: string,
+    tx?: Prisma.TransactionClient
   ): Promise<RateOverride> {
     const normalizedDate = new Date(date);
     normalizedDate.setHours(0, 0, 0, 0);
-    return prisma.rateOverride.upsert({
+    return (tx ?? prisma).rateOverride.upsert({
       where: {
         uq_rateoverride_plan_date: {
           ratePlanId,
@@ -179,10 +184,14 @@ export class RatePlansRepository {
     }) as unknown as Promise<RateOverride>;
   }
 
-  async deleteOverride(ratePlanId: string, date: Date): Promise<void> {
+  async deleteOverride(
+    ratePlanId: string,
+    date: Date,
+    tx?: Prisma.TransactionClient
+  ): Promise<void> {
     const normalizedDate = new Date(date);
     normalizedDate.setHours(0, 0, 0, 0);
-    await prisma.rateOverride.delete({
+    await (tx ?? prisma).rateOverride.delete({
       where: {
         uq_rateoverride_plan_date: {
           ratePlanId,
@@ -200,7 +209,8 @@ export class RatePlansRepository {
       stopSell?: boolean;
       minStay?: number | null;
       reason?: string;
-    }>
+    }>,
+    tx?: Prisma.TransactionClient
   ): Promise<number> {
     type OverrideWithRate = {
       date: Date;
@@ -212,51 +222,58 @@ export class RatePlansRepository {
     const withRate = overrides.filter((o): o is OverrideWithRate => o.rate !== undefined);
     const withoutRate = overrides.filter((o) => o.rate === undefined);
 
-    const results = await prisma.$transaction([
-      ...withRate.map((o) => {
-        const normalizedDate = new Date(o.date);
-        normalizedDate.setHours(0, 0, 0, 0);
-        return prisma.rateOverride.upsert({
-          where: {
-            uq_rateoverride_plan_date: {
+    const doWork = async (client: Prisma.TransactionClient): Promise<number> => {
+      // All operations use the same transaction client, so any failure rolls back all of them.
+      const results = await Promise.all([
+        ...withRate.map((o) => {
+          const normalizedDate = new Date(o.date);
+          normalizedDate.setHours(0, 0, 0, 0);
+          return client.rateOverride.upsert({
+            where: {
+              uq_rateoverride_plan_date: {
+                ratePlanId,
+                date: normalizedDate,
+              },
+            },
+            create: {
+              ratePlanId,
+              date: normalizedDate,
+              rate: o.rate,
+              stopSell: o.stopSell ?? false,
+              minStay: o.minStay ?? null,
+              reason: o.reason ?? null,
+            },
+            update: {
+              rate: o.rate,
+              ...(o.stopSell !== undefined ? { stopSell: o.stopSell } : {}),
+              ...(o.minStay !== undefined ? { minStay: o.minStay } : {}),
+              ...(o.reason !== undefined ? { reason: o.reason } : {}),
+            },
+          });
+        }),
+        ...withoutRate.map((o) => {
+          const normalizedDate = new Date(o.date);
+          normalizedDate.setHours(0, 0, 0, 0);
+          return client.rateOverride.updateMany({
+            where: {
               ratePlanId,
               date: normalizedDate,
             },
-          },
-          create: {
-            ratePlanId,
-            date: normalizedDate,
-            rate: o.rate,
-            stopSell: o.stopSell ?? false,
-            minStay: o.minStay ?? null,
-            reason: o.reason ?? null,
-          },
-          update: {
-            rate: o.rate,
-            ...(o.stopSell !== undefined ? { stopSell: o.stopSell } : {}),
-            ...(o.minStay !== undefined ? { minStay: o.minStay } : {}),
-            ...(o.reason !== undefined ? { reason: o.reason } : {}),
-          },
-        });
-      }),
-      ...withoutRate.map((o) => {
-        const normalizedDate = new Date(o.date);
-        normalizedDate.setHours(0, 0, 0, 0);
-        return prisma.rateOverride.updateMany({
-          where: {
-            ratePlanId,
-            date: normalizedDate,
-          },
-          data: {
-            ...(o.stopSell !== undefined ? { stopSell: o.stopSell } : {}),
-            ...(o.minStay !== undefined ? { minStay: o.minStay } : {}),
-            ...(o.reason !== undefined ? { reason: o.reason } : {}),
-          },
-        });
-      }),
-    ]);
+            data: {
+              ...(o.stopSell !== undefined ? { stopSell: o.stopSell } : {}),
+              ...(o.minStay !== undefined ? { minStay: o.minStay } : {}),
+              ...(o.reason !== undefined ? { reason: o.reason } : {}),
+            },
+          });
+        }),
+      ]);
+      return results.length;
+    };
 
-    return results.length;
+    if (tx) {
+      return doWork(tx);
+    }
+    return prisma.$transaction((innerTx) => doWork(innerTx));
   }
 
   // ============================================================================
