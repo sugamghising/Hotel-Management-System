@@ -238,6 +238,31 @@ const NightAuditRolledBackPayloadSchema = z.object({
   reason: z.string().optional(),
 });
 
+const RatePlanUpdatedPayloadSchema = z.object({
+  organizationId: z.string().uuid(),
+  hotelId: z.string().uuid(),
+  ratePlanId: z.string().uuid().optional(),
+  dateFrom: z.coerce.date().optional(),
+  dateTo: z.coerce.date().optional(),
+  reason: z.string().optional(),
+});
+
+const InventoryUpdatedPayloadSchema = z.object({
+  organizationId: z.string().uuid(),
+  hotelId: z.string().uuid(),
+  itemId: z.string().uuid().optional(),
+  dateFrom: z.coerce.date().optional(),
+  dateTo: z.coerce.date().optional(),
+  reason: z.string().optional(),
+});
+
+const ChannelSyncFailedPayloadSchema = z.object({
+  connectionId: z.string().uuid(),
+  channelCode: z.string(),
+  error: z.string(),
+  hotelId: z.string().uuid().optional(),
+});
+
 const PosOrderCreatedPayloadSchema = z.object({
   organizationId: z.string().uuid(),
   hotelId: z.string().uuid(),
@@ -471,6 +496,15 @@ class OutboxWorker {
           break;
         case 'night_audit.completed':
           await this.handleNightAuditCompleted(payload);
+          break;
+        case 'rate_plan.updated':
+          await this.handleRatePlanUpdated(payload);
+          break;
+        case 'inventory.updated':
+          await this.handleInventoryUpdated(payload);
+          break;
+        case 'channel.sync_failed':
+          await this.handleChannelSyncFailed(payload);
           break;
         case 'night_audit.failed':
           await this.handleNightAuditFailed(payload);
@@ -944,6 +978,103 @@ class OutboxWorker {
       nextBusinessDate: parsed.nextBusinessDate?.toISOString() ?? null,
       warningCount: parsed.warningCount ?? 0,
     });
+
+    try {
+      const { channelService } = await import('../../api/channelManager');
+      await channelService.handleNightAuditCompleted(parsed.organizationId, parsed.hotelId);
+    } catch (error) {
+      logger.warn('Failed to trigger channel sync after night audit completion', {
+        organizationId: parsed.organizationId,
+        hotelId: parsed.hotelId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  private async handleRatePlanUpdated(payload: unknown): Promise<void> {
+    const parsed = RatePlanUpdatedPayloadSchema.parse(payload);
+
+    const dateFrom = parsed.dateFrom ?? this.asDateOnly(new Date());
+    const dateTo = parsed.dateTo ?? new Date(dateFrom.getTime() + 30 * 24 * 60 * 60 * 1000);
+
+    logger.info('Rate plan updated event processed', {
+      organizationId: parsed.organizationId,
+      hotelId: parsed.hotelId,
+      ratePlanId: parsed.ratePlanId ?? null,
+      dateFrom: dateFrom.toISOString(),
+      dateTo: dateTo.toISOString(),
+      reason: parsed.reason ?? null,
+    });
+
+    try {
+      const { channelService } = await import('../../api/channelManager');
+      await channelService.handleRateOrInventoryUpdated(
+        parsed.organizationId,
+        parsed.hotelId,
+        dateFrom,
+        dateTo
+      );
+    } catch (error) {
+      logger.warn('Failed to trigger channel sync for rate plan update', {
+        organizationId: parsed.organizationId,
+        hotelId: parsed.hotelId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  private async handleInventoryUpdated(payload: unknown): Promise<void> {
+    const parsed = InventoryUpdatedPayloadSchema.parse(payload);
+
+    const dateFrom = parsed.dateFrom ?? this.asDateOnly(new Date());
+    const dateTo = parsed.dateTo ?? new Date(dateFrom.getTime() + 30 * 24 * 60 * 60 * 1000);
+
+    logger.info('Inventory updated event processed', {
+      organizationId: parsed.organizationId,
+      hotelId: parsed.hotelId,
+      itemId: parsed.itemId ?? null,
+      dateFrom: dateFrom.toISOString(),
+      dateTo: dateTo.toISOString(),
+      reason: parsed.reason ?? null,
+    });
+
+    try {
+      const { channelService } = await import('../../api/channelManager');
+      await channelService.handleRateOrInventoryUpdated(
+        parsed.organizationId,
+        parsed.hotelId,
+        dateFrom,
+        dateTo
+      );
+    } catch (error) {
+      logger.warn('Failed to trigger channel sync for inventory update', {
+        organizationId: parsed.organizationId,
+        hotelId: parsed.hotelId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  private async handleChannelSyncFailed(payload: unknown): Promise<void> {
+    const parsed = ChannelSyncFailedPayloadSchema.parse(payload);
+
+    logger.warn('Channel sync failed event processed', {
+      connectionId: parsed.connectionId,
+      channelCode: parsed.channelCode,
+      hotelId: parsed.hotelId ?? null,
+      error: parsed.error,
+    });
+
+    try {
+      const { channelService } = await import('../../api/channelManager');
+      await channelService.handleSyncFailedNotification(parsed);
+    } catch (error) {
+      logger.warn('Failed to dispatch channel sync failure notifications', {
+        connectionId: parsed.connectionId,
+        channelCode: parsed.channelCode,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   private async handleNightAuditFailed(payload: unknown): Promise<void> {

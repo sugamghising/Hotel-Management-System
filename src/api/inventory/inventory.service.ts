@@ -290,6 +290,23 @@ export class InventoryService {
         );
       }
 
+      await this.repo.createOutboxEvent(
+        'inventory.updated',
+        'INVENTORY_ITEM',
+        item.id,
+        asJson({
+          organizationId,
+          hotelId,
+          itemId: item.id,
+          reason: 'stock_adjusted',
+          refType: input.refType ?? 'STOCK_ADJUSTMENT',
+          refId: input.refId ?? null,
+          dateFrom: startOfDayUtc(new Date()).toISOString(),
+          dateTo: endOfDayUtc(new Date()).toISOString(),
+        }),
+        tx
+      );
+
       return updated;
     });
 
@@ -368,6 +385,23 @@ export class InventoryService {
           tx
         );
       }
+
+      await this.repo.createOutboxEvent(
+        'inventory.updated',
+        'INVENTORY_ITEM',
+        item.id,
+        asJson({
+          organizationId,
+          hotelId,
+          itemId: item.id,
+          reason: 'stock_consumed',
+          refType: input.refType,
+          refId: input.refId,
+          dateFrom: startOfDayUtc(new Date()).toISOString(),
+          dateTo: endOfDayUtc(new Date()).toISOString(),
+        }),
+        tx
+      );
 
       return updated;
     });

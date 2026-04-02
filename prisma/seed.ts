@@ -432,6 +432,9 @@ async function main() {
         // Communications (Module 18)
         'COMMUNICATION.SEND', 'COMMUNICATION.SEND_BULK', 'COMMUNICATION.VIEW', 'COMMUNICATION.VIEW_ANALYTICS',
         'TEMPLATE.VIEW', 'TEMPLATE.CREATE', 'TEMPLATE.UPDATE', 'TEMPLATE.DELETE',
+        // Channel Manager (Module 19)
+        'CHANNEL.READ', 'CHANNEL.MANAGE', 'CHANNEL.ACTIVATE', 'CHANNEL.DEACTIVATE',
+        'CHANNEL.MAP', 'CHANNEL.SYNC', 'CHANNEL.READ_LOGS',
     ];
 
     for (const permCode of permissions) {
@@ -542,6 +545,9 @@ async function main() {
         // Communications (Module 18) - Full GM/Admin access
         'COMMUNICATION.SEND', 'COMMUNICATION.SEND_BULK', 'COMMUNICATION.VIEW', 'COMMUNICATION.VIEW_ANALYTICS',
         'TEMPLATE.VIEW', 'TEMPLATE.CREATE', 'TEMPLATE.UPDATE', 'TEMPLATE.DELETE',
+        // Channel Manager (Module 19)
+        'CHANNEL.READ', 'CHANNEL.MANAGE', 'CHANNEL.ACTIVATE', 'CHANNEL.DEACTIVATE',
+        'CHANNEL.MAP', 'CHANNEL.SYNC', 'CHANNEL.READ_LOGS',
     ]);
 
     await grantPermissions('FRONT_DESK', [
@@ -627,6 +633,9 @@ async function main() {
         // Communications (Module 18) - Full GM access
         'COMMUNICATION.SEND', 'COMMUNICATION.SEND_BULK', 'COMMUNICATION.VIEW', 'COMMUNICATION.VIEW_ANALYTICS',
         'TEMPLATE.VIEW', 'TEMPLATE.CREATE', 'TEMPLATE.UPDATE', 'TEMPLATE.DELETE',
+        // Channel Manager (Module 19)
+        'CHANNEL.READ', 'CHANNEL.MANAGE', 'CHANNEL.ACTIVATE', 'CHANNEL.DEACTIVATE',
+        'CHANNEL.MAP', 'CHANNEL.SYNC', 'CHANNEL.READ_LOGS',
     ]);
 
     await grantPermissions('ACCOUNTANT', [
@@ -665,6 +674,8 @@ async function main() {
         'DASHBOARD.REVENUE',
         // Communications (Module 18)
         'COMMUNICATION.SEND', 'COMMUNICATION.VIEW',
+        // Channel Manager (Module 19)
+        'CHANNEL.READ', 'CHANNEL.MAP', 'CHANNEL.SYNC', 'CHANNEL.READ_LOGS',
     ]);
 
     await grantPermissions('OPS_MANAGER', [

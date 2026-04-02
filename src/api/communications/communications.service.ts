@@ -219,7 +219,7 @@ export class CommunicationsService {
       await this.repo.update(communication.id, {
         status: 'FAILED',
         metadata: {
-          ...(communication.metadata ?? {}),
+          createdBy: userId ?? 'SYSTEM',
           error: errorMessage,
           failedAt: new Date().toISOString(),
         },

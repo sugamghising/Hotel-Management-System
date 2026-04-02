@@ -67,6 +67,7 @@ export const CreateReservationBaseSchema = z.object({
 
   source: BookingSourceSchema.default('DIRECT_WEB'),
   channelCode: z.string().max(50).optional(),
+  externalRef: z.string().max(100).optional(),
   corporateCode: z.string().max(50).optional(),
 
   guaranteeType: GuaranteeTypeSchema.default('CREDIT_CARD'),

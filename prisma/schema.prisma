@@ -670,6 +670,8 @@ model Hotel {
   posOrders    POSOrder[]
   communications         Communication[]
   communicationTemplates CommunicationTemplate[]
+  channelConnections     ChannelConnection[]
+  channelSyncLogs        ChannelSyncLog[]
 
   @@unique([organizationId, code], name: "uq_hotel_org_code") // Partial index in migration
   @@index([organizationId], name: "idx_hotel_org")
@@ -2568,8 +2570,34 @@ model ChannelConnection {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
+  hotel    Hotel             @relation(fields: [hotelId], references: [id], onDelete: Restrict)
+  syncLogs ChannelSyncLog[]
+
   @@unique([hotelId, channelCode], name: "uq_channel_hotel_code")
   @@map("channel_connections")
+}
+
+model ChannelSyncLog {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  connectionId String   @map("connection_id") @db.Uuid
+  hotelId      String   @map("hotel_id") @db.Uuid
+  syncType     String   @map("sync_type") @db.VarChar(50)
+  direction    String   @db.VarChar(10)
+  status       String   @db.VarChar(20)
+  startedAt    DateTime @map("started_at") @db.Timestamptz(6)
+  completedAt  DateTime? @map("completed_at") @db.Timestamptz(6)
+
+  recordsProcessed Int   @default(0) @map("records_processed")
+  recordsFailed    Int   @default(0) @map("records_failed")
+  errorDetails     Json? @map("error_details") @db.JsonB
+  triggeredBy      String @map("triggered_by") @db.VarChar(50)
+
+  connection ChannelConnection @relation(fields: [connectionId], references: [id], onDelete: Restrict)
+  hotel      Hotel             @relation(fields: [hotelId], references: [id], onDelete: Restrict)
+
+  @@index([connectionId, startedAt(sort: Desc)])
+  @@index([hotelId, startedAt(sort: Desc)])
+  @@map("channel_sync_logs")
 }
 
 // ============================================
