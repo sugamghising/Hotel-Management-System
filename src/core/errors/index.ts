@@ -328,6 +328,46 @@ export class ServiceUnavailableError extends AppError {
 }
 
 // ============================================================================
+// CHANNEL MANAGER MODULE ERRORS
+// ============================================================================
+
+export class ChannelNotActiveError extends AppError {
+  constructor(message: string = 'Channel connection is not active') {
+    super(message, StatusCodes.CONFLICT, 'CHANNEL_NOT_ACTIVE', true);
+  }
+}
+
+export class InvalidSignatureError extends AppError {
+  constructor(message: string = 'Invalid webhook signature') {
+    super(message, StatusCodes.UNAUTHORIZED, 'INVALID_WEBHOOK_SIGNATURE', true);
+  }
+}
+
+export class MappingNotFoundError extends AppError {
+  constructor(channelCode: string, externalCode: string, mappingType: 'room' | 'rate') {
+    super(
+      `No ${mappingType} mapping found for external code '${externalCode}' on channel '${channelCode}'`,
+      StatusCodes.UNPROCESSABLE_ENTITY,
+      'CHANNEL_MAPPING_NOT_FOUND',
+      true,
+      { channelCode, externalCode, mappingType }
+    );
+  }
+}
+
+export class DuplicateChannelBookingError extends AppError {
+  constructor(externalRef: string) {
+    super(
+      `Reservation already exists for external reference '${externalRef}'`,
+      StatusCodes.CONFLICT,
+      'DUPLICATE_CHANNEL_BOOKING',
+      true,
+      { externalRef }
+    );
+  }
+}
+
+// ============================================================================
 // COMMUNICATIONS MODULE ERRORS
 // ============================================================================
 

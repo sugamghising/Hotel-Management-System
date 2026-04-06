@@ -1,4 +1,11 @@
-import { BadRequestError, ConflictError, ForbiddenError, NotFoundError, logger } from '../../core';
+import {
+  BadRequestError,
+  ConflictError,
+  DuplicateChannelBookingError,
+  ForbiddenError,
+  NotFoundError,
+  logger,
+} from '../../core';
 import { prisma } from '../../database/prisma';
 import { type HotelRepository, hotelRepository } from '../hotel';
 import { type RatePlansRepository, ratePlansRepository } from '../ratePlans';
@@ -79,6 +86,16 @@ export class ReservationsService {
       throw new NotFoundError(`Rate plan ${input.ratePlanId} not found`);
     }
 
+    if (input.externalRef) {
+      const existingExternal = await this.reservationsRepo.findByExternalRef(
+        input.externalRef,
+        hotelId
+      );
+      if (existingExternal) {
+        throw new DuplicateChannelBookingError(input.externalRef);
+      }
+    }
+
     // Check date validity
     const nights = Math.ceil(
       (input.checkOutDate.getTime() - input.checkInDate.getTime()) / (1000 * 60 * 60 * 24)
@@ -142,7 +159,7 @@ export class ReservationsService {
         guest: { connect: { id: input.guestId } },
         ratePlan: { connect: { id: input.ratePlanId } },
         confirmationNumber,
-        externalRef: null,
+        externalRef: input.externalRef || null,
         source: input.source || 'DIRECT_WEB',
         channelCode: input.channelCode || null,
         agentId: null,

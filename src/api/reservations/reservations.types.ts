@@ -210,6 +210,7 @@ export interface CreateReservationInput {
   // Source
   source?: BookingSource;
   channelCode?: string;
+  externalRef?: string;
   corporateCode?: string;
 
   // Payment

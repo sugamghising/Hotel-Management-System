@@ -2,6 +2,7 @@ import { healthRoutes, userRoutes } from '@api/index';
 import { config } from '@config/index';
 import { Router } from 'express';
 import { authRoutes } from '../api/auth';
+import { channelRoutes, channelWebhookRoutes } from '../api/channelManager';
 import { checkinCheckoutRoutes } from '../api/checkinCheckout';
 import {
   communicationsRoutes,
@@ -36,8 +37,9 @@ router.use('/health', healthRoutes);
 // Webhooks (not versioned, no auth - signature verification only)
 // Only exposed in non-production environments until strict, fail-closed signature
 // verification is guaranteed in the communicationsWebhookRoutes implementation.
-if (process.env.NODE_ENV !== 'production') {
+if (process.env['NODE_ENV'] !== 'production') {
   router.use('/webhooks/communications', communicationsWebhookRoutes);
+  router.use('/webhooks/channels', channelWebhookRoutes);
 }
 
 // API v1 routes
@@ -65,6 +67,7 @@ v1Router.use('/organizations/:organizationId/hotels/:hotelId', reportsRoutes);
 v1Router.use('/organizations/:organizationId/guests', guestsRoutes);
 v1Router.use('/organizations/:organizationId/hotels/:hotelId/guests', guestsInHouseRouter);
 v1Router.use('/organizations/:organizationId/communications', communicationsRoutes);
+v1Router.use('/organizations/:organizationId/hotels/:hotelId/channels', channelRoutes);
 
 // Mount versioned routes
 router.use(config.api.fullPrefix, v1Router);

@@ -1,4 +1,5 @@
 import { BadRequestError, ConflictError, ForbiddenError, NotFoundError, logger } from '../../core';
+import { prisma } from '../../database/prisma';
 import { type HotelRepository, hotelRepository } from '../hotel';
 import { type RoomTypesRepository, roomTypesRepository } from '../roomTypes';
 import type { RatePlanListResponse } from './ratePlans.dto';
@@ -234,6 +235,13 @@ export class RatePlansService {
       updateData as unknown as import('./ratePlans.repository').RatePlanUpdateInput
     );
 
+    await this.emitRatePlanUpdatedEvent({
+      organizationId,
+      hotelId: updated.hotelId,
+      ratePlanId: updated.id,
+      reason: 'rate_plan_updated',
+    });
+
     logger.info(`Rate plan updated: ${updated.name}`, { ratePlanId: id });
 
     return this.mapToResponse(updated);
@@ -359,6 +367,15 @@ export class RatePlansService {
       }
     );
 
+    await this.emitRatePlanUpdatedEvent({
+      organizationId,
+      hotelId: ratePlan.hotelId,
+      ratePlanId,
+      dateFrom: input.date,
+      dateTo: input.date,
+      reason: 'rate_override_updated',
+    });
+
     return override;
   }
 
@@ -412,6 +429,15 @@ export class RatePlansService {
       endDate: input.endDate,
     });
 
+    await this.emitRatePlanUpdatedEvent({
+      organizationId,
+      hotelId: ratePlan.hotelId,
+      ratePlanId,
+      dateFrom: input.startDate,
+      dateTo: input.endDate,
+      reason: 'rate_override_bulk_updated',
+    });
+
     return { updatedCount };
   }
 
@@ -427,6 +453,15 @@ export class RatePlansService {
     }
 
     await this.ratePlanRepo.deleteOverride(ratePlanId, date);
+
+    await this.emitRatePlanUpdatedEvent({
+      organizationId,
+      hotelId: ratePlan.hotelId,
+      ratePlanId,
+      dateFrom: date,
+      dateTo: date,
+      reason: 'rate_override_deleted',
+    });
   }
 
   // ============================================================================
@@ -624,6 +659,39 @@ export class RatePlansService {
   // ============================================================================
   // PRIVATE HELPERS
   // ============================================================================
+
+  private async emitRatePlanUpdatedEvent(payload: {
+    organizationId: string;
+    hotelId: string;
+    ratePlanId: string;
+    dateFrom?: Date;
+    dateTo?: Date;
+    reason?: string;
+  }): Promise<void> {
+    try {
+      await prisma.outboxEvent.create({
+        data: {
+          eventType: 'rate_plan.updated',
+          aggregateType: 'RatePlan',
+          aggregateId: payload.ratePlanId,
+          payload: {
+            organizationId: payload.organizationId,
+            hotelId: payload.hotelId,
+            ratePlanId: payload.ratePlanId,
+            ...(payload.dateFrom ? { dateFrom: payload.dateFrom.toISOString() } : {}),
+            ...(payload.dateTo ? { dateTo: payload.dateTo.toISOString() } : {}),
+            ...(payload.reason ? { reason: payload.reason } : {}),
+          },
+        },
+      });
+    } catch (error) {
+      logger.warn('Failed to create rate_plan.updated outbox event', {
+        ratePlanId: payload.ratePlanId,
+        hotelId: payload.hotelId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
 
   private async verifyHotelAccess(organizationId: string, hotelId: string): Promise<void> {
     const exists = await this.hotelRepo.existsInOrganization(organizationId, hotelId);
