@@ -3,13 +3,18 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Copy package files
+# Copy package files and Prisma schema for better layer caching
 COPY package*.json ./
+COPY prisma/schema.prisma ./prisma/
 
 # Install all dependencies (including dev)
 RUN npm ci
 
-# Copy source files
+# Generate Prisma client
+RUN npx prisma generate
+
+# Copy tsconfig and source files
+COPY tsconfig.json ./
 COPY . .
 
 # Build TypeScript
@@ -35,6 +40,9 @@ RUN npm ci --omit=dev && npm cache clean --force
 
 # Copy built files from builder stage
 COPY --from=builder /app/dist ./dist
+
+# Copy generated Prisma client
+COPY --from=builder /app/src/generated/prisma ./src/generated/prisma
 
 # Create logs directory
 RUN mkdir -p logs && chown -R nodejs:nodejs logs

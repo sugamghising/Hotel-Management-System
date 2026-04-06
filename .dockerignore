@@ -34,7 +34,6 @@ coverage
 !README.md
 .husky
 biome.json
-tsconfig.json
 vitest.config.ts
 
 # Docker
