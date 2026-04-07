@@ -34,8 +34,9 @@ services:
       - CORS_ORIGIN=*
       - DATABASE_URL=postgresql://hms:hms_dev_password@postgres:5432/hotel_management
     volumes:
-      - ./src:/app/src:ro
+      - ./src:/app/src
       - ./package.json:/app/package.json:ro
+    command: sh -c "npx prisma generate && npm run dev"
     profiles:
       - dev
     depends_on:
