@@ -68,7 +68,7 @@ export const RevPARReportQuerySchema = BaseReportQuerySchema;
 
 export const FolioSummaryQuerySchema = BaseReportQuerySchema;
 
-export const ArrivalsDeporturesQuerySchema = BaseReportQuerySchema;
+export const ArrivalsDeparturesQuerySchema = BaseReportQuerySchema;
 
 export const NoShowsQuerySchema = BaseReportQuerySchema;
 
@@ -143,7 +143,7 @@ export type RevenueReportQueryInput = z.infer<typeof RevenueReportQuerySchema>;
 export type ADRReportQueryInput = z.infer<typeof ADRReportQuerySchema>;
 export type RevPARReportQueryInput = z.infer<typeof RevPARReportQuerySchema>;
 export type FolioSummaryQueryInput = z.infer<typeof FolioSummaryQuerySchema>;
-export type ArrivalsDeporturesQueryInput = z.infer<typeof ArrivalsDeporturesQuerySchema>;
+export type ArrivalsDeparturesQueryInput = z.infer<typeof ArrivalsDeparturesQuerySchema>;
 export type InHouseReportQueryInput = z.infer<typeof InHouseReportQuerySchema>;
 export type NoShowsQueryInput = z.infer<typeof NoShowsQuerySchema>;
 export type GuestStatisticsQueryInput = z.infer<typeof GuestStatisticsQuerySchema>;

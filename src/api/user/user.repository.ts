@@ -15,7 +15,7 @@ export class UserRepository {
    * @returns Matching user, or `null` when not found or soft-deleted.
    */
   async findById(userId: string, include?: Prisma.UserInclude): Promise<User | null> {
-    return (await prisma.user.findUnique({
+    return (await prisma.user.findFirst({
       where: { id: userId, deletedAt: null },
       ...(include && { include }),
     })) as User | null;
@@ -28,7 +28,7 @@ export class UserRepository {
    * @returns User with roles, manager, and subordinates, or `null` when missing.
    */
   async findWithRoles(id: string): Promise<UserWithRoles | null> {
-    return (await prisma.user.findUnique({
+    return (await prisma.user.findFirst({
       where: { id, deletedAt: null },
       include: {
         userRoles: {

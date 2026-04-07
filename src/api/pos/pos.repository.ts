@@ -437,7 +437,7 @@ export class PosRepository {
    *
    * @param order - Persisted order aggregate with included relations.
    * @returns API-safe order object with numeric monetary fields.
-   * @remarks Complexity: O(i) where `i` is `order.items.length` due item mapping.
+   * @remarks Complexity: O(i) where `i` is `order.items.length` due to item mapping.
    */
   toApiOrder(order: POSOrderWithRelations) {
     return {
