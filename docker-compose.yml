@@ -32,8 +32,33 @@ services:
       - HOST=0.0.0.0
       - LOG_LEVEL=debug
       - CORS_ORIGIN=*
+      - DATABASE_URL=postgresql://hms:hms_dev_password@postgres:5432/hotel_management
     volumes:
-      - ./src:/app/src:ro
+      - ./src:/app/src
       - ./package.json:/app/package.json:ro
+    command: sh -c "npx prisma generate && npm run dev"
     profiles:
       - dev
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # PostgreSQL database for development
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=hms
+      - POSTGRES_PASSWORD=hms_dev_password
+      - POSTGRES_DB=hotel_management
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD', 'pg_isready', '-U', 'hms', '-d', 'hotel_management']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    profiles:
+      - dev
+
+volumes:
+  postgres_data:
