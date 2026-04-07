@@ -1,7 +1,7 @@
 {
-  "name": "node-express-typescript-boilerplate",
+  "name": "hotel-management-system-api",
   "version": "1.0.0",
-  "description": "Production-ready modular Node.js + Express + TypeScript boilerplate",
+  "description": "Production-ready modular Node.js + Express + TypeScript for hotel management system API",
   "type": "module",
   "main": "dist/server.js",
   "scripts": {
