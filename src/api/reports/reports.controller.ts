@@ -9,12 +9,26 @@ import { type ReportsService, reportsService } from './reports.service';
 import type { GroupByPeriod } from './reports.types';
 
 export class ReportsController {
+  /**
+   * Creates a reports controller wired to a reports service implementation.
+   *
+   * @param service - Service used to execute organizationId/hotelId-scoped report reads.
+   */
   constructor(private service: ReportsService = reportsService) {}
 
   // ==========================================================================
   // OCCUPANCY REPORT
   // ==========================================================================
 
+  /**
+   * Handles occupancy report requests for a single organization and hotel scope.
+   *
+   * Parses route/query parameters, converts date values, and delegates to the service layer.
+   * This wrapper does not log or access the database directly.
+   *
+   * @param req - Express request containing `organizationId`, `hotelId`, and report filters.
+   * @param res - Express response receiving a standardized service response payload.
+   */
   getOccupancyReport = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId } = req.params as {
       organizationId: string;
@@ -46,6 +60,15 @@ export class ReportsController {
   // REVENUE REPORT
   // ==========================================================================
 
+  /**
+   * Handles revenue report requests for a single organization and hotel scope.
+   *
+   * Converts query string values to typed arguments and forwards to the service aggregation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and revenue report filters.
+   * @param res - Express response used by `handleServiceResponse`.
+   */
   getRevenueReport = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId } = req.params as {
       organizationId: string;
@@ -77,6 +100,15 @@ export class ReportsController {
   // ADR REPORT
   // ==========================================================================
 
+  /**
+   * Handles ADR report requests for a validated organization/hotel context.
+   *
+   * Extracts date and grouping parameters, then delegates to service-level read/aggregation logic.
+   * No database or logger calls occur in the controller.
+   *
+   * @param req - Express request with scoped params and ADR query options.
+   * @param res - Express response populated with ADR report data.
+   */
   getADRReport = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId } = req.params as {
       organizationId: string;
@@ -108,6 +140,15 @@ export class ReportsController {
   // REVPAR REPORT
   // ==========================================================================
 
+  /**
+   * Handles RevPAR report requests for a single hotel within an organization.
+   *
+   * Normalizes query inputs and delegates all scoped DB-read computation to the service/repository.
+   * This method itself performs no logging and no persistence operations.
+   *
+   * @param req - Express request carrying scope and RevPAR filters.
+   * @param res - Express response receiving the RevPAR payload.
+   */
   getRevPARReport = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId } = req.params as {
       organizationId: string;
@@ -139,6 +180,15 @@ export class ReportsController {
   // FOLIO SUMMARY REPORT
   // ==========================================================================
 
+  /**
+   * Handles folio summary report requests for an organization/hotel date range.
+   *
+   * Converts `dateFrom`/`dateTo` query values to `Date` objects and delegates to the service.
+   * The controller remains side-effect free aside from writing the HTTP response.
+   *
+   * @param req - Express request with route scope and folio date filters.
+   * @param res - Express response for the summary payload.
+   */
   getFolioSummary = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId } = req.params as {
       organizationId: string;
@@ -166,6 +216,15 @@ export class ReportsController {
   // ARRIVALS/DEPARTURES REPORT
   // ==========================================================================
 
+  /**
+   * Handles arrivals/departures report requests in organization/hotel scope.
+   *
+   * Reads period and grouping options from query parameters, then calls the service aggregation.
+   * No direct query execution or application logging is done here.
+   *
+   * @param req - Express request containing scoped route params and report filters.
+   * @param res - Express response for arrivals/departures metrics.
+   */
   getArrivalsDeporturesReport = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId } = req.params as {
       organizationId: string;
@@ -195,6 +254,15 @@ export class ReportsController {
   // IN-HOUSE REPORT
   // ==========================================================================
 
+  /**
+   * Handles in-house guest report requests for a scoped hotel.
+   *
+   * Applies optional date and room-type query parsing before delegating to service read logic.
+   * This endpoint wrapper does not perform direct DB I/O or logging.
+   *
+   * @param req - Express request with organization/hotel scope and optional filters.
+   * @param res - Express response containing in-house guest details.
+   */
   getInHouseReport = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId } = req.params as {
       organizationId: string;
@@ -222,6 +290,15 @@ export class ReportsController {
   // NO-SHOW REPORT
   // ==========================================================================
 
+  /**
+   * Handles no-show report requests for a scoped organization and hotel.
+   *
+   * Converts range/grouping query values and delegates all database-read work to the service layer.
+   * The controller only orchestrates HTTP input/output.
+   *
+   * @param req - Express request with route scope and no-show filters.
+   * @param res - Express response carrying no-show analytics.
+   */
   getNoShowReport = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId } = req.params as {
       organizationId: string;
@@ -251,6 +328,15 @@ export class ReportsController {
   // GUEST STATISTICS REPORT
   // ==========================================================================
 
+  /**
+   * Handles guest statistics report requests for a single hotel scope.
+   *
+   * Parses required date range query params and forwards to service methods that run scoped reads.
+   * No logging or direct data access occurs in this controller method.
+   *
+   * @param req - Express request with organization/hotel route params and date range.
+   * @param res - Express response containing guest statistics.
+   */
   getGuestStatistics = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId } = req.params as {
       organizationId: string;
@@ -278,6 +364,15 @@ export class ReportsController {
   // SOURCE ANALYSIS REPORT
   // ==========================================================================
 
+  /**
+   * Handles source analysis report requests for an organization/hotel scope.
+   *
+   * Translates query input to typed arguments and delegates to service/repository SQL reads.
+   * This wrapper has no side effects beyond HTTP response emission.
+   *
+   * @param req - Express request with scoped params and source-analysis date range.
+   * @param res - Express response populated with source/channel metrics.
+   */
   getSourceAnalysis = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId } = req.params as {
       organizationId: string;
@@ -305,6 +400,15 @@ export class ReportsController {
   // REPEAT GUESTS REPORT
   // ==========================================================================
 
+  /**
+   * Handles paginated repeat-guest report requests for a scoped hotel.
+   *
+   * Converts numeric query strings (`page`, `limit`, `minStays`) and date filters before delegation.
+   * No direct DB calls or logging occur in the controller.
+   *
+   * @param req - Express request with scope, date range, and pagination filters.
+   * @param res - Express response containing repeat guest analytics.
+   */
   getRepeatGuests = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId } = req.params as {
       organizationId: string;
@@ -338,6 +442,15 @@ export class ReportsController {
   // HOUSEKEEPING REPORT
   // ==========================================================================
 
+  /**
+   * Handles housekeeping report requests for organization/hotel-scoped operations data.
+   *
+   * Parses date and grouping filters and forwards to service-layer DB-read aggregations.
+   * The controller stays read/write neutral except for response serialization.
+   *
+   * @param req - Express request with scope and housekeeping filters.
+   * @param res - Express response containing housekeeping KPIs.
+   */
   getHousekeepingReport = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId } = req.params as {
       organizationId: string;
@@ -367,6 +480,15 @@ export class ReportsController {
   // MAINTENANCE REPORT
   // ==========================================================================
 
+  /**
+   * Handles maintenance report requests for a single hotel in an organization.
+   *
+   * Converts date range query parameters and delegates to service methods for scoped read queries.
+   * This method performs no direct logging or persistence.
+   *
+   * @param req - Express request carrying route scope and date filters.
+   * @param res - Express response with maintenance metrics.
+   */
   getMaintenanceReport = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId } = req.params as {
       organizationId: string;
@@ -394,6 +516,15 @@ export class ReportsController {
   // MANAGER DASHBOARD
   // ==========================================================================
 
+  /**
+   * Handles manager dashboard requests within organization/hotel scope.
+   *
+   * Accepts an optional reference date and delegates to service logic that composes dashboard reads.
+   * No database reads are performed directly in this controller.
+   *
+   * @param req - Express request with scoped params and optional dashboard date.
+   * @param res - Express response containing manager dashboard data.
+   */
   getManagerDashboard = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId } = req.params as {
       organizationId: string;
@@ -417,6 +548,15 @@ export class ReportsController {
   // REVENUE DASHBOARD
   // ==========================================================================
 
+  /**
+   * Handles revenue dashboard requests for a scoped organization/hotel pair.
+   *
+   * Parses optional dashboard date and delegates to service-level revenue KPI aggregation.
+   * This wrapper does not log or execute SQL directly.
+   *
+   * @param req - Express request containing scope and optional date.
+   * @param res - Express response with revenue dashboard sections.
+   */
   getRevenueDashboard = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId } = req.params as {
       organizationId: string;
@@ -440,6 +580,15 @@ export class ReportsController {
   // OPERATIONS DASHBOARD
   // ==========================================================================
 
+  /**
+   * Handles operations dashboard requests for a scoped organization/hotel pair.
+   *
+   * Converts optional date filters and delegates to service methods that query operational metrics.
+   * Side effects are limited to producing an HTTP response.
+   *
+   * @param req - Express request with scoped params and optional operations date.
+   * @param res - Express response containing operations dashboard data.
+   */
   getOperationsDashboard = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId } = req.params as {
       organizationId: string;

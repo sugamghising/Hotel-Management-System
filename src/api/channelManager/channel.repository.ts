@@ -11,9 +11,24 @@ import type {
 export type ChannelConnectionRecord = Prisma.ChannelConnectionGetPayload<Record<string, never>>;
 export type ChannelSyncLogRecord = Prisma.ChannelSyncLogGetPayload<Record<string, never>>;
 
+/**
+ * Checks whether a JSON value is a non-null object record.
+ *
+ * @param value - JSON value from persisted mapping columns.
+ * @returns `true` when value can be treated as a key-value object.
+ */
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
 
+/**
+ * Converts persisted room-mapping JSON into validated domain mappings.
+ *
+ * Invalid rows are skipped when required fields are missing so callers receive
+ * only usable internal-to-external room mapping entries.
+ *
+ * @param value - Raw Prisma JSON value from `roomMappings`.
+ * @returns Normalized room mapping array.
+ */
 const parseRoomMappings = (value: Prisma.JsonValue): RoomMapping[] => {
   if (!Array.isArray(value)) {
     return [];
@@ -42,6 +57,15 @@ const parseRoomMappings = (value: Prisma.JsonValue): RoomMapping[] => {
   return mappings;
 };
 
+/**
+ * Converts persisted rate-plan mapping JSON into validated domain mappings.
+ *
+ * Rows without required IDs/codes are ignored. Optional markup is coerced to
+ * number to align with outbound pricing calculations.
+ *
+ * @param value - Raw Prisma JSON value from `ratePlanMappings`.
+ * @returns Normalized rate mapping array.
+ */
 const parseRateMappings = (value: Prisma.JsonValue): RatePlanMapping[] => {
   if (!Array.isArray(value)) {
     return [];
@@ -72,12 +96,24 @@ const parseRateMappings = (value: Prisma.JsonValue): RatePlanMapping[] => {
 };
 
 export class ChannelRepository {
+  /**
+   * Inserts a new channel connection row.
+   *
+   * @param data - Prisma create payload with scoped hotel linkage and credentials.
+   * @returns Persisted channel connection record.
+   */
   async createConnection(
     data: Prisma.ChannelConnectionCreateInput
   ): Promise<ChannelConnectionRecord> {
     return prisma.channelConnection.create({ data });
   }
 
+  /**
+   * Lists all channel connections for a hotel ordered by channel display name.
+   *
+   * @param hotelId - Hotel identifier used for tenancy scoping.
+   * @returns Connection rows for the requested hotel.
+   */
   async findConnectionsByHotel(hotelId: string): Promise<ChannelConnectionRecord[]> {
     return prisma.channelConnection.findMany({
       where: { hotelId },
@@ -85,10 +121,23 @@ export class ChannelRepository {
     });
   }
 
+  /**
+   * Finds a channel connection by primary ID.
+   *
+   * @param id - Channel connection ID.
+   * @returns Connection row when found, otherwise `null`.
+   */
   async findConnectionById(id: string): Promise<ChannelConnectionRecord | null> {
     return prisma.channelConnection.findUnique({ where: { id } });
   }
 
+  /**
+   * Finds a channel connection by hotel and normalized channel code.
+   *
+   * @param hotelId - Hotel identifier.
+   * @param channelCode - Canonical channel code.
+   * @returns Matching connection row or `null` when absent.
+   */
   async findConnectionByHotelAndCode(
     hotelId: string,
     channelCode: string
@@ -103,6 +152,12 @@ export class ChannelRepository {
     });
   }
 
+  /**
+   * Lists active channel connections for a hotel.
+   *
+   * @param hotelId - Hotel identifier.
+   * @returns Active connection rows sorted by channel name.
+   */
   async findActiveConnectionsByHotel(hotelId: string): Promise<ChannelConnectionRecord[]> {
     return prisma.channelConnection.findMany({
       where: {
@@ -113,6 +168,17 @@ export class ChannelRepository {
     });
   }
 
+  /**
+   * Resolves the most recently updated active connection for webhook routing.
+   *
+   * This query supports fallback matching by `hotelId` or `propertyId` depending
+   * on what identifiers are available in provider webhook payloads.
+   *
+   * @param channelCode - Canonical channel code from the route.
+   * @param hotelId - Optional hotel ID extracted from headers/body.
+   * @param propertyId - Optional provider property identifier from payload.
+   * @returns Matching active connection row or `null`.
+   */
   async findActiveConnectionForWebhook(
     channelCode: string,
     hotelId?: string,
@@ -129,6 +195,13 @@ export class ChannelRepository {
     });
   }
 
+  /**
+   * Updates a channel connection row.
+   *
+   * @param id - Channel connection ID.
+   * @param data - Prisma update payload.
+   * @returns Updated connection record.
+   */
   async updateConnection(
     id: string,
     data: Prisma.ChannelConnectionUpdateInput
@@ -139,10 +212,23 @@ export class ChannelRepository {
     });
   }
 
+  /**
+   * Permanently removes a channel connection row.
+   *
+   * @param id - Channel connection ID.
+   * @returns Resolves after deletion completes.
+   */
   async deleteConnection(id: string): Promise<void> {
     await prisma.channelConnection.delete({ where: { id } });
   }
 
+  /**
+   * Replaces all persisted room mappings for a connection.
+   *
+   * @param id - Channel connection ID.
+   * @param mappings - Internal/external room mapping entries.
+   * @returns Updated connection record containing new JSON mappings.
+   */
   async replaceRoomMappings(id: string, mappings: RoomMapping[]): Promise<ChannelConnectionRecord> {
     return prisma.channelConnection.update({
       where: { id },
@@ -152,6 +238,13 @@ export class ChannelRepository {
     });
   }
 
+  /**
+   * Replaces all persisted rate-plan mappings for a connection.
+   *
+   * @param id - Channel connection ID.
+   * @param mappings - Internal/external rate mapping entries with optional markup.
+   * @returns Updated connection record containing new JSON mappings.
+   */
   async replaceRateMappings(
     id: string,
     mappings: RatePlanMapping[]
@@ -164,12 +257,25 @@ export class ChannelRepository {
     });
   }
 
+  /**
+   * Inserts a channel sync log row.
+   *
+   * @param data - Sync log payload describing direction, status, and metrics.
+   * @returns Persisted sync log record.
+   */
   async createSyncLog(
     data: Prisma.ChannelSyncLogUncheckedCreateInput
   ): Promise<ChannelSyncLogRecord> {
     return prisma.channelSyncLog.create({ data });
   }
 
+  /**
+   * Updates a channel sync log row.
+   *
+   * @param id - Sync log identifier.
+   * @param data - Partial sync log updates.
+   * @returns Updated sync log record.
+   */
   async updateSyncLog(
     id: string,
     data: Prisma.ChannelSyncLogUpdateInput
@@ -180,6 +286,16 @@ export class ChannelRepository {
     });
   }
 
+  /**
+   * Retrieves paginated sync logs and total count for a connection.
+   *
+   * The method runs `findMany` and `count` in parallel to keep pagination metadata
+   * consistent with applied filters.
+   *
+   * @param connectionId - Channel connection ID.
+   * @param filters - Optional sync type, status, date range, and pagination values.
+   * @returns Sync log rows plus total count for pagination.
+   */
   async getSyncLogs(
     connectionId: string,
     filters: SyncLogQueryFilters
@@ -213,6 +329,12 @@ export class ChannelRepository {
     return { logs, total };
   }
 
+  /**
+   * Maps a raw channel connection database row into API response shape.
+   *
+   * @param row - Persisted connection row.
+   * @returns Normalized connection response with parsed mappings.
+   */
   mapConnection(row: ChannelConnectionRecord): ChannelConnectionResponse {
     return {
       id: row.id,
@@ -231,6 +353,12 @@ export class ChannelRepository {
     };
   }
 
+  /**
+   * Maps a raw sync log row into API response shape.
+   *
+   * @param row - Persisted sync log row.
+   * @returns Sync log response object for controller output.
+   */
   mapSyncLog(row: ChannelSyncLogRecord): ChannelSyncLogResponse {
     return {
       id: row.id,

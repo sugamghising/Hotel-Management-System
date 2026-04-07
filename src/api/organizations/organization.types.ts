@@ -199,14 +199,32 @@ export const SUBSCRIPTION_CONFIG: Record<SubscriptionTier, SubscriptionLimits> =
 // TYPE GUARDS
 // ============================================================================
 
+/**
+ * Determines whether a string matches a supported organization subscription tier.
+ *
+ * @param tier - Candidate tier value from untyped input.
+ * @returns `true` when `tier` is one of `'TRIAL'`, `'BASIC'`, `'PRO'`, or `'ENTERPRISE'`.
+ */
 export function isSubscriptionTier(tier: string): tier is SubscriptionTier {
   return ['TRIAL', 'BASIC', 'PRO', 'ENTERPRISE'].includes(tier);
 }
 
+/**
+ * Determines whether a string matches a supported organization type.
+ *
+ * @param type - Candidate organization type value.
+ * @returns `true` when `type` is `'CHAIN'` or `'INDEPENDENT'`.
+ */
 export function isOrganizationType(type: string): type is OrganizationType {
   return ['CHAIN', 'INDEPENDENT'].includes(type);
 }
 
+/**
+ * Determines whether a string matches a supported subscription status.
+ *
+ * @param status - Candidate subscription status value.
+ * @returns `true` when `status` is `'ACTIVE'`, `'SUSPENDED'`, `'CANCELLED'`, or `'EXPIRED'`.
+ */
 export function isSubscriptionStatus(status: string): status is SubscriptionStatus {
   return ['ACTIVE', 'SUSPENDED', 'CANCELLED', 'EXPIRED'].includes(status);
 }

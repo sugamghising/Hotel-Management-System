@@ -51,6 +51,15 @@ export class CommunicationsService {
   private hotelRepo: HotelRepository;
   private reservationRepo: ReservationsRepository;
 
+  /**
+   * Creates a communications service with injectable repositories and providers.
+   *
+   * @param repo - Communication repository implementation.
+   * @param providers - Channel provider registry.
+   * @param guestRepo - Guest repository implementation.
+   * @param hotelRepo - Hotel repository implementation.
+   * @param reservationRepo - Reservation repository implementation.
+   */
   constructor(
     repo: CommunicationsRepository = communicationsRepository,
     providers: ProviderRegistry = defaultProviderRegistry,
@@ -69,6 +78,30 @@ export class CommunicationsService {
   // SEND COMMUNICATION
   // ============================================================================
 
+  /**
+   * Sends a communication through the selected provider channel.
+   *
+   * Flow:
+   * 1) resolves recipient and scoped entities,
+   * 2) enforces channel opt-in (except `'ALERT'`),
+   * 3) renders template-driven content when `templateId` is provided,
+   * 4) creates a `PENDING` communication record,
+   * 5) dispatches to provider and updates status to `QUEUED` or `FAILED`.
+   *
+   * Side effects:
+   * - Database writes to `communications` table.
+   * - Outbound call to provider adapter (`send`).
+   * - Structured info/error logging.
+   *
+   * @param organizationId - Organization scope ID.
+   * @param input - Send request payload.
+   * @param userId - Optional initiating actor ID for metadata.
+   * @returns Sent communication payload plus provider external ID.
+   * @throws {NotFoundError} When recipient entities are missing.
+   * @throws {ForbiddenError} When template scope does not match org/hotel context.
+   * @throws {GuestOptOutError} When recipient has not opted in for the channel.
+   * @throws {CommunicationDeliveryError} When provider dispatch fails.
+   */
   async send(
     organizationId: string,
     input: SendCommunicationInput,
@@ -243,6 +276,19 @@ export class CommunicationsService {
   // SEND FOR RESERVATION (convenience method)
   // ============================================================================
 
+  /**
+   * Sends a reservation-scoped communication by auto-selecting template and channel.
+   *
+   * The method loads reservation, guest, and hotel context, derives preferred channel
+   * when one is not supplied, validates opt-in rules, resolves template fallback, and
+   * delegates to `send` for persistence and provider dispatch.
+   *
+   * @param reservationId - Reservation ID.
+   * @param type - Communication type to send.
+   * @param channel - Optional explicit channel override.
+   * @param userId - Optional initiating actor ID.
+   * @returns Send result from underlying `send` operation.
+   */
   async sendForReservation(
     reservationId: string,
     type: CommunicationType,
@@ -303,6 +349,18 @@ export class CommunicationsService {
     );
   }
 
+  /**
+   * Sends a template-based communication to many guests with bounded concurrency.
+   *
+   * The operation processes guest IDs in batches to limit parallel provider calls,
+   * skips opt-out recipients for non-alert traffic, and returns per-guest statuses.
+   *
+   * @param organizationId - Organization scope ID.
+   * @param input - Bulk send configuration and recipient list.
+   * @param userId - Optional initiating actor ID.
+   * @returns Aggregate bulk send counters and per-guest outcomes.
+   * @remarks Complexity: O(G) guest lookups and send attempts, where G is recipient count.
+   */
   async sendBulk(
     organizationId: string,
     input: {
@@ -412,6 +470,19 @@ export class CommunicationsService {
   // SCHEDULE COMMUNICATION (for survey after checkout)
   // ============================================================================
 
+  /**
+   * Schedules a reservation-scoped communication for future delivery.
+   *
+   * This method resolves template/context now, renders final content, and stores
+   * a `PENDING` communication row with `scheduledFor` so a scheduler can dispatch later.
+   *
+   * @param reservationId - Reservation ID.
+   * @param type - Communication type to schedule.
+   * @param scheduledFor - Planned send timestamp.
+   * @param channel - Optional explicit channel override.
+   * @param userId - Optional initiating actor ID.
+   * @returns Persisted pending communication record.
+   */
   async scheduleForReservation(
     reservationId: string,
     type: CommunicationType,
@@ -530,6 +601,18 @@ export class CommunicationsService {
   // WEBHOOK HANDLING
   // ============================================================================
 
+  /**
+   * Applies provider webhook status updates to existing communications.
+   *
+   * Unknown external IDs and unknown provider statuses are logged and ignored so
+   * webhook endpoints can remain idempotent and return success to providers.
+   *
+   * @param channel - Provider channel source (`EMAIL` or `SMS`).
+   * @param externalId - Provider external message ID.
+   * @param status - Provider delivery/open/bounce status.
+   * @param timestamp - Provider event timestamp.
+   * @returns Resolves after optional status update.
+   */
   async handleWebhook(
     channel: 'EMAIL' | 'SMS',
     externalId: string,
@@ -586,6 +669,14 @@ export class CommunicationsService {
   // QUERY METHODS
   // ============================================================================
 
+  /**
+   * Retrieves one communication while enforcing organization scope.
+   *
+   * @param organizationId - Organization scope ID.
+   * @param communicationId - Communication ID.
+   * @returns Scoped communication response.
+   * @throws {NotFoundError} When communication does not exist in the organization.
+   */
   async findById(organizationId: string, communicationId: string): Promise<CommunicationResponse> {
     const communication = await this.repo.findById(communicationId);
     if (!communication || communication.organizationId !== organizationId) {
@@ -594,6 +685,13 @@ export class CommunicationsService {
     return communication;
   }
 
+  /**
+   * Searches organization communications with paginated output.
+   *
+   * @param organizationId - Organization scope ID.
+   * @param filters - Search and pagination filters.
+   * @returns Communication list response with pagination metadata.
+   */
   async search(
     organizationId: string,
     filters: CommunicationQueryInput
@@ -611,6 +709,15 @@ export class CommunicationsService {
     };
   }
 
+  /**
+   * Lists communications associated with a scoped reservation.
+   *
+   * @param organizationId - Organization scope ID.
+   * @param hotelId - Hotel scope ID.
+   * @param reservationId - Reservation ID.
+   * @returns Reservation communication history.
+   * @throws {NotFoundError} When reservation is outside organization/hotel scope.
+   */
   async findByReservation(
     organizationId: string,
     hotelId: string,
@@ -629,6 +736,13 @@ export class CommunicationsService {
     return this.repo.findByReservationId(reservationId);
   }
 
+  /**
+   * Returns communication analytics for an organization.
+   *
+   * @param organizationId - Organization scope ID.
+   * @param filters - Analytics date range and optional channel/type filters.
+   * @returns Aggregated analytics payload.
+   */
   async getAnalytics(
     organizationId: string,
     filters: AnalyticsQueryInput
@@ -640,6 +754,15 @@ export class CommunicationsService {
   // TEMPLATE MANAGEMENT
   // ============================================================================
 
+  /**
+   * Creates a communication template after uniqueness validation.
+   *
+   * @param organizationId - Organization scope ID.
+   * @param input - Template creation payload.
+   * @param _userId - Optional actor ID (currently unused).
+   * @returns Created template response.
+   * @throws {ForbiddenError} When a duplicate code/channel/language template exists.
+   */
   async createTemplate(
     organizationId: string,
     input: CreateTemplateInput,
@@ -683,6 +806,14 @@ export class CommunicationsService {
     return template;
   }
 
+  /**
+   * Retrieves a template while enforcing organization scope.
+   *
+   * @param organizationId - Organization scope ID.
+   * @param templateId - Template ID.
+   * @returns Template response.
+   * @throws {NotFoundError} When template is missing or outside scope.
+   */
   async getTemplate(organizationId: string, templateId: string): Promise<TemplateResponse> {
     const template = await this.repo.findTemplateById(templateId);
     if (!template || template.organizationId !== organizationId) {
@@ -691,6 +822,13 @@ export class CommunicationsService {
     return template;
   }
 
+  /**
+   * Searches organization templates with pagination metadata.
+   *
+   * @param organizationId - Organization scope ID.
+   * @param filters - Template query filters.
+   * @returns Template list response.
+   */
   async searchTemplates(
     organizationId: string,
     filters: TemplateQueryInput
@@ -708,6 +846,15 @@ export class CommunicationsService {
     };
   }
 
+  /**
+   * Updates mutable template attributes.
+   *
+   * @param organizationId - Organization scope ID.
+   * @param templateId - Template ID.
+   * @param input - Partial template update payload.
+   * @param _userId - Optional actor ID (currently unused).
+   * @returns Updated template response.
+   */
   async updateTemplate(
     organizationId: string,
     templateId: string,
@@ -734,6 +881,17 @@ export class CommunicationsService {
     return template;
   }
 
+  /**
+   * Deletes or deactivates a template depending on system-template flags.
+   *
+   * System templates are deactivated (`isActive=false`) while custom templates are
+   * soft-deleted via `deletedAt`.
+   *
+   * @param organizationId - Organization scope ID.
+   * @param templateId - Template ID.
+   * @param _userId - Optional actor ID (currently unused).
+   * @returns Resolves after delete/deactivate operation completes.
+   */
   async deleteTemplate(
     organizationId: string,
     templateId: string,
@@ -754,6 +912,14 @@ export class CommunicationsService {
     }
   }
 
+  /**
+   * Renders a preview for a stored template with optional context overrides.
+   *
+   * @param organizationId - Organization scope ID.
+   * @param templateId - Template ID.
+   * @param input - Preview request including optional context overrides.
+   * @returns Rendered subject/body preview payload.
+   */
   async previewTemplate(
     organizationId: string,
     templateId: string,
@@ -769,6 +935,17 @@ export class CommunicationsService {
     });
   }
 
+  /**
+   * Verifies communication-provider webhook signatures using raw request payload.
+   *
+   * Signature verification delegates to the selected provider implementation.
+   * The method prefers captured raw request bytes because providers sign the
+   * exact payload bytes, not parsed JSON objects.
+   *
+   * @param channel - Webhook channel (`EMAIL` or `SMS`).
+   * @param req - Incoming webhook request.
+   * @returns `true` when provider verification succeeds.
+   */
   verifyWebhookSignature(channel: 'EMAIL' | 'SMS', req: Request): boolean {
     const provider =
       channel === 'EMAIL'
@@ -813,6 +990,14 @@ export class CommunicationsService {
   // PRIVATE HELPERS
   // ============================================================================
 
+  /**
+   * Resolves guest/reservation/hotel recipient context for an outbound send.
+   *
+   * @param organizationId - Organization scope ID.
+   * @param input - Send input used to derive recipient context.
+   * @returns Resolved recipient entities and channel-specific destination address.
+   * @throws {NotFoundError} When required guest/reservation entities are missing or out of scope.
+   */
   private async resolveRecipient(
     organizationId: string,
     input: SendCommunicationInput
@@ -856,6 +1041,14 @@ export class CommunicationsService {
     return { guest, reservation, hotel, room, toAddress };
   }
 
+  /**
+   * Resolves destination address/token for a guest and communication channel.
+   *
+   * @param guest - Guest entity.
+   * @param channel - Target provider channel.
+   * @returns Email/mobile/guest ID destination string.
+   * @throws {NotFoundError} When required contact data is missing.
+   */
   private getToAddress(
     guest: NonNullable<Awaited<ReturnType<GuestsRepository['findById']>>>,
     channel: ProviderChannel
@@ -880,6 +1073,14 @@ export class CommunicationsService {
     }
   }
 
+  /**
+   * Enforces channel opt-in policy for a guest.
+   *
+   * @param guest - Guest entity.
+   * @param channel - Channel to validate.
+   * @returns Resolves when guest is opted in.
+   * @throws {GuestOptOutError} When guest is not opted in for the channel.
+   */
   private checkOptIn(
     guest: NonNullable<Awaited<ReturnType<GuestsRepository['findById']>>>,
     channel: ProviderChannel
@@ -889,6 +1090,13 @@ export class CommunicationsService {
     }
   }
 
+  /**
+   * Determines whether a guest has opted into a specific channel.
+   *
+   * @param guest - Guest entity.
+   * @param channel - Channel to inspect.
+   * @returns `true` when communication is allowed on the channel.
+   */
   private hasOptIn(
     guest: NonNullable<Awaited<ReturnType<GuestsRepository['findById']>>>,
     channel: ProviderChannel
@@ -907,6 +1115,14 @@ export class CommunicationsService {
     }
   }
 
+  /**
+   * Chooses the preferred outbound channel for a guest.
+   *
+   * Preference order: opted-in email first, then opted-in SMS.
+   *
+   * @param guest - Guest entity.
+   * @returns Preferred channel or `null` when no eligible channel exists.
+   */
   private determinePreferredChannel(
     guest: NonNullable<Awaited<ReturnType<GuestsRepository['findById']>>>
   ): CommunicationChannel | null {
@@ -920,6 +1136,16 @@ export class CommunicationsService {
     return null;
   }
 
+  /**
+   * Resolves destination address for a guest and channel.
+   *
+   * This helper mirrors `getToAddress` and is retained for compatibility with
+   * existing internal call sites.
+   *
+   * @param guest - Guest entity.
+   * @param channel - Channel to resolve.
+   * @returns Email/mobile/guest ID destination string.
+   */
   private resolveToAddress(
     guest: NonNullable<Awaited<ReturnType<GuestsRepository['findById']>>>,
     channel: ProviderChannel
@@ -943,6 +1169,12 @@ export class CommunicationsService {
     }
   }
 
+  /**
+   * Loads room number and type details for template context enrichment.
+   *
+   * @param roomId - Optional room ID linked to reservation assignment.
+   * @returns Room metadata or `null` when not found/unassigned.
+   */
   private async getRoom(
     roomId: string | null | undefined
   ): Promise<{ number: string | null; typeName: string | null } | null> {

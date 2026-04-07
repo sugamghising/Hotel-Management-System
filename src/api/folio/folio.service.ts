@@ -23,6 +23,12 @@ import type {
 // Mock payment gateway - replace with actual integration (e.g., Stripe, Adyen)
 // Card payments are explicitly unsupported until a real gateway is configured
 class PaymentGateway {
+  /**
+   * Simulates payment processing for non-card methods and blocks unsupported card methods.
+   *
+   * @param params - Payment execution request containing amount, currency, method, and optional token.
+   * @returns Success payload with transaction metadata or failure details.
+   */
   async processPayment(params: {
     amount: number;
     currency: string;
@@ -53,6 +59,12 @@ class PaymentGateway {
     };
   }
 
+  /**
+   * Simulates a successful refund response for gateway-integrated refunds.
+   *
+   * @param _params - Refund request payload containing transaction and amount.
+   * @returns A successful mock refund result with a generated refund identifier.
+   */
   async refundPayment(_params: {
     transactionId: string;
     amount: number;
@@ -74,6 +86,12 @@ export class FolioService {
   private folioRepo: FolioRepository;
   private paymentGateway: PaymentGateway;
 
+  /**
+   * Creates a folio service with repository and gateway dependencies.
+   *
+   * @param folioRepo - Repository implementation used for folio persistence.
+   * @param gateway - Payment gateway abstraction for capture/refund flows.
+   */
   constructor(
     folioRepo: FolioRepository = folioRepository,
     gateway: PaymentGateway = paymentGateway
@@ -86,6 +104,18 @@ export class FolioService {
   // FOLIO MANAGEMENT
   // ============================================================================
 
+  /**
+   * Returns a full folio snapshot for a reservation.
+   *
+   * The method verifies reservation scope access, loads charges/payments/invoices/summary
+   * in parallel, and maps raw financial rows into a UI-oriented response structure.
+   *
+   * @param reservationId - Reservation UUID whose folio is requested.
+   * @param organizationId - Organization UUID used for access control.
+   * @param hotelId - Optional hotel UUID for stricter scope matching.
+   * @returns Normalized folio response containing summary, charges, payments, and invoices.
+   * @remarks Complexity: O(c + p + i) in returned charge/payment/invoice counts.
+   */
   async getFolio(
     reservationId: string,
     organizationId: string,
@@ -178,6 +208,17 @@ export class FolioService {
   // CHARGE OPERATIONS
   // ============================================================================
 
+  /**
+   * Posts a single folio charge for a reservation.
+   *
+   * @param reservationId - Reservation UUID receiving the charge.
+   * @param organizationId - Organization UUID used for access validation.
+   * @param input - Charge payload including type, amounts, and optional source metadata.
+   * @param postedBy - Optional actor ID; falls back to system user when omitted.
+   * @param hotelId - Optional hotel UUID for stricter reservation scope checks.
+   * @returns The created folio item.
+   * @throws {BadRequestError} When reservation status does not permit new charges.
+   */
   async postCharge(
     reservationId: string,
     organizationId: string,
@@ -225,6 +266,17 @@ export class FolioService {
     return charge as FolioItem;
   }
 
+  /**
+   * Posts multiple folio charges in sequence for a reservation.
+   *
+   * @param reservationId - Reservation UUID receiving the charges.
+   * @param organizationId - Organization UUID used for access validation.
+   * @param input - Bulk payload containing individual charge lines.
+   * @param postedBy - Optional actor ID; falls back to system user when omitted.
+   * @param hotelId - Optional hotel UUID for stricter reservation scope checks.
+   * @returns Created folio charge records in request order.
+   * @remarks Complexity: O(n) in number of input charge lines.
+   */
   async postBulkCharges(
     reservationId: string,
     organizationId: string,
@@ -270,6 +322,18 @@ export class FolioService {
     return charges;
   }
 
+  /**
+   * Voids a folio charge after scope and invoice-payment checks.
+   *
+   * @param itemId - Folio item UUID to void.
+   * @param organizationId - Organization UUID used for access validation.
+   * @param reason - Business reason stored with void audit metadata.
+   * @param voidedBy - Optional actor ID; falls back to system user when omitted.
+   * @returns The voided folio item.
+   * @throws {NotFoundError} When charge does not exist.
+   * @throws {ConflictError} When charge is already voided.
+   * @throws {BadRequestError} When charge has already been invoiced and paid.
+   */
   async voidCharge(
     itemId: string,
     organizationId: string,
@@ -311,6 +375,18 @@ export class FolioService {
     return voided as FolioItem;
   }
 
+  /**
+   * Voids the most recent active charge by source reference for a reservation.
+   *
+   * @param reservationId - Reservation UUID that owns the charge.
+   * @param organizationId - Organization UUID used for access validation.
+   * @param sourceRef - Source reference used to find the targeted charge.
+   * @param reason - Business reason recorded on voided charge.
+   * @param voidedBy - Optional actor ID used for audit metadata.
+   * @param options - Optional source and hotel filters for charge lookup/scope.
+   * @returns The voided folio item.
+   * @throws {NotFoundError} When no active matching charge is found.
+   */
   async voidChargeBySourceRef(
     reservationId: string,
     organizationId: string,
@@ -345,6 +421,18 @@ export class FolioService {
     return this.voidCharge(item.id, organizationId, reason, voidedBy);
   }
 
+  /**
+   * Adjusts a charge amount by creating a balancing adjustment folio entry.
+   *
+   * @param itemId - Original folio item UUID to adjust.
+   * @param organizationId - Organization UUID used for access validation.
+   * @param newAmount - Target amount used to compute adjustment delta.
+   * @param reason - Reason used in generated adjustment description.
+   * @param adjustedBy - Optional actor ID used as posting user.
+   * @returns The created adjustment folio item.
+   * @throws {NotFoundError} When target folio item does not exist.
+   * @throws {BadRequestError} When target folio item is already voided.
+   */
   async adjustCharge(
     itemId: string,
     organizationId: string,
@@ -372,6 +460,26 @@ export class FolioService {
   // PAYMENT OPERATIONS
   // ============================================================================
 
+  /**
+   * Processes a reservation payment and returns normalized payment response data.
+   *
+   * The method verifies scope, creates a pending payment record, routes card methods
+   * through the payment gateway, updates final status, and maps persisted payment output.
+   *
+   * @param reservationId - Reservation UUID receiving the payment.
+   * @param organizationId - Organization UUID used for access validation.
+   * @param input - Payment payload including amount, method, and optional card data.
+   * @param processedBy - Optional actor ID; falls back to system user when omitted.
+   * @param hotelId - Optional hotel UUID for stricter scope checks.
+   * @returns Final payment state mapped to API response shape.
+   * @throws {BadRequestError} When gateway processing fails or persisted payment cannot be reloaded.
+   * @remarks Complexity: O(1) application work with a fixed number of repository/gateway operations.
+   * @example
+   * const payment = await service.processPayment(reservationId, organizationId, {
+   *   amount: 120.5,
+   *   method: 'CASH',
+   * });
+   */
   async processPayment(
     reservationId: string,
     organizationId: string,
@@ -460,6 +568,17 @@ export class FolioService {
     return this.mapPaymentToResponse(updated);
   }
 
+  /**
+   * Creates a refund against a captured payment and records it in folio payments.
+   *
+   * @param paymentId - Original captured payment UUID.
+   * @param organizationId - Organization UUID used for access validation.
+   * @param input - Refund payload containing refund amount and reason.
+   * @param processedBy - Optional actor ID; falls back to system user when omitted.
+   * @returns Created refund payment mapped to API response shape.
+   * @throws {NotFoundError} When original payment cannot be found.
+   * @throws {BadRequestError} When original payment is not refundable or amount is invalid.
+   */
   async refundPayment(
     paymentId: string,
     organizationId: string,
@@ -526,6 +645,17 @@ export class FolioService {
     return this.mapPaymentToResponse(refund);
   }
 
+  /**
+   * Voids a non-captured payment record.
+   *
+   * @param paymentId - Payment UUID to void.
+   * @param organizationId - Organization UUID used for access validation.
+   * @param _voidedBy - Optional actor ID used for log context.
+   * @returns Resolves when void operation completes.
+   * @throws {NotFoundError} When payment does not exist.
+   * @throws {ConflictError} When payment is already voided.
+   * @throws {BadRequestError} When captured gateway-backed payments are voided instead of refunded.
+   */
   async voidPayment(paymentId: string, organizationId: string, _voidedBy?: string): Promise<void> {
     const payment = await this.folioRepo.findPaymentById(paymentId);
 
@@ -553,6 +683,17 @@ export class FolioService {
   // INVOICE OPERATIONS
   // ============================================================================
 
+  /**
+   * Creates an invoice from unpaid reservation folio charges.
+   *
+   * @param reservationId - Reservation UUID to invoice.
+   * @param organizationId - Organization UUID used for access validation.
+   * @param input - Invoice payload including optional charge selection and billing overrides.
+   * @param _createdBy - Optional actor ID reserved for future auditing hooks.
+   * @param hotelId - Optional hotel UUID for stricter scope checks.
+   * @returns The created invoice mapped to API response shape.
+   * @throws {BadRequestError} When no invoiceable charges are available.
+   */
   async createInvoice(
     reservationId: string,
     organizationId: string,
@@ -621,6 +762,15 @@ export class FolioService {
     return this.mapInvoiceToResponse(invoice);
   }
 
+  /**
+   * Retrieves a single invoice with organization-scope validation.
+   *
+   * @param invoiceId - Invoice UUID to fetch.
+   * @param organizationId - Organization UUID expected to own the invoice.
+   * @returns Invoice response payload.
+   * @throws {NotFoundError} When invoice does not exist.
+   * @throws {ForbiddenError} When invoice organization does not match caller scope.
+   */
   async getInvoice(invoiceId: string, organizationId: string): Promise<InvoiceResponse> {
     const invoice = await this.folioRepo.findInvoiceById(invoiceId);
 
@@ -635,6 +785,16 @@ export class FolioService {
     return this.mapInvoiceToResponse(invoice);
   }
 
+  /**
+   * Marks an invoice as sent after access checks.
+   *
+   * @param invoiceId - Invoice UUID to mark as sent.
+   * @param organizationId - Organization UUID expected to own the invoice.
+   * @param email - Optional destination email used for logging context.
+   * @returns Resolves when invoice send marker is persisted.
+   * @throws {NotFoundError} When invoice does not exist.
+   * @throws {ForbiddenError} When invoice organization does not match caller scope.
+   */
   async sendInvoice(invoiceId: string, organizationId: string, email?: string): Promise<void> {
     const invoice = await this.folioRepo.findInvoiceById(invoiceId);
 
@@ -654,6 +814,19 @@ export class FolioService {
     logger.info(`Invoice sent: ${invoice.invoiceNumber}`, { invoiceId, email });
   }
 
+  /**
+   * Records payment against an invoice and mirrors payment into reservation folio.
+   *
+   * @param invoiceId - Invoice UUID receiving payment.
+   * @param organizationId - Organization UUID used for access validation.
+   * @param amount - Payment amount to apply.
+   * @param method - Payment method string forwarded to payment processing.
+   * @param recordedBy - Optional actor ID used for downstream payment audit.
+   * @returns Updated invoice response with revised paid amount and status.
+   * @throws {NotFoundError} When invoice does not exist.
+   * @throws {ForbiddenError} When invoice organization does not match caller scope.
+   * @throws {BadRequestError} When payment would exceed invoice balance.
+   */
   async recordInvoicePayment(
     invoiceId: string,
     organizationId: string,
@@ -702,6 +875,17 @@ export class FolioService {
   // TRANSFERS & SPLITS
   // ============================================================================
 
+  /**
+   * Transfers selected charges from one reservation folio to another.
+   *
+   * @param fromReservationId - Source reservation UUID.
+   * @param organizationId - Organization UUID used for scope validation.
+   * @param input - Transfer payload containing target reservation and charge IDs.
+   * @param transferredBy - Optional actor ID; falls back to system user when omitted.
+   * @param hotelId - Optional hotel UUID for source reservation scope checks.
+   * @returns Resolves when transfer completes.
+   * @throws {BadRequestError} When source and target reservations belong to different hotels.
+   */
   async transferCharges(
     fromReservationId: string,
     organizationId: string,
@@ -736,6 +920,15 @@ export class FolioService {
   // CHECKOUT VALIDATION
   // ============================================================================
 
+  /**
+   * Validates whether a reservation folio is ready for checkout.
+   *
+   * @param reservationId - Reservation UUID to validate.
+   * @param organizationId - Organization UUID used for access validation.
+   * @param hotelId - Optional hotel UUID for stricter scope checks.
+   * @returns Checkout eligibility, current folio balance, and blocking issues.
+   * @remarks Complexity: O(p) in number of reservation payments due pending-authorization scan.
+   */
   async validateCheckout(
     reservationId: string,
     organizationId: string,
@@ -776,6 +969,14 @@ export class FolioService {
   // NIGHT AUDIT SUPPORT
   // ============================================================================
 
+  /**
+   * Returns the current folio balance for a reservation.
+   *
+   * @param reservationId - Reservation UUID to inspect.
+   * @param organizationId - Organization UUID used for access validation.
+   * @param hotelId - Optional hotel UUID for stricter scope checks.
+   * @returns Net folio balance where positive means amount due and negative means credit.
+   */
   async getFolioBalance(
     reservationId: string,
     organizationId: string,
@@ -786,6 +987,16 @@ export class FolioService {
     return summary.balance;
   }
 
+  /**
+   * Posts room charges for night audit processing.
+   *
+   * @param hotelId - Hotel UUID running night audit posting.
+   * @param _organizationId - Reserved organization parameter for interface consistency.
+   * @param businessDate - Business date to post room charges for.
+   * @param postedBy - Optional actor ID; falls back to system user when omitted.
+   * @param sourceRef - Optional idempotency reference for deduplication support.
+   * @returns Count and total amount of posted room charges.
+   */
   async postRoomCharges(
     hotelId: string,
     _organizationId: string,
@@ -804,6 +1015,16 @@ export class FolioService {
   // PRIVATE HELPERS
   // ============================================================================
 
+  /**
+   * Loads reservation with guest/room relations and validates organization/hotel scope.
+   *
+   * @param reservationId - Reservation UUID to fetch.
+   * @param organizationId - Organization UUID expected to own the reservation.
+   * @param hotelId - Optional hotel UUID that must match reservation ownership.
+   * @returns Reservation record including guest and room relations.
+   * @throws {NotFoundError} When reservation does not exist or hotel scope mismatches.
+   * @throws {ForbiddenError} When reservation belongs to a different organization.
+   */
   private async verifyReservationAccess(
     reservationId: string,
     organizationId: string,
@@ -836,6 +1057,12 @@ export class FolioService {
     return reservation;
   }
 
+  /**
+   * Maps internal payment model into API response format.
+   *
+   * @param payment - Persisted payment model.
+   * @returns Payment response with numeric values and optional card info object.
+   */
   private mapPaymentToResponse(payment: Payment): PaymentResponse {
     const cardInfo =
       payment.cardLastFour && payment.cardBrand
@@ -862,6 +1089,12 @@ export class FolioService {
     };
   }
 
+  /**
+   * Maps internal invoice model into API response format.
+   *
+   * @param invoice - Persisted invoice model.
+   * @returns Invoice response including computed balance fields.
+   */
   private mapInvoiceToResponse(invoice: Invoice): InvoiceResponse {
     return {
       id: invoice.id,

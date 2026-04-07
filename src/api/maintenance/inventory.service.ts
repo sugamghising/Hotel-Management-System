@@ -31,6 +31,19 @@ export interface ConsumeStockResult {
 }
 
 export class InventoryService {
+  /**
+   * Checks whether an active inventory item can satisfy a requested quantity.
+   *
+   * Reads one scoped inventory item and returns stock sufficiency without mutating state.
+   *
+   * @param tx - Active transaction client used for scoped inventory reads.
+   * @param itemId - Inventory item UUID to evaluate.
+   * @param qty - Requested consumption quantity to compare against available stock.
+   * @param organizationId - Organization UUID used for scope enforcement.
+   * @param hotelId - Hotel UUID used for scope enforcement.
+   * @returns Stock snapshot and boolean sufficiency flag for the requested quantity.
+   * @throws {NotFoundError} When no active inventory item exists for the supplied scope and ID.
+   */
   async checkStock(
     tx: Prisma.TransactionClient,
     itemId: string,
@@ -69,6 +82,21 @@ export class InventoryService {
     };
   }
 
+  /**
+   * Consumes inventory stock for a maintenance reference and records cost/audit side effects.
+   *
+   * Validates requested quantity, performs a guarded `updateMany` decrement to prevent oversell races,
+   * writes a `CONSUMPTION` transaction ledger record, re-reads remaining stock, and conditionally
+   * emits an `inventory.low_stock` outbox event when reorder thresholds are crossed.
+   *
+   * @param tx - Active transaction client used to keep stock, ledger, and outbox writes atomic.
+   * @param input - Consumption payload with scoped item identity, quantity, and reference metadata.
+   * @returns Consumed quantity, resolved unit/total costs, and resulting remaining available stock.
+   * @throws {NotFoundError} When the inventory item is missing or inactive in the provided scope.
+   * @throws {BadRequestError} When `input.qty` is not a positive integer.
+   * @throws {InsufficientStockError} When available/current stock cannot satisfy the requested quantity.
+   * @remarks Complexity: O(1) local logic plus constant-count database operations per call.
+   */
   async consumeStock(
     tx: Prisma.TransactionClient,
     input: ConsumeStockInput

@@ -1,5 +1,11 @@
 import { z } from 'zod';
 
+/**
+ * Normalizes comma-separated query values into string arrays for schema preprocessing.
+ *
+ * @param value - Raw query value that may be empty, string, or array.
+ * @returns `undefined` for empty input, parsed string array for CSV input, or original value.
+ */
 const parseCsvArray = (value: unknown): unknown => {
   if (value === undefined || value === null || value === '') {
     return undefined;
@@ -19,6 +25,12 @@ const parseCsvArray = (value: unknown): unknown => {
   return value;
 };
 
+/**
+ * Normalizes boolean-like query values for schema preprocessing.
+ *
+ * @param value - Raw query value that may be empty, boolean, or `'true'`/`'false'` string.
+ * @returns Parsed boolean, `undefined` for empty values, or original value when unparsable.
+ */
 const parseBoolean = (value: unknown): unknown => {
   if (value === undefined || value === null || value === '') {
     return undefined;

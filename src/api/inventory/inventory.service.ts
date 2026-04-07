@@ -45,18 +45,48 @@ const ZERO = new Prisma.Decimal(0);
 const PURCHASE_ORDER_EDITABLE_STATUSES = ['DRAFT'] as const;
 const PURCHASE_ORDER_RECEIVABLE_STATUSES = ['APPROVED', 'SENT', 'PARTIALLY_RECEIVED'] as const;
 
+/**
+ * Converts primitive or Decimal-like values into a Prisma Decimal instance.
+ *
+ * @param value - Numeric input as Decimal, number, or numeric string.
+ * @returns Decimal representation of the input value.
+ */
 const asDecimal = (value: Prisma.Decimal | number | string): Prisma.Decimal =>
   value instanceof Prisma.Decimal ? value : new Prisma.Decimal(value);
 
+/**
+ * Serializes unknown input into Prisma-compatible JSON value.
+ *
+ * @param value - Arbitrary serializable payload.
+ * @returns Deep-cloned JSON value safe for Prisma JSON fields.
+ */
 const asJson = (value: unknown): Prisma.InputJsonValue =>
   JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 
+/**
+ * Normalizes a date into UTC date-only midnight.
+ *
+ * @param value - Source date-time.
+ * @returns New Date at `00:00:00.000` UTC for the same UTC calendar day.
+ */
 const asDateOnly = (value: Date): Date =>
   new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate()));
 
+/**
+ * Returns UTC start-of-day timestamp for a given date.
+ *
+ * @param value - Source date-time.
+ * @returns New Date at UTC `00:00:00.000`.
+ */
 const startOfDayUtc = (value: Date): Date =>
   new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate(), 0, 0, 0, 0));
 
+/**
+ * Returns UTC end-of-day timestamp for a given date.
+ *
+ * @param value - Source date-time.
+ * @returns New Date at UTC `23:59:59.999`.
+ */
 const endOfDayUtc = (value: Date): Date =>
   new Date(
     Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate(), 23, 59, 59, 999)
@@ -65,10 +95,25 @@ const endOfDayUtc = (value: Date): Date =>
 export class InventoryService {
   private readonly repo: InventoryRepositoryType;
 
+  /**
+   * Creates an inventory service with an overridable repository dependency.
+   *
+   * @param repository - Inventory repository implementation.
+   */
   constructor(repository: InventoryRepositoryType = inventoryRepository) {
     this.repo = repository;
   }
 
+  /**
+   * Creates a new inventory item and optional opening-stock transaction.
+   *
+   * @param organizationId - Organization UUID used for scope validation.
+   * @param hotelId - Hotel UUID where item is created.
+   * @param input - Inventory item creation payload.
+   * @param userId - Optional actor ID for audit logging.
+   * @returns API-mapped inventory item.
+   * @throws {ConflictError} When SKU already exists for the hotel.
+   */
   async createInventoryItem(
     organizationId: string,
     hotelId: string,
@@ -138,6 +183,14 @@ export class InventoryService {
     return this.toApiInventoryItem(item);
   }
 
+  /**
+   * Lists inventory items with pagination and filtering.
+   *
+   * @param organizationId - Organization UUID used for scope validation.
+   * @param hotelId - Hotel UUID whose inventory is queried.
+   * @param query - Filter and pagination parameters.
+   * @returns Paginated inventory items with metadata.
+   */
   async listInventoryItems(
     organizationId: string,
     hotelId: string,
@@ -153,6 +206,15 @@ export class InventoryService {
     };
   }
 
+  /**
+   * Retrieves one inventory item by ID.
+   *
+   * @param organizationId - Organization UUID used for scope validation.
+   * @param hotelId - Hotel UUID whose inventory is queried.
+   * @param itemId - Inventory item UUID.
+   * @returns API-mapped inventory item.
+   * @throws {NotFoundError} When item does not exist or is soft-deleted.
+   */
   async getInventoryItem(organizationId: string, hotelId: string, itemId: string) {
     await this.assertHotelScope(organizationId, hotelId);
 
@@ -164,6 +226,16 @@ export class InventoryService {
     return this.toApiInventoryItem(item);
   }
 
+  /**
+   * Updates editable fields of an inventory item.
+   *
+   * @param organizationId - Organization UUID used for scope validation.
+   * @param hotelId - Hotel UUID whose inventory is updated.
+   * @param itemId - Inventory item UUID to update.
+   * @param input - Partial update payload.
+   * @returns API-mapped updated inventory item.
+   * @throws {NotFoundError} When item does not exist or is soft-deleted.
+   */
   async updateInventoryItem(
     organizationId: string,
     hotelId: string,
@@ -195,6 +267,15 @@ export class InventoryService {
     return this.toApiInventoryItem(updated);
   }
 
+  /**
+   * Soft-deletes an inventory item by disabling and timestamping deletion.
+   *
+   * @param organizationId - Organization UUID used for scope validation.
+   * @param hotelId - Hotel UUID whose inventory is updated.
+   * @param itemId - Inventory item UUID to soft-delete.
+   * @returns API-mapped updated inventory item.
+   * @throws {NotFoundError} When item does not exist or is already deleted.
+   */
   async deleteInventoryItem(organizationId: string, hotelId: string, itemId: string) {
     await this.assertHotelScope(organizationId, hotelId);
 
@@ -211,6 +292,19 @@ export class InventoryService {
     return this.toApiInventoryItem(updated);
   }
 
+  /**
+   * Applies manual stock adjustments and emits inventory events.
+   *
+   * @param organizationId - Organization UUID used for scope validation.
+   * @param hotelId - Hotel UUID whose inventory is adjusted.
+   * @param itemId - Inventory item UUID to adjust.
+   * @param input - Adjustment payload with quantity delta and optional costing metadata.
+   * @param userId - Optional actor ID for transaction and outbox events.
+   * @returns API-mapped inventory item after adjustment.
+   * @throws {NotFoundError} When item is missing, inactive, or deleted.
+   * @throws {InsufficientStockError} When adjustment would violate stock constraints.
+   * @remarks Complexity: O(1) with a fixed set of reads/writes in one transaction.
+   */
   async adjustInventoryStock(
     organizationId: string,
     hotelId: string,
@@ -313,6 +407,19 @@ export class InventoryService {
     return this.toApiInventoryItem(result);
   }
 
+  /**
+   * Consumes inventory stock for an operational reference and emits inventory events.
+   *
+   * @param organizationId - Organization UUID used for scope validation.
+   * @param hotelId - Hotel UUID whose inventory is consumed.
+   * @param itemId - Inventory item UUID to consume.
+   * @param input - Consumption payload including quantity and reference metadata.
+   * @param userId - Optional actor ID for transaction and outbox events.
+   * @returns API-mapped inventory item after consumption.
+   * @throws {NotFoundError} When item is missing, inactive, or deleted.
+   * @throws {InsufficientStockError} When available stock is below requested quantity.
+   * @remarks Complexity: O(1) with a fixed set of reads/writes in one transaction.
+   */
   async consumeInventoryStock(
     organizationId: string,
     hotelId: string,
@@ -409,6 +516,14 @@ export class InventoryService {
     return this.toApiInventoryItem(result);
   }
 
+  /**
+   * Lists inventory transactions with pagination and numeric field normalization.
+   *
+   * @param organizationId - Organization UUID used for scope validation.
+   * @param hotelId - Hotel UUID whose transactions are queried.
+   * @param query - Transaction filters and pagination settings.
+   * @returns Paginated transaction rows with numeric costs normalized.
+   */
   async listInventoryTransactions(
     organizationId: string,
     hotelId: string,
@@ -451,6 +566,15 @@ export class InventoryService {
     };
   }
 
+  /**
+   * Creates a vendor within hotel scope.
+   *
+   * @param organizationId - Organization UUID used for scope validation.
+   * @param hotelId - Hotel UUID where vendor is created.
+   * @param input - Vendor creation payload.
+   * @returns API-mapped vendor.
+   * @throws {ConflictError} When vendor code already exists for the hotel.
+   */
   async createVendor(organizationId: string, hotelId: string, input: CreateVendorInput) {
     await this.assertHotelScope(organizationId, hotelId);
 
@@ -484,6 +608,14 @@ export class InventoryService {
     return this.toApiVendor(vendor);
   }
 
+  /**
+   * Lists vendors with pagination and filter support.
+   *
+   * @param organizationId - Organization UUID used for scope validation.
+   * @param hotelId - Hotel UUID whose vendors are queried.
+   * @param query - Vendor filters and pagination settings.
+   * @returns Paginated vendors with metadata.
+   */
   async listVendors(
     organizationId: string,
     hotelId: string,
@@ -499,6 +631,15 @@ export class InventoryService {
     };
   }
 
+  /**
+   * Retrieves a vendor by ID.
+   *
+   * @param organizationId - Organization UUID used for scope validation.
+   * @param hotelId - Hotel UUID where vendor exists.
+   * @param vendorId - Vendor UUID.
+   * @returns API-mapped vendor record.
+   * @throws {NotFoundError} When vendor does not exist.
+   */
   async getVendor(organizationId: string, hotelId: string, vendorId: string) {
     await this.assertHotelScope(organizationId, hotelId);
 
@@ -510,6 +651,16 @@ export class InventoryService {
     return this.toApiVendor(vendor);
   }
 
+  /**
+   * Updates mutable vendor fields.
+   *
+   * @param organizationId - Organization UUID used for scope validation.
+   * @param hotelId - Hotel UUID where vendor exists.
+   * @param vendorId - Vendor UUID to update.
+   * @param input - Partial vendor update payload.
+   * @returns API-mapped updated vendor.
+   * @throws {NotFoundError} When vendor does not exist.
+   */
   async updateVendor(
     organizationId: string,
     hotelId: string,
@@ -550,6 +701,16 @@ export class InventoryService {
     return this.toApiVendor(updated);
   }
 
+  /**
+   * Approves or unapproves a vendor for procurement workflows.
+   *
+   * @param organizationId - Organization UUID used for scope validation.
+   * @param hotelId - Hotel UUID where vendor exists.
+   * @param vendorId - Vendor UUID to update.
+   * @param input - Approval payload containing status and optional rating.
+   * @returns API-mapped updated vendor.
+   * @throws {NotFoundError} When vendor does not exist.
+   */
   async approveVendor(
     organizationId: string,
     hotelId: string,
@@ -571,6 +732,29 @@ export class InventoryService {
     return this.toApiVendor(updated);
   }
 
+  /**
+   * Creates a draft purchase order with line items and computed totals.
+   *
+   * The method validates vendor and item eligibility, generates a unique PO number with
+   * retry handling for unique-key races, inserts header and lines in a transaction, and
+   * recalculates subtotal/total before returning API-mapped output.
+   *
+   * @param organizationId - Organization UUID used for scope validation.
+   * @param hotelId - Hotel UUID where purchase order is created.
+   * @param input - Purchase order creation payload including vendor and item lines.
+   * @param userId - Optional actor ID used as requester.
+   * @returns API-mapped purchase order with vendor and item details.
+   * @throws {NotFoundError} When vendor or inventory items are missing/inactive.
+   * @throws {ConflictError} When duplicate PO number collisions exceed retry threshold.
+   * @remarks Complexity: O(n) in number of purchase-order lines.
+   * @example
+   * const po = await service.createPurchaseOrder(organizationId, hotelId, {
+   *   vendorId,
+   *   items: [{ itemId, quantity: 10, unitPrice: 4.25 }],
+   *   taxAmount: 0,
+   *   shippingCost: 0,
+   * });
+   */
   async createPurchaseOrder(
     organizationId: string,
     hotelId: string,
@@ -690,6 +874,14 @@ export class InventoryService {
     return this.toApiPurchaseOrder(purchaseOrder);
   }
 
+  /**
+   * Lists purchase orders with pagination and filter support.
+   *
+   * @param organizationId - Organization UUID used for scope validation.
+   * @param hotelId - Hotel UUID whose purchase orders are queried.
+   * @param query - Purchase-order filters and pagination settings.
+   * @returns Paginated purchase orders with metadata.
+   */
   async listPurchaseOrders(
     organizationId: string,
     hotelId: string,
@@ -705,6 +897,15 @@ export class InventoryService {
     };
   }
 
+  /**
+   * Retrieves a purchase order by ID.
+   *
+   * @param organizationId - Organization UUID used for scope validation.
+   * @param hotelId - Hotel UUID where purchase order exists.
+   * @param purchaseOrderId - Purchase order UUID.
+   * @returns API-mapped purchase order.
+   * @throws {NotFoundError} When purchase order does not exist.
+   */
   async getPurchaseOrder(organizationId: string, hotelId: string, purchaseOrderId: string) {
     await this.assertHotelScope(organizationId, hotelId);
 
@@ -716,6 +917,17 @@ export class InventoryService {
     return this.toApiPurchaseOrder(po);
   }
 
+  /**
+   * Updates editable purchase-order header fields.
+   *
+   * @param organizationId - Organization UUID used for scope validation.
+   * @param hotelId - Hotel UUID where purchase order exists.
+   * @param purchaseOrderId - Purchase order UUID to update.
+   * @param input - Header update payload.
+   * @returns API-mapped updated purchase order.
+   * @throws {NotFoundError} When purchase order does not exist.
+   * @throws {ProcurementInvalidPurchaseOrderStatusError} When order is not editable.
+   */
   async updatePurchaseOrder(
     organizationId: string,
     hotelId: string,
@@ -766,6 +978,18 @@ export class InventoryService {
     return this.toApiPurchaseOrder(updated);
   }
 
+  /**
+   * Adds a new line item to an editable purchase order.
+   *
+   * @param organizationId - Organization UUID used for scope validation.
+   * @param hotelId - Hotel UUID where purchase order exists.
+   * @param purchaseOrderId - Purchase order UUID to modify.
+   * @param input - Line item payload containing inventory item, quantity, and unit price.
+   * @returns API-mapped updated purchase order.
+   * @throws {NotFoundError} When purchase order or inventory item does not exist.
+   * @throws {ConflictError} When line item already exists on purchase order.
+   * @throws {ProcurementInvalidPurchaseOrderStatusError} When order is not editable.
+   */
   async addPurchaseOrderItem(
     organizationId: string,
     hotelId: string,
@@ -816,6 +1040,19 @@ export class InventoryService {
     return this.toApiPurchaseOrder(updated);
   }
 
+  /**
+   * Updates quantity or price for an existing purchase-order line item.
+   *
+   * @param organizationId - Organization UUID used for scope validation.
+   * @param hotelId - Hotel UUID where purchase order exists.
+   * @param purchaseOrderId - Purchase order UUID that owns the line.
+   * @param poItemId - Purchase-order line UUID to update.
+   * @param input - Partial line update payload.
+   * @returns API-mapped updated purchase order.
+   * @throws {NotFoundError} When purchase order or line item does not exist.
+   * @throws {ConflictError} When requested quantity is below already received quantity.
+   * @throws {ProcurementInvalidPurchaseOrderStatusError} When order is not editable.
+   */
   async updatePurchaseOrderItem(
     organizationId: string,
     hotelId: string,
@@ -867,6 +1104,18 @@ export class InventoryService {
     return this.toApiPurchaseOrder(updated);
   }
 
+  /**
+   * Removes a line item from an editable purchase order.
+   *
+   * @param organizationId - Organization UUID used for scope validation.
+   * @param hotelId - Hotel UUID where purchase order exists.
+   * @param purchaseOrderId - Purchase order UUID that owns the line.
+   * @param poItemId - Purchase-order line UUID to remove.
+   * @returns API-mapped updated purchase order.
+   * @throws {NotFoundError} When purchase order or line item does not exist.
+   * @throws {ConflictError} When line item has already received stock.
+   * @throws {ProcurementInvalidPurchaseOrderStatusError} When order is not editable.
+   */
   async removePurchaseOrderItem(
     organizationId: string,
     hotelId: string,
@@ -905,6 +1154,20 @@ export class InventoryService {
     return this.toApiPurchaseOrder(updated);
   }
 
+  /**
+   * Submits a draft purchase order for approval.
+   *
+   * @param organizationId - Organization UUID used for scope validation.
+   * @param hotelId - Hotel UUID where purchase order exists.
+   * @param purchaseOrderId - Purchase order UUID to submit.
+   * @param input - Submission payload with optional notes.
+   * @param userId - Optional actor ID recorded in outbox payload.
+   * @returns API-mapped submitted purchase order.
+   * @throws {NotFoundError} When purchase order does not exist.
+   * @throws {InvalidStatusTransitionError} When order is not in `'DRAFT'` state.
+   * @throws {BadRequestError} When order has no line items.
+   * @throws {UnprocessableEntityError} When vendor is not approved.
+   */
   async submitPurchaseOrder(
     organizationId: string,
     hotelId: string,
@@ -978,6 +1241,18 @@ export class InventoryService {
     return this.toApiPurchaseOrder(updated);
   }
 
+  /**
+   * Approves a pending purchase order and emits approval outbox event.
+   *
+   * @param organizationId - Organization UUID used for scope validation.
+   * @param hotelId - Hotel UUID where purchase order exists.
+   * @param purchaseOrderId - Purchase order UUID to approve.
+   * @param input - Approval payload with optional notes.
+   * @param userId - Optional actor ID recorded as approver.
+   * @returns API-mapped approved purchase order.
+   * @throws {NotFoundError} When purchase order does not exist.
+   * @throws {InvalidStatusTransitionError} When order is not in `'PENDING_APPROVAL'`.
+   */
   async approvePurchaseOrder(
     organizationId: string,
     hotelId: string,
@@ -1040,6 +1315,29 @@ export class InventoryService {
     return this.toApiPurchaseOrder(updated);
   }
 
+  /**
+   * Receives goods against purchase-order lines and updates inventory and PO state.
+   *
+   * The method validates receivable status, checks line-level over-receipt constraints,
+   * applies stock/cost updates per line, records purchase transactions, updates PO status,
+   * updates vendor spend metrics, and emits a receipt outbox event.
+   *
+   * @param organizationId - Organization UUID used for scope validation.
+   * @param hotelId - Hotel UUID where purchase order exists.
+   * @param purchaseOrderId - Purchase order UUID being received.
+   * @param input - Receipt payload containing received lines and optional date.
+   * @param userId - Optional actor ID recorded on inventory transactions and outbox events.
+   * @returns Receipt result with status, total cost, and per-line update details.
+   * @throws {NotFoundError} When purchase order, PO line, or inventory item cannot be found.
+   * @throws {ProcurementPurchaseOrderClosedError} When PO status disallows receiving.
+   * @throws {ProcurementInvalidPurchaseOrderStatusError} When PO is not in receivable states.
+   * @throws {ProcurementOverReceiptError} When line receipt exceeds ordered quantity.
+   * @remarks Complexity: O(l + i) in number of received lines and loaded inventory items.
+   * @example
+   * const receipt = await service.receivePurchaseOrder(organizationId, hotelId, purchaseOrderId, {
+   *   lines: [{ poItemId, receivedQty: 5 }],
+   * });
+   */
   async receivePurchaseOrder(
     organizationId: string,
     hotelId: string,
@@ -1260,6 +1558,18 @@ export class InventoryService {
     });
   }
 
+  /**
+   * Cancels an open purchase order and emits cancellation outbox event.
+   *
+   * @param organizationId - Organization UUID used for scope validation.
+   * @param hotelId - Hotel UUID where purchase order exists.
+   * @param purchaseOrderId - Purchase order UUID to cancel.
+   * @param input - Cancellation payload containing reason text.
+   * @param userId - Optional actor ID recorded in outbox payload.
+   * @returns API-mapped cancelled purchase order.
+   * @throws {NotFoundError} When purchase order does not exist.
+   * @throws {ProcurementPurchaseOrderClosedError} When status disallows cancellation.
+   */
   async cancelPurchaseOrder(
     organizationId: string,
     hotelId: string,
@@ -1323,6 +1633,15 @@ export class InventoryService {
     return this.toApiPurchaseOrder(updated);
   }
 
+  /**
+   * Builds inventory dashboard aggregates for the selected day.
+   *
+   * @param organizationId - Organization UUID used for scope validation.
+   * @param hotelId - Hotel UUID whose dashboard is computed.
+   * @param query - Dashboard query with optional date override.
+   * @returns Inventory dashboard totals, stock valuation, PO metrics, and top low-stock items.
+   * @remarks Complexity: O(n) in stock-level and low-stock result sizes plus parallel aggregates.
+   */
   async getDashboard(
     organizationId: string,
     hotelId: string,
@@ -1529,6 +1848,14 @@ export class InventoryService {
     };
   }
 
+  /**
+   * Ensures the provided hotel belongs to the organization and translates repository sentinel errors.
+   *
+   * @param organizationId - Organization UUID expected to own the hotel.
+   * @param hotelId - Hotel UUID to validate.
+   * @returns Resolves when scope is valid.
+   * @throws {NotFoundError} When repository returns `HOTEL_NOT_FOUND`.
+   */
   private async assertHotelScope(organizationId: string, hotelId: string): Promise<void> {
     try {
       await this.repo.ensureHotelScope(organizationId, hotelId);
@@ -1541,6 +1868,13 @@ export class InventoryService {
     }
   }
 
+  /**
+   * Validates that purchase order status is editable.
+   *
+   * @param status - Current purchase-order status.
+   * @returns Resolves when status is allowed for edits.
+   * @throws {ProcurementInvalidPurchaseOrderStatusError} When status is outside editable list.
+   */
   private assertPurchaseOrderEditable(status: string): void {
     if (
       !PURCHASE_ORDER_EDITABLE_STATUSES.includes(
@@ -1557,12 +1891,27 @@ export class InventoryService {
     }
   }
 
+  /**
+   * Generates a purchase-order number using date, hotel code prefix, and sequence.
+   *
+   * @param hotelId - Hotel UUID used for PO prefix.
+   * @param now - Timestamp used for date component.
+   * @param sequence - Daily sequence number.
+   * @returns Purchase-order number in `PO-YYYYMMDD-XXXX-####` style.
+   */
   private generatePurchaseOrderNumber(hotelId: string, now: Date, sequence: number): string {
     const datePart = now.toISOString().slice(0, 10).replace(/-/g, '');
     const hotelPart = hotelId.slice(0, 4).toUpperCase();
     return `PO-${datePart}-${hotelPart}-${String(sequence).padStart(4, '0')}`;
   }
 
+  /**
+   * Appends an additional note line to existing notes.
+   *
+   * @param existing - Existing multi-line notes or `null`.
+   * @param addition - New note fragment to append.
+   * @returns Combined note text with newline separation when existing content is present.
+   */
   private mergeNotes(existing: string | null, addition: string): string {
     if (!existing || existing.trim().length === 0) {
       return addition;
@@ -1571,6 +1920,12 @@ export class InventoryService {
     return `${existing}\n${addition}`;
   }
 
+  /**
+   * Maps persistence inventory item model to API-safe object.
+   *
+   * @param item - Inventory item persistence model with Decimal cost fields.
+   * @returns API object with Decimal values converted to numbers.
+   */
   private toApiInventoryItem(item: {
     id: string;
     organizationId: string;
@@ -1602,6 +1957,12 @@ export class InventoryService {
     };
   }
 
+  /**
+   * Maps persistence vendor model to API-safe object.
+   *
+   * @param vendor - Vendor persistence model with Decimal spend field.
+   * @returns API object with `totalSpend` converted to number.
+   */
   private toApiVendor(vendor: {
     id: string;
     organizationId: string;
@@ -1630,6 +1991,12 @@ export class InventoryService {
     };
   }
 
+  /**
+   * Maps persistence purchase-order model to API-safe object.
+   *
+   * @param po - Purchase-order persistence model with Decimal totals and line amounts.
+   * @returns API object with order and line Decimal values converted to numbers.
+   */
   private toApiPurchaseOrder(po: {
     id: string;
     organizationId: string;

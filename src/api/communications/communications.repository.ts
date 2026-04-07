@@ -26,6 +26,12 @@ export class CommunicationsRepository {
   // COMMUNICATION CRUD
   // --------------------------------------------------------------------------
 
+  /**
+   * Creates a communication record and returns it with joined entities.
+   *
+   * @param data - Prisma communication create input.
+   * @returns Persisted communication mapped to API response shape.
+   */
   async create(data: Prisma.CommunicationCreateInput): Promise<CommunicationResponse> {
     const communication = await prisma.communication.create({
       data,
@@ -39,6 +45,12 @@ export class CommunicationsRepository {
     return this.mapCommunication(communication);
   }
 
+  /**
+   * Finds a communication by ID with guest/reservation/template relations.
+   *
+   * @param id - Communication ID.
+   * @returns Mapped communication response or `null`.
+   */
   async findById(id: string): Promise<CommunicationResponse | null> {
     const communication = await prisma.communication.findUnique({
       where: { id },
@@ -52,6 +64,12 @@ export class CommunicationsRepository {
     return communication ? this.mapCommunication(communication) : null;
   }
 
+  /**
+   * Finds a communication by provider external ID.
+   *
+   * @param externalId - Provider-issued identifier stored on communication rows.
+   * @returns Mapped communication response or `null`.
+   */
   async findByExternalId(externalId: string): Promise<CommunicationResponse | null> {
     const communication = await prisma.communication.findFirst({
       where: { externalId },
@@ -65,6 +83,13 @@ export class CommunicationsRepository {
     return communication ? this.mapCommunication(communication) : null;
   }
 
+  /**
+   * Updates a communication record and returns the refreshed row with relations.
+   *
+   * @param id - Communication ID.
+   * @param data - Prisma update payload.
+   * @returns Updated communication response.
+   */
   async update(id: string, data: Prisma.CommunicationUpdateInput): Promise<CommunicationResponse> {
     const communication = await prisma.communication.update({
       where: { id },
@@ -79,6 +104,13 @@ export class CommunicationsRepository {
     return this.mapCommunication(communication);
   }
 
+  /**
+   * Searches communications for an organization with filterable pagination.
+   *
+   * @param organizationId - Organization scope ID.
+   * @param filters - Search filters including channel/status/type/date window.
+   * @returns Paged communication rows and total count.
+   */
   async search(
     organizationId: string,
     filters: CommunicationQueryFilters
@@ -125,6 +157,12 @@ export class CommunicationsRepository {
     };
   }
 
+  /**
+   * Lists communication records linked to a reservation.
+   *
+   * @param reservationId - Reservation ID.
+   * @returns Reservation communications ordered by newest first.
+   */
   async findByReservationId(reservationId: string): Promise<CommunicationResponse[]> {
     const communications = await prisma.communication.findMany({
       where: { reservationId },
@@ -139,6 +177,12 @@ export class CommunicationsRepository {
     return communications.map((c) => this.mapCommunication(c));
   }
 
+  /**
+   * Returns pending communications scheduled at or before a cutoff timestamp.
+   *
+   * @param before - Cutoff datetime for due scheduled sends.
+   * @returns Pending communication rows ready for dispatcher processing.
+   */
   async findPendingScheduled(before: Date): Promise<CommunicationResponse[]> {
     const communications = await prisma.communication.findMany({
       where: {
@@ -160,11 +204,23 @@ export class CommunicationsRepository {
   // TEMPLATE CRUD
   // --------------------------------------------------------------------------
 
+  /**
+   * Creates a communication template record.
+   *
+   * @param data - Prisma template create input.
+   * @returns Mapped template response.
+   */
   async createTemplate(data: Prisma.CommunicationTemplateCreateInput): Promise<TemplateResponse> {
     const template = await prisma.communicationTemplate.create({ data });
     return this.mapTemplate(template);
   }
 
+  /**
+   * Finds a template by ID.
+   *
+   * @param id - Template ID.
+   * @returns Template response or `null`.
+   */
   async findTemplateById(id: string): Promise<TemplateResponse | null> {
     const template = await prisma.communicationTemplate.findUnique({
       where: { id },
@@ -173,6 +229,15 @@ export class CommunicationsRepository {
     return template ? this.mapTemplate(template) : null;
   }
 
+  /**
+   * Finds a template by unique organization/code/channel/language tuple.
+   *
+   * @param organizationId - Organization scope ID.
+   * @param code - Template code.
+   * @param channel - Communication channel.
+   * @param language - Language code.
+   * @returns Matching template response or `null`.
+   */
   async findTemplateByCode(
     organizationId: string,
     code: string,
@@ -193,6 +258,21 @@ export class CommunicationsRepository {
     return template ? this.mapTemplate(template) : null;
   }
 
+  /**
+   * Resolves the best template for outbound sends with fallback rules.
+   *
+   * Resolution order:
+   * 1) hotel-specific active template in requested language,
+   * 2) organization-level active template in requested language,
+   * 3) same lookup with `'en'` fallback when language differs.
+   *
+   * @param organizationId - Organization scope ID.
+   * @param type - Communication type.
+   * @param channel - Communication channel.
+   * @param language - Preferred language code.
+   * @param hotelId - Optional hotel scope for hotel-specific templates.
+   * @returns Best matching active template or `null`.
+   */
   async findTemplateForSend(
     organizationId: string,
     type: CommunicationType,
@@ -244,6 +324,13 @@ export class CommunicationsRepository {
     return null;
   }
 
+  /**
+   * Updates a template record.
+   *
+   * @param id - Template ID.
+   * @param data - Prisma update payload.
+   * @returns Updated template response.
+   */
   async updateTemplate(
     id: string,
     data: Prisma.CommunicationTemplateUpdateInput
@@ -256,6 +343,12 @@ export class CommunicationsRepository {
     return this.mapTemplate(template);
   }
 
+  /**
+   * Soft deletes a template by setting `deletedAt`.
+   *
+   * @param id - Template ID.
+   * @returns Updated template response.
+   */
   async softDeleteTemplate(id: string): Promise<TemplateResponse> {
     const template = await prisma.communicationTemplate.update({
       where: { id },
@@ -265,6 +358,13 @@ export class CommunicationsRepository {
     return this.mapTemplate(template);
   }
 
+  /**
+   * Searches active templates in an organization with pagination.
+   *
+   * @param organizationId - Organization scope ID.
+   * @param filters - Template filters and pagination controls.
+   * @returns Paged template rows and total count.
+   */
   async searchTemplates(
     organizationId: string,
     filters: TemplateQueryFilters
@@ -303,6 +403,19 @@ export class CommunicationsRepository {
   // ANALYTICS
   // --------------------------------------------------------------------------
 
+  /**
+   * Computes outbound communication analytics across summary and grouped breakdowns.
+   *
+   * Side effects:
+   * - Executes aggregate counts, grouped Prisma queries, and raw SQL date bucketing.
+   * - Performs no writes.
+   *
+   * @param organizationId - Organization scope ID.
+   * @param filters - Date window plus optional hotel/channel/type filters.
+   * @returns Analytics summary with channel, type, and daily metrics.
+   * @remarks Complexity: O(C + T + D) query groups after fixed aggregate calls,
+   * where C/T/D are unique channel/type/day buckets.
+   */
   async getAnalytics(
     organizationId: string,
     filters: AnalyticsQueryFilters
@@ -457,6 +570,12 @@ export class CommunicationsRepository {
   // MAPPERS
   // --------------------------------------------------------------------------
 
+  /**
+   * Maps a communication row with relations into API response format.
+   *
+   * @param communication - Prisma communication payload including joins.
+   * @returns Communication response object.
+   */
   private mapCommunication(
     communication: Prisma.CommunicationGetPayload<{
       include: { guest: true; reservation: true; template: true };
@@ -486,6 +605,12 @@ export class CommunicationsRepository {
     };
   }
 
+  /**
+   * Maps a communication template row into API response format.
+   *
+   * @param template - Prisma template payload.
+   * @returns Template response object.
+   */
   private mapTemplate(
     template: Prisma.CommunicationTemplateGetPayload<{
       include: Record<string, never>;

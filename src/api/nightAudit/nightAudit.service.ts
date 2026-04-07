@@ -31,14 +31,34 @@ import type {
   NightAuditStepResult,
 } from './nightAudit.types';
 
+/**
+ * Normalizes timestamps to UTC date-only values for business-date comparisons.
+ *
+ * @param value - Source timestamp.
+ * @returns Date at UTC midnight for the same calendar day.
+ */
 const asDateOnly = (value: Date): Date =>
   new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate()));
 
+/**
+ * Returns the inclusive UTC end-of-day timestamp for a business date.
+ *
+ * Used by maintenance generation boundaries that expect a full-day cutoff.
+ *
+ * @param value - Business date anchor.
+ * @returns UTC timestamp at `23:59:59.999` for the same date.
+ */
 const endOfDayUtc = (value: Date): Date =>
   new Date(
     Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate(), 23, 59, 59, 999)
   );
 
+/**
+ * Converts Prisma decimals or number-like values into native numbers.
+ *
+ * @param value - Numeric input from Prisma aggregates or persisted audit fields.
+ * @returns Parsed numeric value.
+ */
 const toNumber = (value: { toString(): string } | number): number => {
   if (typeof value === 'number') {
     return value;
@@ -46,16 +66,39 @@ const toNumber = (value: { toString(): string } | number): number => {
   return Number.parseFloat(value.toString());
 };
 
+/**
+ * Produces a JSON-safe deep clone suitable for Prisma `InputJsonValue`.
+ *
+ * @param value - Arbitrary payload to persist in JSON columns or outbox events.
+ * @returns Structured-cloned JSON value.
+ */
 const asJson = (value: unknown): Prisma.InputJsonValue =>
   JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 
 export class NightAuditService {
   private readonly nightAuditRepo: NightAuditRepositoryType;
 
+  /**
+   * Creates the service with a repository implementation (defaulting to Prisma-backed repository).
+   *
+   * @param repository - Repository used for scoped reads/writes and transactional operations.
+   */
   constructor(repository: NightAuditRepositoryType = nightAuditRepository) {
     this.nightAuditRepo = repository;
   }
 
+  /**
+   * Computes the pre-check snapshot for a hotel-scoped business date.
+   *
+   * The organization/hotel pair is validated up front through `findHotelScope` to prevent
+   * cross-tenant reads. This method is read-only and returns blockers plus operational
+   * counters used by `runAudit`.
+   *
+   * @param organizationId - Organization tenant identifier that owns the hotel.
+   * @param hotelId - Hotel identifier constrained to the provided organization.
+   * @param query - Optional date override; defaults to hotel's current business date.
+   * @returns Snapshot of blockers and counts used to decide audit eligibility.
+   */
   async preCheck(
     organizationId: string,
     hotelId: string,
@@ -67,6 +110,34 @@ export class NightAuditService {
     return this.nightAuditRepo.calculatePreCheckSnapshot(organizationId, hotelId, businessDate);
   }
 
+  /**
+   * Runs the full night-audit batch workflow for a scoped hotel business date.
+   *
+   * Flow:
+   * 1) Resolve hotel scope and pre-check state.
+   * 2) Create/update the audit row as `IN_PROGRESS`.
+   * 3) Execute ordered operational steps (financial posting, no-shows, housekeeping,
+   *    maintenance, escalation sweep, business-date advance) while collecting step logs.
+   * 4) Transition audit to `COMPLETED` or `FAILED`, then emit outbox events.
+   *
+   * Transaction boundaries are step-level in downstream modules; this orchestrator persists
+   * state transitions between steps. Side effects include DB writes (audit rows, reservation/task
+   * updates via collaborators), outbox inserts, and optional user notifications/loggable warnings.
+   *
+   * @param organizationId - Organization tenant identifier for all scoped operations.
+   * @param hotelId - Hotel identifier constrained to the organization scope.
+   * @param input - Run options including optional business date and notes.
+   * @param userId - Optional initiating user for notification fan-out; system actor is used otherwise.
+   * @returns Completed audit report, original pre-check snapshot, and next business date.
+   * @throws {AuditBlockedError} When hard pre-check blockers are present.
+   * @throws {AuditStepFailedError} When a hard-fail step or finalization stage fails.
+   * @remarks Complexity: O(s + c) orchestration work where `s` is configured step count (fixed today) and `c` is downstream side-effect cost from folio/reservation/task modules.
+   * @example
+   * const result = await service.runAudit(organizationId, hotelId, {
+   *   businessDate: new Date('2026-03-31'),
+   *   notes: 'End-of-month close',
+   * });
+   */
   async runAudit(
     organizationId: string,
     hotelId: string,
@@ -166,6 +237,17 @@ export class NightAuditService {
 
     const stepConfig = new Map(NIGHT_AUDIT_STEPS.map((s) => [s.code, s]));
 
+    /**
+     * Records step outcomes and applies hard-fail policy.
+     *
+     * On hard-fail steps, this helper transitions the audit to `FAILED`, writes a failure
+     * payload, emits a `night_audit.failed` outbox event, and throws to stop the batch.
+     * Non-hard-fail errors are retained as warnings so processing can continue.
+     *
+     * @param outcome - Result envelope from `runStep`.
+     * @throws {AuditStepFailedError} When the failed step is configured as hard-fail.
+     * @remarks Complexity: O(1) per step outcome, excluding repository writes on hard-fail paths.
+     */
     const handleStepOutcome = async (outcome: {
       stepResult: NightAuditStepResult;
       error?: unknown;
@@ -395,6 +477,15 @@ export class NightAuditService {
     }
   }
 
+  /**
+   * Returns current hotel business date and latest audit summary.
+   *
+   * Hotel scope is validated by organization/hotel identifiers before reading audit history.
+   *
+   * @param organizationId - Organization tenant identifier.
+   * @param hotelId - Hotel identifier constrained to the organization.
+   * @returns Current business date plus latest audit report when available.
+   */
   async getStatus(organizationId: string, hotelId: string): Promise<NightAuditStatusResponse> {
     const hotel = await this.nightAuditRepo.findHotelScope(organizationId, hotelId);
     const latest = await this.nightAuditRepo.findLatestAudit(hotelId);
@@ -405,6 +496,17 @@ export class NightAuditService {
     };
   }
 
+  /**
+   * Lists paginated night-audit history for a hotel scope.
+   *
+   * This method is read-only but enforces organization/hotel ownership before returning
+   * paginated items and metadata.
+   *
+   * @param organizationId - Organization tenant identifier.
+   * @param hotelId - Hotel identifier constrained to the organization.
+   * @param query - Pagination/filter parameters.
+   * @returns Audit history page with transformed report items.
+   */
   async getHistory(
     organizationId: string,
     hotelId: string,
@@ -425,6 +527,18 @@ export class NightAuditService {
     };
   }
 
+  /**
+   * Retrieves a single audit report by id, business date, or latest fallback.
+   *
+   * Scope validation is performed first using organization/hotel identifiers to ensure
+   * only in-tenant audit records are accessible.
+   *
+   * @param organizationId - Organization tenant identifier.
+   * @param hotelId - Hotel identifier constrained to the organization.
+   * @param query - Report locator options (audit id, business date, or implicit latest).
+   * @returns Fully mapped audit report payload.
+   * @throws {NotFoundError} When no matching audit is found in scope.
+   */
   async getReport(
     organizationId: string,
     hotelId: string,
@@ -449,6 +563,32 @@ export class NightAuditService {
     return this.mapAuditToReport(audit);
   }
 
+  /**
+   * Rolls back the latest eligible night audit for a hotel scope.
+   *
+   * Preconditions are enforced by `assertRollbackAllowed`, then rollback side effects run
+   * inside a single repository transaction to keep financial/state reversals atomic:
+   * - Voids night-audit room charges
+   * - Reverts no-show reservations
+   * - Cancels generated stayover and preventive tasks
+   * - Restores hotel business date
+   * - Marks audit `ROLLED_BACK` and emits rollback outbox event
+   *
+   * Optional notifications are sent to the initiating user after commit.
+   *
+   * @param organizationId - Organization tenant identifier for scoped rollback.
+   * @param hotelId - Hotel identifier constrained to the organization.
+   * @param input - Rollback target and reason.
+   * @param userId - Optional user to notify when rollback completes.
+   * @returns Rolled-back audit id/status plus rollback effect counters.
+   * @throws {NotFoundError} When no target audit exists.
+   * @remarks Complexity: O(r) orchestration around a single transactional rollback, where `r` is dominated by affected folio, reservation, housekeeping, and maintenance rows inside repository rollback logic.
+   * @example
+   * const rollback = await service.rollbackAudit(organizationId, hotelId, {
+   *   auditId,
+   *   reason: 'Manual correction after posting error',
+   * });
+   */
   async rollbackAudit(
     organizationId: string,
     hotelId: string,
@@ -507,6 +647,15 @@ export class NightAuditService {
     };
   }
 
+  /**
+   * Resolves the effective business date used by run/pre-check operations.
+   *
+   * Resolution order is explicit request, then hotel current business date, then current UTC date.
+   *
+   * @param requestedDate - Optional date requested by the caller.
+   * @param fallbackDate - Optional hotel-level fallback business date.
+   * @returns Normalized UTC date-only business date.
+   */
   private resolveBusinessDate(requestedDate?: Date, fallbackDate?: Date): Date {
     if (requestedDate) {
       return asDateOnly(requestedDate);
@@ -519,6 +668,15 @@ export class NightAuditService {
     return asDateOnly(new Date());
   }
 
+  /**
+   * Maps a raw `NightAudit` row into the API report contract.
+   *
+   * This transformation merges persisted financial/state columns with parsed step metadata
+   * stored in `errors`, deriving fallback action counts when values are only present in step details.
+   *
+   * @param audit - Persisted night-audit row.
+   * @returns Report DTO used by status/history/report endpoints.
+   */
   private mapAuditToReport(audit: NightAudit): NightAuditReportResponse {
     const payload = this.parseErrorPayload(audit.errors);
     const steps = this.parseSteps(payload.steps);
@@ -562,6 +720,12 @@ export class NightAuditService {
     };
   }
 
+  /**
+   * Safely extracts known fields from the audit `errors` JSON column.
+   *
+   * @param errors - Persisted JSON payload from audit failure/completion metadata.
+   * @returns Object containing optional `steps` and `warningCount` when present.
+   */
   private parseErrorPayload(errors: unknown): {
     steps?: unknown;
     warningCount?: unknown;
@@ -576,6 +740,15 @@ export class NightAuditService {
     };
   }
 
+  /**
+   * Normalizes arbitrary JSON into sorted `NightAuditStepResult[]`.
+   *
+   * Invalid entries are dropped to keep API responses stable even when legacy payloads
+   * contain malformed step data.
+   *
+   * @param candidate - Raw steps payload from persisted JSON.
+   * @returns Validated, step-ordered step results.
+   */
   private parseSteps(candidate: unknown): NightAuditStepResult[] {
     if (!Array.isArray(candidate)) {
       return [];
@@ -611,6 +784,14 @@ export class NightAuditService {
       .sort((a, b) => a.step - b.step);
   }
 
+  /**
+   * Reads a numeric metric from a specific step's details map.
+   *
+   * @param steps - Parsed step results.
+   * @param code - Step code to inspect.
+   * @param key - Detail key expected to hold a numeric value.
+   * @returns Numeric metric value or `0` when missing/non-numeric.
+   */
   private getStepNumber(
     steps: NightAuditStepResult[],
     code: NightAuditStepResult['code'],

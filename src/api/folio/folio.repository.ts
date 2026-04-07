@@ -18,6 +18,12 @@ export type InvoiceCreateInput = Prisma.InvoiceCreateInput;
 
 // ============ Type Mapping Functions ============
 
+/**
+ * Converts a Prisma folio item record to API-safe numeric fields.
+ *
+ * @param item - Raw folio item record that may contain Decimal values.
+ * @returns A folio item with decimal monetary fields converted to JavaScript numbers.
+ */
 function mapFolioItem(item: unknown): FolioItem {
   const record = item as unknown as FolioItem;
   return {
@@ -28,6 +34,12 @@ function mapFolioItem(item: unknown): FolioItem {
   };
 }
 
+/**
+ * Converts a Prisma payment record to API-safe numeric fields.
+ *
+ * @param payment - Raw payment record that may contain Decimal values.
+ * @returns A payment with `amount` normalized to a JavaScript number.
+ */
 function mapPayment(payment: unknown): Payment {
   const record = payment as unknown as Payment;
   return {
@@ -36,6 +48,12 @@ function mapPayment(payment: unknown): Payment {
   };
 }
 
+/**
+ * Converts a Prisma invoice record to API-safe numeric fields.
+ *
+ * @param invoice - Raw invoice record that may contain Decimal values.
+ * @returns An invoice with monetary totals normalized to JavaScript numbers.
+ */
 function mapInvoice(invoice: unknown): Invoice {
   const record = invoice as unknown as Invoice;
   return {
@@ -52,6 +70,12 @@ export class FolioRepository {
   // FOLIO ITEMS (CHARGES)
   // ============================================================================
 
+  /**
+   * Finds a folio item by identifier.
+   *
+   * @param id - Folio item UUID.
+   * @returns The mapped folio item or `null` if no item matches.
+   */
   async findFolioItemById(id: string): Promise<FolioItem | null> {
     const item = await prisma.folioItem.findUnique({
       where: { id },
@@ -59,6 +83,14 @@ export class FolioRepository {
     return item ? mapFolioItem(item) : null;
   }
 
+  /**
+   * Lists folio items for a reservation with optional date/type/void filters.
+   *
+   * @param reservationId - Reservation UUID whose folio lines are requested.
+   * @param filters - Optional business-date, item-type, and void-inclusion filters.
+   * @returns Matching folio items ordered by `postedAt` descending.
+   * @remarks Complexity: O(n) in number of matching folio items for mapping.
+   */
   async findFolioItemsByReservation(
     reservationId: string,
     filters?: {
@@ -99,11 +131,25 @@ export class FolioRepository {
     return items.map(mapFolioItem);
   }
 
+  /**
+   * Creates a new folio item record.
+   *
+   * @param data - Prisma create input for a folio charge/adjustment/payment line.
+   * @returns The created folio item with mapped numeric values.
+   */
   async createFolioItem(data: FolioItemCreateInput): Promise<FolioItem> {
     const item = await prisma.folioItem.create({ data });
     return mapFolioItem(item);
   }
 
+  /**
+   * Marks a folio item as voided with audit metadata.
+   *
+   * @param id - Folio item UUID to void.
+   * @param voidedBy - User ID performing the void action.
+   * @param reason - Business reason persisted with the void audit trail.
+   * @returns The updated folio item in voided state.
+   */
   async voidFolioItem(id: string, voidedBy: string, reason: string): Promise<FolioItem> {
     const item = await prisma.folioItem.update({
       where: { id },
@@ -117,6 +163,17 @@ export class FolioRepository {
     return mapFolioItem(item);
   }
 
+  /**
+   * Creates an adjustment folio line that offsets an existing folio item amount.
+   *
+   * @param id - Original folio item UUID being adjusted.
+   * @param newAmount - Target amount used to compute adjustment delta.
+   * @param reason - Adjustment reason appended to generated description.
+   * @param adjustedBy - User ID recorded as the posting actor.
+   * @returns The newly created adjustment folio line.
+   * @throws {Error} When the original folio item cannot be found.
+   * @remarks Complexity: O(1) with one lookup and one transactional insert.
+   */
   async adjustFolioItem(
     id: string,
     newAmount: number,
@@ -155,6 +212,13 @@ export class FolioRepository {
     });
   }
 
+  /**
+   * Aggregates reservation-level folio totals for charges, payments, and balance.
+   *
+   * @param reservationId - Reservation UUID used for aggregation.
+   * @returns Charge totals, payment totals, and computed balance.
+   * @remarks Complexity: O(1) application work with 2 aggregate DB queries.
+   */
   async getFolioSummary(reservationId: string): Promise<{
     chargesTotal: number;
     paymentsTotal: number;
@@ -197,6 +261,12 @@ export class FolioRepository {
   // PAYMENTS
   // ============================================================================
 
+  /**
+   * Finds a payment by identifier.
+   *
+   * @param id - Payment UUID.
+   * @returns The mapped payment or `null` when not found.
+   */
   async findPaymentById(id: string): Promise<Payment | null> {
     const payment = await prisma.payment.findUnique({
       where: { id },
@@ -204,6 +274,12 @@ export class FolioRepository {
     return payment ? mapPayment(payment) : null;
   }
 
+  /**
+   * Lists payments recorded for a reservation.
+   *
+   * @param reservationId - Reservation UUID whose payments are requested.
+   * @returns Payments ordered by creation timestamp descending.
+   */
   async findPaymentsByReservation(reservationId: string): Promise<Payment[]> {
     const payments = await prisma.payment.findMany({
       where: { reservationId },
@@ -212,11 +288,26 @@ export class FolioRepository {
     return payments.map(mapPayment);
   }
 
+  /**
+   * Creates a payment record.
+   *
+   * @param data - Prisma payment create payload.
+   * @returns The created payment mapped to API-friendly numeric fields.
+   */
   async createPayment(data: PaymentCreateInput): Promise<Payment> {
     const payment = await prisma.payment.create({ data });
     return mapPayment(payment);
   }
 
+  /**
+   * Updates payment status and optional gateway identifiers.
+   *
+   * @param id - Payment UUID to update.
+   * @param status - New payment status value.
+   * @param transactionId - Optional external transaction identifier.
+   * @param authCode - Optional authorization code from payment provider.
+   * @returns The updated payment record.
+   */
   async updatePaymentStatus(
     id: string,
     status: PaymentStatus,
@@ -235,6 +326,12 @@ export class FolioRepository {
     return mapPayment(payment);
   }
 
+  /**
+   * Voids a payment by setting status to `'VOIDED'`.
+   *
+   * @param id - Payment UUID to void.
+   * @returns The updated payment record in voided status.
+   */
   async voidPayment(id: string): Promise<Payment> {
     const payment = await prisma.payment.update({
       where: { id },
@@ -243,6 +340,13 @@ export class FolioRepository {
     return mapPayment(payment);
   }
 
+  /**
+   * Creates a refund payment linked to an existing parent payment.
+   *
+   * @param parentPaymentId - Parent payment UUID being refunded.
+   * @param data - Refund payload excluding `parentPaymentId` and `isRefund`.
+   * @returns The created refund payment.
+   */
   async createRefund(
     parentPaymentId: string,
     data: Omit<PaymentCreateInput, 'parentPaymentId' | 'isRefund'>
@@ -257,6 +361,13 @@ export class FolioRepository {
     return mapPayment(payment);
   }
 
+  /**
+   * Aggregates captured/authorized payments by payment method for a reservation.
+   *
+   * @param reservationId - Reservation UUID used for grouping.
+   * @returns A method-to-amount map with decimal sums normalized to numbers.
+   * @remarks Complexity: O(m) in number of grouped payment methods.
+   */
   async getPaymentMethodsSummary(reservationId: string): Promise<Record<string, number>> {
     const results = await prisma.payment.groupBy({
       by: ['method'],
@@ -281,6 +392,12 @@ export class FolioRepository {
   // INVOICES
   // ============================================================================
 
+  /**
+   * Finds an invoice by identifier including reservation relation.
+   *
+   * @param id - Invoice UUID.
+   * @returns The mapped invoice or `null` when not found.
+   */
   async findInvoiceById(id: string): Promise<Invoice | null> {
     const invoice = await prisma.invoice.findUnique({
       where: { id },
@@ -296,6 +413,12 @@ export class FolioRepository {
     return mapInvoice(invoice);
   }
 
+  /**
+   * Lists invoices for a reservation ordered by issue date descending.
+   *
+   * @param reservationId - Reservation UUID whose invoices are requested.
+   * @returns Reservation invoices mapped to API-friendly numeric fields.
+   */
   async findInvoicesByReservation(reservationId: string): Promise<Invoice[]> {
     const invoices = await prisma.invoice.findMany({
       where: { reservationId },
@@ -304,11 +427,25 @@ export class FolioRepository {
     return invoices.map(mapInvoice);
   }
 
+  /**
+   * Creates a new invoice.
+   *
+   * @param data - Prisma invoice create payload.
+   * @returns The created invoice mapped to API-friendly numeric fields.
+   */
   async createInvoice(data: InvoiceCreateInput): Promise<Invoice> {
     const invoice = await prisma.invoice.create({ data });
     return mapInvoice(invoice);
   }
 
+  /**
+   * Updates invoice status and optional paid amount metadata.
+   *
+   * @param id - Invoice UUID to update.
+   * @param status - Target invoice status.
+   * @param paidAmount - Optional cumulative amount paid.
+   * @returns The updated invoice record.
+   */
   async updateInvoiceStatus(
     id: string,
     status: InvoiceStatus,
@@ -331,6 +468,12 @@ export class FolioRepository {
     return mapInvoice(invoice);
   }
 
+  /**
+   * Marks an invoice as sent by setting `sentAt` to current time.
+   *
+   * @param id - Invoice UUID to mark as sent.
+   * @returns The updated invoice record.
+   */
   async markInvoiceSent(id: string): Promise<Invoice> {
     const invoice = await prisma.invoice.update({
       where: { id },
@@ -339,6 +482,12 @@ export class FolioRepository {
     return mapInvoice(invoice);
   }
 
+  /**
+   * Voids an invoice by setting status to `'VOID'`.
+   *
+   * @param id - Invoice UUID to void.
+   * @returns The updated invoice record.
+   */
   async voidInvoice(id: string): Promise<Invoice> {
     const invoice = await prisma.invoice.update({
       where: { id },
@@ -347,6 +496,13 @@ export class FolioRepository {
     return mapInvoice(invoice);
   }
 
+  /**
+   * Generates the next invoice number for a hotel and month prefix.
+   *
+   * @param hotelId - Hotel UUID whose invoice sequence is generated.
+   * @returns An invoice number formatted as `INV-YYYYMM-#####`.
+   * @remarks Complexity: O(1) with one transactional count query.
+   */
   async generateInvoiceNumber(hotelId: string): Promise<string> {
     const date = new Date();
     const prefix = `INV-${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, '0')}`;
@@ -370,6 +526,18 @@ export class FolioRepository {
   // TRANSFERS
   // ============================================================================
 
+  /**
+   * Transfers selected charges between reservations by voiding originals and cloning lines.
+   *
+   * @param chargeIds - Folio item UUIDs requested for transfer.
+   * @param fromReservationId - Source reservation UUID.
+   * @param toReservationId - Target reservation UUID.
+   * @param transferredBy - User ID recorded in void/create audit fields.
+   * @param reason - Business reason stored on voided source charges.
+   * @returns Resolves when transfer transaction completes.
+   * @throws {Error} When one or more requested charges do not belong to source reservation.
+   * @remarks Complexity: O(n) in number of transferred charges.
+   */
   async transferCharges(
     chargeIds: string[],
     fromReservationId: string,
@@ -436,6 +604,26 @@ export class FolioRepository {
   // BATCH OPERATIONS
   // ============================================================================
 
+  /**
+   * Posts nightly room charges for in-house reservations during night audit.
+   *
+   * The method loads in-house reservations, optionally skips already-posted reservations
+   * for the same `sourceRef`, then creates one `ROOM_CHARGE` folio line per qualifying stay.
+   *
+   * @param hotelId - Hotel UUID running night audit posting.
+   * @param businessDate - Business date the room charge is posted for.
+   * @param postedBy - User ID recorded as posting actor.
+   * @param sourceRef - Optional idempotency-style reference used to avoid duplicate postings.
+   * @returns Count of posted lines and cumulative posted amount.
+   * @remarks Complexity: O(r) in number of in-house reservations processed.
+   * @example
+   * const summary = await repository.postRoomChargesForNightAudit(
+   *   hotelId,
+   *   businessDate,
+   *   userId,
+   *   'night-audit-2026-04-07'
+   * );
+   */
   async postRoomChargesForNightAudit(
     hotelId: string,
     businessDate: Date,
@@ -527,6 +715,14 @@ export class FolioRepository {
   // REPORTING
   // ============================================================================
 
+  /**
+   * Groups non-payment folio revenue by department within a business-date range.
+   *
+   * @param hotelId - Hotel UUID whose folio revenue is aggregated.
+   * @param businessDateFrom - Inclusive start business date.
+   * @param businessDateTo - Inclusive end business date.
+   * @returns Department-level revenue and tax totals.
+   */
   async getRevenueByDepartment(
     hotelId: string,
     businessDateFrom: Date,
@@ -553,6 +749,14 @@ export class FolioRepository {
     }));
   }
 
+  /**
+   * Aggregates same-day revenue and payment totals for operational reporting.
+   *
+   * @param hotelId - Hotel UUID whose daily totals are requested.
+   * @param businessDate - Business date used for folio and payment time windows.
+   * @returns Room revenue, other revenue placeholder, tax, and captured payments totals.
+   * @remarks Complexity: O(1) application work with 2 aggregate DB queries.
+   */
   async getDailyRevenue(
     hotelId: string,
     businessDate: Date

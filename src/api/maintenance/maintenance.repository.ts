@@ -25,10 +25,24 @@ const assetInclude = {
 } satisfies Prisma.AssetInclude;
 
 export class MaintenanceRepository {
+  /**
+   * Resolves the Prisma client context for repository operations.
+   *
+   * @param tx - Optional transaction client for callers already running inside `prisma.$transaction`.
+   * @returns The provided transaction client, or the shared prisma client when `tx` is undefined.
+   */
   private getDb(tx?: Prisma.TransactionClient) {
     return tx ?? prisma;
   }
 
+  /**
+   * Finds a room only when it belongs to the requested organization and hotel scope.
+   *
+   * @param roomId - Room UUID to look up.
+   * @param organizationId - Organization UUID used for scope enforcement.
+   * @param hotelId - Hotel UUID used for scope enforcement.
+   * @returns Scoped room snapshot with operational status fields, or null when not found.
+   */
   async findRoomForScope(roomId: string, organizationId: string, hotelId: string) {
     return prisma.room.findFirst({
       where: {
@@ -46,6 +60,14 @@ export class MaintenanceRepository {
     });
   }
 
+  /**
+   * Retrieves one maintenance request and its core relations within organization and hotel scope.
+   *
+   * @param id - Maintenance request UUID to retrieve.
+   * @param organizationId - Organization UUID used for scope enforcement.
+   * @param hotelId - Hotel UUID used for scope enforcement.
+   * @returns Scoped maintenance request with room, asset, and preventive schedule relations, or null.
+   */
   async findRequestById(id: string, organizationId: string, hotelId: string) {
     return prisma.maintenanceRequest.findFirst({
       where: {
@@ -57,6 +79,20 @@ export class MaintenanceRepository {
     });
   }
 
+  /**
+   * Lists maintenance requests using scoped filters and pagination inputs.
+   *
+   * Builds one Prisma `where` tree (status, priority, category, assignee, room, overdue, and search),
+   * then executes `findMany` and `count` together so callers receive page rows and total count
+   * derived from the same logical filter set.
+   *
+   * @param organizationId - Organization UUID used for scope enforcement.
+   * @param hotelId - Hotel UUID used for scope enforcement.
+   * @param filters - Query filters applied to request lifecycle and text fields.
+   * @param pagination - Pagination controls with 1-based page and page size limit.
+   * @returns Matching request page and total row count for pagination metadata.
+   * @remarks Complexity: O(m + p) DB work where m is matching rows considered for count/order and p is page size returned.
+   */
   async listRequests(
     organizationId: string,
     hotelId: string,
@@ -107,6 +143,13 @@ export class MaintenanceRepository {
     return { items, total };
   }
 
+  /**
+   * Creates a maintenance request row using transaction context when provided.
+   *
+   * @param data - Prisma unchecked create payload for `maintenanceRequest`.
+   * @param tx - Optional transaction client used to keep writes atomic with caller operations.
+   * @returns Newly created maintenance request including configured relation includes.
+   */
   async createRequest(
     data: Prisma.MaintenanceRequestUncheckedCreateInput,
     tx?: Prisma.TransactionClient
@@ -117,6 +160,14 @@ export class MaintenanceRepository {
     });
   }
 
+  /**
+   * Updates a maintenance request by identifier using the active Prisma client context.
+   *
+   * @param id - Maintenance request UUID to update.
+   * @param data - Prisma unchecked update payload containing changed fields.
+   * @param tx - Optional transaction client used when part of a wider transaction.
+   * @returns Updated maintenance request including configured relation includes.
+   */
   async updateRequest(
     id: string,
     data: Prisma.MaintenanceRequestUncheckedUpdateInput,
@@ -129,6 +180,16 @@ export class MaintenanceRepository {
     });
   }
 
+  /**
+   * Finds active reservation overlaps for a room across an out-of-order time window.
+   *
+   * @param roomId - Room UUID being evaluated for out-of-order conflicts.
+   * @param organizationId - Organization UUID used for scope enforcement.
+   * @param hotelId - Hotel UUID used for scope enforcement.
+   * @param from - Inclusive lower bound of the OOO window.
+   * @param until - Inclusive upper bound of the OOO window.
+   * @returns Reservation-room conflicts limited to `CONFIRMED` and `CHECKED_IN` reservations.
+   */
   async findOooConflicts(
     roomId: string,
     organizationId: string,
@@ -161,6 +222,13 @@ export class MaintenanceRepository {
     });
   }
 
+  /**
+   * Persists a single outbox event within the caller transaction.
+   *
+   * @param tx - Active transaction client used to atomically write the outbox row.
+   * @param input - Event envelope containing type, aggregate identity, and JSON payload.
+   * @returns Created outbox event row.
+   */
   async createOutboxEvent(
     tx: Prisma.TransactionClient,
     input: {
@@ -180,6 +248,16 @@ export class MaintenanceRepository {
     });
   }
 
+  /**
+   * Persists multiple outbox events with one batched insert operation.
+   *
+   * Empty input arrays are ignored to avoid unnecessary database work.
+   *
+   * @param tx - Active transaction client used to atomically write outbox rows.
+   * @param events - Outbox event envelopes to insert.
+   * @returns Nothing. Returns early when `events` is empty.
+   * @remarks Complexity: O(e) where e is number of events in the batch payload.
+   */
   async createOutboxEvents(
     tx: Prisma.TransactionClient,
     events: Array<{
@@ -198,6 +276,14 @@ export class MaintenanceRepository {
     });
   }
 
+  /**
+   * Retrieves one preventive schedule with relations inside organization and hotel scope.
+   *
+   * @param id - Preventive schedule UUID to retrieve.
+   * @param organizationId - Organization UUID used for scope enforcement.
+   * @param hotelId - Hotel UUID used for scope enforcement.
+   * @returns Scoped preventive schedule with room and asset relations, or null when absent.
+   */
   async findPreventiveScheduleById(id: string, organizationId: string, hotelId: string) {
     return prisma.preventiveSchedule.findFirst({
       where: {
@@ -209,6 +295,14 @@ export class MaintenanceRepository {
     });
   }
 
+  /**
+   * Creates a preventive schedule in organization and hotel scope.
+   *
+   * @param organizationId - Organization UUID assigned to the new schedule.
+   * @param hotelId - Hotel UUID assigned to the new schedule.
+   * @param input - Validated schedule payload including recurrence and optional room/asset links.
+   * @returns Created preventive schedule with room and asset relations.
+   */
   async createPreventiveSchedule(
     organizationId: string,
     hotelId: string,
@@ -240,6 +334,16 @@ export class MaintenanceRepository {
     });
   }
 
+  /**
+   * Lists preventive schedules for one organization and hotel with optional filters.
+   *
+   * @param organizationId - Organization UUID used for scope enforcement.
+   * @param hotelId - Hotel UUID used for scope enforcement.
+   * @param filters - Query filters for activation state, room, asset, and frequency.
+   * @param pagination - Pagination controls with 1-based page and page size limit.
+   * @returns Matching preventive schedule page and total row count.
+   * @remarks Complexity: O(m + p) DB work where m is matching rows evaluated and p is returned page size.
+   */
   async listPreventiveSchedules(
     organizationId: string,
     hotelId: string,
@@ -271,6 +375,15 @@ export class MaintenanceRepository {
     return { items, total };
   }
 
+  /**
+   * Returns active schedules due on or before a UTC cutoff timestamp.
+   *
+   * @param organizationId - Organization UUID used for scope enforcement.
+   * @param hotelId - Hotel UUID used for scope enforcement.
+   * @param untilDate - Inclusive UTC cutoff for `nextRunAt`.
+   * @param scheduleId - Optional schedule UUID to restrict results to one schedule.
+   * @returns Due active schedules sorted by earliest `nextRunAt`.
+   */
   async listDuePreventiveSchedules(
     organizationId: string,
     hotelId: string,
@@ -292,6 +405,18 @@ export class MaintenanceRepository {
     });
   }
 
+  /**
+   * Checks whether a preventive schedule already generated a request for the same UTC day.
+   *
+   * Normalizes the supplied date into `[start, end)` UTC day boundaries to keep preventive generation
+   * idempotent within an organization and hotel boundary.
+   *
+   * @param preventiveScheduleId - Preventive schedule UUID being checked.
+   * @param organizationId - Organization UUID used for scope enforcement.
+   * @param hotelId - Hotel UUID used for scope enforcement.
+   * @param date - UTC timestamp whose calendar day should be checked.
+   * @returns Existing generated request identifier when found; otherwise null.
+   */
   async findGeneratedRequestForScheduleDate(
     preventiveScheduleId: string,
     organizationId: string,
@@ -316,6 +441,14 @@ export class MaintenanceRepository {
     });
   }
 
+  /**
+   * Updates a preventive schedule by identifier using transaction context when provided.
+   *
+   * @param id - Preventive schedule UUID to update.
+   * @param data - Prisma unchecked update payload containing changed schedule fields.
+   * @param tx - Optional transaction client used when part of a wider transaction.
+   * @returns Updated preventive schedule with room and asset relations.
+   */
   async updatePreventiveSchedule(
     id: string,
     data: Prisma.PreventiveScheduleUncheckedUpdateInput,
@@ -328,6 +461,14 @@ export class MaintenanceRepository {
     });
   }
 
+  /**
+   * Retrieves an asset and its room relation inside organization and hotel scope.
+   *
+   * @param id - Asset UUID to retrieve.
+   * @param organizationId - Organization UUID used for scope enforcement.
+   * @param hotelId - Hotel UUID used for scope enforcement.
+   * @returns Scoped asset with room relation, or null when absent.
+   */
   async findAssetById(id: string, organizationId: string, hotelId: string) {
     return prisma.asset.findFirst({
       where: {
@@ -339,6 +480,14 @@ export class MaintenanceRepository {
     });
   }
 
+  /**
+   * Looks up an asset identifier by unique tag inside organization and hotel scope.
+   *
+   * @param assetTag - Asset tag expected to be unique per scope.
+   * @param organizationId - Organization UUID used for scope enforcement.
+   * @param hotelId - Hotel UUID used for scope enforcement.
+   * @returns Matching asset identifier when found, or null when the tag is unused in scope.
+   */
   async findAssetByTag(assetTag: string, organizationId: string, hotelId: string) {
     return prisma.asset.findFirst({
       where: {
@@ -352,6 +501,14 @@ export class MaintenanceRepository {
     });
   }
 
+  /**
+   * Creates an asset row scoped to organization and hotel identifiers.
+   *
+   * @param organizationId - Organization UUID assigned to the new asset.
+   * @param hotelId - Hotel UUID assigned to the new asset.
+   * @param input - Validated asset payload including identifying and lifecycle metadata.
+   * @returns Created asset with optional room relation loaded.
+   */
   async createAsset(organizationId: string, hotelId: string, input: CreateAssetInput) {
     return prisma.asset.create({
       data: {
@@ -376,6 +533,13 @@ export class MaintenanceRepository {
     });
   }
 
+  /**
+   * Applies partial asset updates by identifier.
+   *
+   * @param id - Asset UUID to update.
+   * @param data - Partial asset update payload.
+   * @returns Updated asset row with room relation loaded.
+   */
   async updateAsset(id: string, data: UpdateAssetInput) {
     return prisma.asset.update({
       where: { id },
@@ -400,6 +564,19 @@ export class MaintenanceRepository {
     });
   }
 
+  /**
+   * Lists assets for one organization and hotel with optional filters and pagination.
+   *
+   * Executes `findMany` and `count` together so callers can render a paginated page with an
+   * accurate total under the same filter set.
+   *
+   * @param organizationId - Organization UUID used for scope enforcement.
+   * @param hotelId - Hotel UUID used for scope enforcement.
+   * @param filters - Query filters for active flag, room binding, and asset category.
+   * @param pagination - Pagination controls with 1-based page and page size limit.
+   * @returns Matching asset page and total row count.
+   * @remarks Complexity: O(m + p) DB work where m is matching rows evaluated and p is returned page size.
+   */
   async listAssets(
     organizationId: string,
     hotelId: string,

@@ -28,14 +28,21 @@ const LOCALE_MAP: Record<string, string> = {
 };
 
 /**
- * Get locale string from language code
+ * Resolves a BCP-47 locale from an application language code.
+ *
+ * @param languageCode - Guest or template language code (for example `en`, `es`).
+ * @returns Locale identifier used by `Intl` formatters, defaulting to `en-US`.
  */
 function getLocale(languageCode: string): string {
   return LOCALE_MAP[languageCode.toLowerCase()] ?? 'en-US';
 }
 
 /**
- * Format a date according to locale
+ * Formats a date value into a localized long-form date string.
+ *
+ * @param date - Date instance or parseable date string.
+ * @param languageCode - Language code used to determine locale.
+ * @returns Localized date string including weekday, month, and day.
  */
 function formatDate(date: Date | string, languageCode: string): string {
   const locale = getLocale(languageCode);
@@ -50,7 +57,11 @@ function formatDate(date: Date | string, languageCode: string): string {
 }
 
 /**
- * Format a time according to locale
+ * Formats a time value into a localized hour/minute string.
+ *
+ * @param time - Date instance or `HH:mm`-style time string.
+ * @param languageCode - Language code used to determine locale.
+ * @returns Localized time string.
  */
 function formatTime(time: Date | string, languageCode: string): string {
   const locale = getLocale(languageCode);
@@ -63,7 +74,12 @@ function formatTime(time: Date | string, languageCode: string): string {
 }
 
 /**
- * Format currency amount according to locale and currency code
+ * Formats monetary values using locale-aware currency presentation.
+ *
+ * @param amount - Numeric amount or numeric string.
+ * @param currencyCode - ISO currency code such as `USD` or `EUR`.
+ * @param languageCode - Language code used to determine locale.
+ * @returns Localized currency string.
  */
 function formatCurrency(
   amount: number | string,
@@ -80,7 +96,10 @@ function formatCurrency(
 }
 
 /**
- * Escape HTML entities for EMAIL channel (prevents XSS)
+ * Escapes HTML entities to keep rendered email bodies safe from HTML injection.
+ *
+ * @param text - Raw text value from template context.
+ * @returns HTML-escaped text safe for interpolation into email HTML.
  */
 function escapeHtml(text: string): string {
   const htmlEntities: Record<string, string> = {
@@ -95,7 +114,10 @@ function escapeHtml(text: string): string {
 }
 
 /**
- * Build a flat key-value map from nested context
+ * Flattens nested template context into dot-notation keys.
+ *
+ * @param context - Nested context used by communication templates.
+ * @returns Flat key/value map consumed by variable replacement.
  */
 function flattenContext(context: TemplateContext): Record<string, string> {
   const flat: Record<string, string> = {};
@@ -148,15 +170,16 @@ const VARIABLE_PATTERN = /\{\{([a-zA-Z][a-zA-Z0-9_.]*)\}\}/g;
 /**
  * Render a template string by replacing {{variable}} tokens with context values.
  *
- * Rules:
- * - Unknown variables render as empty string (no error thrown)
- * - HTML entities are escaped for EMAIL channel
- * - Values are substituted as-is; no automatic date or currency formatting is applied
+ * Rendering rules:
+ * - Unknown variables resolve to an empty string.
+ * - EMAIL channel output escapes HTML entities to reduce XSS risk.
+ * - Replacement uses preformatted context values; no implicit date/currency conversion occurs.
  *
- * @param template The template string with {{variable}} placeholders
- * @param context The context object with values
- * @param options Rendering options
- * @returns The rendered string
+ * @param template - Template body containing `{{variable}}` placeholders.
+ * @param context - Nested context payload for variable resolution.
+ * @param options - Rendering options including channel behavior.
+ * @returns Fully rendered string safe for outbound provider payloads.
+ * @remarks Complexity: O(T + V) where T is template length and V is variable count.
  */
 export function render(
   template: string,
@@ -204,14 +227,16 @@ type PreviewContextInput = {
 };
 
 /**
- * Preview a template with sample or provided context
- * Does NOT create a Communication record
+ * Renders a template preview using sample context merged with caller overrides.
  *
- * @param subjectTemplate The subject template (or null for non-email)
- * @param bodyTemplate The body template
- * @param context Optional context to use (sample data used if not provided)
- * @param options Rendering options
- * @returns The rendered subject and body
+ * This helper is side-effect free: it never writes communication records or
+ * dispatches provider calls.
+ *
+ * @param subjectTemplate - Subject template, or `null` for channels without subject.
+ * @param bodyTemplate - Body template to render.
+ * @param context - Optional context overrides merged into sample data.
+ * @param options - Rendering options for channel/language behavior.
+ * @returns Rendered subject/body preview payload.
  */
 export function preview(
   subjectTemplate: string | null,
@@ -240,7 +265,10 @@ export function preview(
 }
 
 /**
- * Build a sample context for template preview
+ * Builds deterministic sample template context with optional field overrides.
+ *
+ * @param overrides - Optional partial context values overriding built-in defaults.
+ * @returns Complete template context suitable for previews.
  */
 export function buildSampleContext(overrides?: PreviewContextInput): TemplateContext {
   const guestOverrides = overrides?.guest;
@@ -290,7 +318,13 @@ export function buildSampleContext(overrides?: PreviewContextInput): TemplateCon
 }
 
 /**
- * Build context from actual domain objects
+ * Builds template context from live guest/reservation/room/hotel domain objects.
+ *
+ * The mapper applies locale-aware date/time/currency formatting and assembles
+ * composed values (full name, full address) expected by default templates.
+ *
+ * @param data - Domain data used to populate template placeholders.
+ * @returns Normalized template context ready for rendering.
  */
 export function buildContextFromData(data: {
   guest: {
@@ -380,8 +414,10 @@ export function buildContextFromData(data: {
 }
 
 /**
- * Extract all variable names used in a template
- * Useful for validation and documentation
+ * Extracts unique variable names referenced in a template string.
+ *
+ * @param template - Template string containing `{{...}}` placeholders.
+ * @returns Array of unique variable paths in encounter order.
  */
 export function extractVariables(template: string): string[] {
   const variables: Set<string> = new Set();
@@ -402,8 +438,10 @@ export function extractVariables(template: string): string[] {
 }
 
 /**
- * Validate that all variables in a template are known
- * Returns list of unknown variables (empty if all valid)
+ * Validates template variables against the supported placeholder whitelist.
+ *
+ * @param template - Template string to validate.
+ * @returns Unknown variable names; empty array when template is fully valid.
  */
 export function validateVariables(template: string): string[] {
   const knownVariables = new Set([

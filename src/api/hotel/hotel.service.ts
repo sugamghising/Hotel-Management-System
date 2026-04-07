@@ -22,6 +22,13 @@ import type {
 export class HotelService {
   private hotelRepo: HotelRepository;
   private orgService: OrganizationService;
+
+  /**
+   * Creates a hotel service with repository and organization-service dependencies.
+   *
+   * @param hotelRepo - Repository used for hotel persistence.
+   * @param orgService - Service used for organization-level validations.
+   */
   constructor(
     hotelRepo: HotelRepository = hotelRepository,
     orgService: OrganizationService = organizationService
@@ -34,6 +41,19 @@ export class HotelService {
   // CREATE
   // ============================================================================
 
+  /**
+   * Creates a hotel inside an organization after validating scope and uniqueness.
+   *
+   * Validates organization access, enforces organization-scoped hotel code
+   * uniqueness, normalizes defaults (code casing, check-in/out times, locale
+   * values), and persists the hotel as an active property.
+   *
+   * @param organizationId - Organization UUID that owns the hotel.
+   * @param input - Validated hotel creation payload.
+   * @param createdBy - Optional user UUID stored in audit fields.
+   * @returns API-facing hotel response.
+   * @throws {ConflictError} Thrown when hotel code already exists in the organization.
+   */
   async create(
     organizationId: string,
     input: CreateHotelInput,
@@ -111,6 +131,16 @@ export class HotelService {
   // READ
   // ============================================================================
 
+  /**
+   * Retrieves a hotel by identifier with optional organization-scope and stats checks.
+   *
+   * @param id - Hotel UUID.
+   * @param organizationId - Optional organization UUID for access enforcement.
+   * @param includeStats - When `true`, enriches response with computed hotel stats.
+   * @returns Hotel response payload.
+   * @throws {NotFoundError} Thrown when hotel does not exist or is soft-deleted.
+   * @throws {ForbiddenError} Thrown when the hotel belongs to a different organization.
+   */
   async findById(
     id: string,
     organizationId?: string,
@@ -134,6 +164,14 @@ export class HotelService {
     return this.mapToResponse(hotel, stats);
   }
 
+  /**
+   * Lists hotels for an organization with filter and pagination support.
+   *
+   * @param organizationId - Organization UUID scope.
+   * @param filters - Optional hotel filters.
+   * @param pagination - Page and page-size settings.
+   * @returns Hotel list with pagination metadata.
+   */
   async findByOrganization(
     organizationId: string,
     filters: HotelQueryFilters = {},
@@ -170,6 +208,21 @@ export class HotelService {
   // UPDATE
   // ============================================================================
 
+  /**
+   * Updates mutable hotel fields while preserving organization ownership rules.
+   *
+   * Performs existence and ownership checks, builds a Prisma update payload from
+   * defined inputs only, converts check-in/check-out time strings to UTC dates,
+   * and persists only intended field changes.
+   *
+   * @param id - Hotel UUID to update.
+   * @param organizationId - Organization UUID scope for access control.
+   * @param input - Partial hotel update payload.
+   * @param updatedBy - Optional user UUID for audit tracking.
+   * @returns Updated hotel response.
+   * @throws {NotFoundError} Thrown when hotel does not exist.
+   * @throws {ForbiddenError} Thrown when hotel is outside organization scope.
+   */
   async update(
     id: string,
     organizationId: string,
@@ -257,6 +310,17 @@ export class HotelService {
   // DELETE
   // ============================================================================
 
+  /**
+   * Soft-deletes a hotel after reservation and ownership validations.
+   *
+   * @param id - Hotel UUID to delete.
+   * @param organizationId - Organization UUID scope.
+   * @param deletedBy - Optional user UUID stored in delete logs.
+   * @returns Resolves when deletion completes.
+   * @throws {NotFoundError} Thrown when hotel does not exist.
+   * @throws {ForbiddenError} Thrown when organization scope is invalid.
+   * @throws {BadRequestError} Thrown when active reservations still exist.
+   */
   async delete(id: string, organizationId: string, deletedBy?: string): Promise<void> {
     const hotel = await this.hotelRepo.findById(id);
 
@@ -289,11 +353,26 @@ export class HotelService {
   // DASHBOARD & STATS
   // ============================================================================
 
+  /**
+   * Builds hotel dashboard data for the current UTC day.
+   *
+   * Combines hotel metadata, same-day reservation stats, room-status counts,
+   * occupancy percentage, and operational alerts (dirty rooms, out-of-order
+   * rooms, overdue checkouts) into one response payload.
+   *
+   * @param hotelId - Hotel UUID.
+   * @param organizationId - Organization UUID scope.
+   * @returns Aggregated dashboard payload.
+   * @throws {NotFoundError} Thrown when hotel access validation fails.
+   * @remarks Complexity: O(s + t) where `s` is status bucket count and `t` is alert checks.
+   */
   async getDashboard(hotelId: string, organizationId: string): Promise<HotelDashboardData> {
     const hotel = await this.findById(hotelId, organizationId, true);
 
     const today = new Date();
-    const utcToday = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
+    const utcToday = new Date(
+      Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate())
+    );
 
     const [todayStats, roomStatus] = await Promise.all([
       this.hotelRepo.getTodayStats(hotelId, utcToday),
@@ -351,6 +430,15 @@ export class HotelService {
     };
   }
 
+  /**
+   * Returns room inventory summary grouped by status and room type.
+   *
+   * @param hotelId - Hotel UUID.
+   * @param organizationId - Organization UUID scope.
+   * @returns Room status totals and per-room-type availability metrics.
+   * @throws {NotFoundError} Thrown when hotel access validation fails.
+   * @remarks Complexity: O(s + r) where `s` is status bucket count and `r` is room-type rows.
+   */
   async getRoomStatusSummary(hotelId: string, organizationId: string): Promise<RoomStatusSummary> {
     await this.verifyAccess(hotelId, organizationId);
 
@@ -390,6 +478,22 @@ export class HotelService {
   // CLONE
   // ============================================================================
 
+  /**
+   * Clones an existing hotel into the same or another organization.
+   *
+   * Verifies source visibility, enforces target code uniqueness, and delegates
+   * transactional cloning of hotel profile and optional related artifacts to the
+   * repository layer.
+   *
+   * @param sourceHotelId - Source hotel UUID.
+   * @param organizationId - Requesting organization UUID.
+   * @param input - Clone configuration including target identifiers and copy flags.
+   * @param createdBy - Optional user UUID used for audit logs.
+   * @returns Cloned hotel response.
+   * @throws {NotFoundError} Thrown when source hotel is missing.
+   * @throws {ForbiddenError} Thrown when source access is not allowed.
+   * @throws {ConflictError} Thrown when target hotel code already exists.
+   */
   async clone(
     sourceHotelId: string,
     organizationId: string,
@@ -450,6 +554,17 @@ export class HotelService {
   // AVAILABILITY
   // ============================================================================
 
+  /**
+   * Returns availability calendar rows for a hotel and date range.
+   *
+   * @param hotelId - Hotel UUID.
+   * @param organizationId - Organization UUID scope.
+   * @param startDate - Inclusive range start.
+   * @param endDate - Inclusive range end.
+   * @param roomTypeId - Optional room-type UUID filter.
+   * @returns Availability entries normalized for API output.
+   * @throws {NotFoundError} Thrown when hotel access validation fails.
+   */
   async getAvailabilityCalendar(
     hotelId: string,
     organizationId: string,
@@ -508,6 +623,15 @@ export class HotelService {
   // SETTINGS MANAGEMENT
   // ============================================================================
 
+  /**
+   * Retrieves hotel operational settings, policies, and amenities.
+   *
+   * @param hotelId - Hotel UUID.
+   * @param organizationId - Organization UUID scope.
+   * @returns Settings object grouped into operational, policies, and amenities sections.
+   * @throws {NotFoundError} Thrown when hotel does not exist.
+   * @throws {ForbiddenError} Thrown when hotel is outside organization scope.
+   */
   async getSettings(hotelId: string, organizationId: string): Promise<Record<string, unknown>> {
     const hotel = await this.hotelRepo.findById(hotelId);
     if (!hotel || hotel.deletedAt) {
@@ -524,6 +648,20 @@ export class HotelService {
     };
   }
 
+  /**
+   * Merges and updates hotel settings with organization-scope validation.
+   *
+   * Existing operational settings and policies are shallow-merged with
+   * incoming values; amenities are fully replaced when provided.
+   *
+   * @param hotelId - Hotel UUID.
+   * @param organizationId - Organization UUID scope.
+   * @param settings - Partial settings payload.
+   * @param updatedBy - Optional user UUID for audit tracking.
+   * @returns Resolves when settings update is persisted.
+   * @throws {NotFoundError} Thrown when hotel does not exist.
+   * @throws {ForbiddenError} Thrown when hotel is outside organization scope.
+   */
   async updateSettings(
     hotelId: string,
     organizationId: string,
@@ -569,6 +707,14 @@ export class HotelService {
   // PRIVATE HELPERS
   // ============================================================================
 
+  /**
+   * Ensures a hotel exists within an organization scope.
+   *
+   * @param hotelId - Hotel UUID to validate.
+   * @param organizationId - Organization UUID scope.
+   * @returns Resolves when hotel access is valid.
+   * @throws {NotFoundError} Thrown when hotel is missing from the organization.
+   */
   private async verifyAccess(hotelId: string, organizationId: string): Promise<void> {
     const exists = await this.hotelRepo.existsInOrganization(organizationId, hotelId);
     if (!exists) {
@@ -577,6 +723,16 @@ export class HotelService {
     }
   }
 
+  /**
+   * Computes aggregate hotel statistics used in detailed hotel responses.
+   *
+   * Combines room-type/room counters with same-day reservation metrics and
+   * derives occupancy percentage from in-house guests against room capacity.
+   *
+   * @param hotelId - Hotel UUID.
+   * @returns Aggregated hotel stats.
+   * @remarks Complexity: O(1) application work with five parallel repository calls.
+   */
   private async getHotelStats(hotelId: string): Promise<HotelStats> {
     const now = new Date();
     const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
@@ -609,42 +765,93 @@ export class HotelService {
     };
   }
 
+  /**
+   * Returns room-type count for a hotel.
+   *
+   * @param _hotelId - Hotel UUID.
+   * @returns Placeholder value until room-type repository integration is implemented.
+   */
   private async countRoomTypes(_hotelId: string): Promise<number> {
     // Would use roomType repository in full implementation
     return 0; // Placeholder
   }
 
+  /**
+   * Returns room count for a hotel.
+   *
+   * @param _hotelId - Hotel UUID.
+   * @returns Placeholder value until room repository integration is implemented.
+   */
   private async countRooms(_hotelId: string): Promise<number> {
     // Would use room repository in full implementation
     return 0; // Placeholder
   }
 
+  /**
+   * Returns room count for selected statuses.
+   *
+   * @param _hotelId - Hotel UUID.
+   * @param _statuses - Status codes to include.
+   * @returns Placeholder value until room repository integration is implemented.
+   */
   private async countRoomsByStatus(_hotelId: string, _statuses: string[]): Promise<number> {
     // Would use room repository in full implementation
     return 0; // Placeholder
   }
 
+  /**
+   * Returns active reservation count for a hotel.
+   *
+   * @param _hotelId - Hotel UUID.
+   * @returns Never resolves successfully in current implementation.
+   * @throws {Error} Always thrown because reservation counting is not yet implemented.
+   */
   private async countActiveReservations(_hotelId: string): Promise<number> {
     // Would use reservation repository in full implementation
     throw new Error('countActiveReservations is not implemented');
   }
 
+  /**
+   * Returns overdue checkout count for a hotel.
+   *
+   * @param _hotelId - Hotel UUID.
+   * @returns Placeholder value until reservation repository integration is implemented.
+   */
   private async countOverdueCheckouts(_hotelId: string): Promise<number> {
     // Would use reservation repository in full implementation
     return 0; // Placeholder
   }
 
+  /**
+   * Converts an `HH:mm` time string to a UTC date anchored at 1970-01-01.
+   *
+   * @param timeStr - Time string in 24-hour `HH:mm` format.
+   * @returns UTC date containing the parsed time components.
+   */
   private parseTimeString(timeStr: string): Date {
     const [hours, minutes] = timeStr.split(':').map(Number);
     return new Date(Date.UTC(1970, 0, 1, hours ?? 0, minutes ?? 0, 0, 0));
   }
 
+  /**
+   * Formats a UTC date value to an `HH:mm` time string.
+   *
+   * @param date - Date containing UTC time components.
+   * @returns Zero-padded `HH:mm` string.
+   */
   private formatTimeString(date: Date): string {
     const hours = date.getUTCHours().toString().padStart(2, '0');
     const minutes = date.getUTCMinutes().toString().padStart(2, '0');
     return `${hours}:${minutes}`;
   }
 
+  /**
+   * Maps a hotel entity and optional computed stats into API response shape.
+   *
+   * @param hotel - Hotel domain entity.
+   * @param stats - Optional computed stats block.
+   * @returns Structured hotel response DTO.
+   */
   private mapToResponse(hotel: Hotel, stats?: HotelStats): HotelResponse {
     return {
       id: hotel.id,

@@ -1,8 +1,8 @@
 import { BadRequestError, ConflictError, ForbiddenError, NotFoundError, logger } from '../../core';
 import { encrypt, maskIdNumber } from '../../core/utils/crypto';
 import { Prisma } from '../../generated/prisma';
-import type { GuestStats, InHouseGuest } from './guests.dto';
 import { type HotelRepository, hotelRepository } from '../hotel';
+import type { GuestStats, InHouseGuest } from './guests.dto';
 import { type GuestsRepository, guestsRepository } from './guests.repository';
 import type {
   CreateGuestInput,
@@ -39,6 +39,13 @@ type GuestWithRelations = Prisma.GuestGetPayload<{
 export class GuestsService {
   private guestRepository: GuestsRepository;
   private hotelRepository: HotelRepository;
+
+  /**
+   * Creates a guest service with injectable repository dependencies.
+   *
+   * @param guestRepo - Guest repository implementation.
+   * @param hotelRepo - Hotel repository implementation.
+   */
   constructor(
     guestRepo: GuestsRepository = guestsRepository,
     hotelRepo: HotelRepository = hotelRepository
@@ -51,6 +58,20 @@ export class GuestsService {
   // CREATE
   // ============================================================================
 
+  /**
+   * Creates a guest profile after uniqueness checks and field normalization.
+   *
+   * Side effects:
+   * - Reads existing guests by email for conflict checks.
+   * - Encrypts sensitive ID document numbers before persistence.
+   * - Inserts a guest row with initialized stay-history counters.
+   *
+   * @param organizationId - Organization scope ID.
+   * @param input - Guest creation payload.
+   * @param _createdBy - Optional actor ID (currently unused).
+   * @returns Created guest response.
+   * @throws {ConflictError} When email already exists in organization scope.
+   */
   async create(
     organizationId: string,
     input: CreateGuestInput,
@@ -134,6 +155,16 @@ export class GuestsService {
   // READ
   // ============================================================================
 
+  /**
+   * Retrieves a guest by ID with optional reservation/communication history.
+   *
+   * @param id - Guest ID.
+   * @param organizationId - Organization scope ID.
+   * @param includeHistory - Whether to include historical relationship data.
+   * @returns Guest response (with history when requested).
+   * @throws {NotFoundError} When guest is missing or soft deleted.
+   * @throws {ForbiddenError} When guest is outside organization scope.
+   */
   async findById(
     id: string,
     organizationId: string,
@@ -161,6 +192,14 @@ export class GuestsService {
     return this.mapToResponse(guest);
   }
 
+  /**
+   * Lists organization guests with filtering and pagination metadata.
+   *
+   * @param organizationId - Organization scope ID.
+   * @param filters - Optional query filters.
+   * @param pagination - Page and limit values.
+   * @returns Guest summaries with pagination details.
+   */
   async findByOrganization(
     organizationId: string,
     filters: GuestQueryFilters = {},
@@ -200,6 +239,15 @@ export class GuestsService {
   // UPDATE
   // ============================================================================
 
+  /**
+   * Updates mutable guest fields with organization scoping and email uniqueness checks.
+   *
+   * @param id - Guest ID.
+   * @param organizationId - Organization scope ID.
+   * @param input - Partial guest update payload.
+   * @param _updatedBy - Optional actor ID (currently unused).
+   * @returns Updated guest response.
+   */
   async update(
     id: string,
     organizationId: string,
@@ -262,6 +310,16 @@ export class GuestsService {
     return this.mapToResponse(updated);
   }
 
+  /**
+   * Updates VIP status and optional reason for a guest.
+   *
+   * @param id - Guest ID.
+   * @param organizationId - Organization scope ID.
+   * @param vipStatus - New VIP status value.
+   * @param vipReason - Optional VIP reason text.
+   * @param _updatedBy - Optional actor ID (currently unused).
+   * @returns Updated guest response.
+   */
   async updateVIP(
     id: string,
     organizationId: string,
@@ -297,6 +355,15 @@ export class GuestsService {
   // DELETE
   // ============================================================================
 
+  /**
+   * Soft deletes a guest after ensuring no active/future reservations exist.
+   *
+   * @param id - Guest ID.
+   * @param organizationId - Organization scope ID.
+   * @param deletedBy - Optional actor ID for audit logs.
+   * @returns Resolves when soft deletion completes.
+   * @throws {BadRequestError} When guest has active/future reservations.
+   */
   async delete(id: string, organizationId: string, deletedBy?: string): Promise<void> {
     const guest = await this.guestRepository.findById(id);
 
@@ -329,6 +396,13 @@ export class GuestsService {
   // DUPLICATE DETECTION & MERGE
   // ============================================================================
 
+  /**
+   * Finds potential duplicate guests for the provided identity hints.
+   *
+   * @param organizationId - Organization scope ID.
+   * @param input - Duplicate detection payload.
+   * @returns Ranked duplicate candidates.
+   */
   async findDuplicates(
     organizationId: string,
     input: DuplicateDetectionInput
@@ -336,6 +410,14 @@ export class GuestsService {
     return this.guestRepository.findPotentialDuplicates(organizationId, input);
   }
 
+  /**
+   * Merges source guests into a target guest record.
+   *
+   * @param organizationId - Organization scope ID.
+   * @param input - Merge strategy and guest IDs.
+   * @param performedBy - Optional actor ID for audit logging.
+   * @returns Merged target guest response.
+   */
   async merge(
     organizationId: string,
     input: MergeGuestsInput,
@@ -382,6 +464,13 @@ export class GuestsService {
   // STAY HISTORY
   // ============================================================================
 
+  /**
+   * Returns stay history for a scoped guest.
+   *
+   * @param guestId - Guest ID.
+   * @param organizationId - Organization scope ID.
+   * @returns Guest stay history records.
+   */
   async getStayHistory(guestId: string, organizationId: string): Promise<GuestStayHistory[]> {
     const guest = await this.guestRepository.findById(guestId);
 
@@ -400,6 +489,14 @@ export class GuestsService {
   // IN-HOUSE GUESTS
   // ============================================================================
 
+  /**
+   * Returns in-house guests for a hotel and business date.
+   *
+   * @param hotelId - Hotel ID.
+   * @param organizationId - Organization scope ID.
+   * @param businessDate - Optional business date (defaults to today).
+   * @returns In-house guest dashboard rows with folio/payment totals.
+   */
   async getInHouseGuests(
     hotelId: string,
     organizationId: string,
@@ -449,6 +546,12 @@ export class GuestsService {
   // STATISTICS
   // ============================================================================
 
+  /**
+   * Retrieves aggregate guest statistics for an organization.
+   *
+   * @param organizationId - Organization scope ID.
+   * @returns Guest statistics response.
+   */
   async getStats(organizationId: string): Promise<GuestStats> {
     const stats = await this.guestRepository.getStats(organizationId);
     return {
@@ -463,6 +566,12 @@ export class GuestsService {
   // PRIVATE HELPERS
   // ============================================================================
 
+  /**
+   * Maps guest persistence model to API response, including masked ID information.
+   *
+   * @param guest - Guest persistence entity.
+   * @returns Guest response payload.
+   */
   private async mapToResponse(guest: Guest): Promise<GuestResponse> {
     // Decrypt ID number for display (masked)
     let maskedIdNumber: string | null = null;
@@ -559,6 +668,12 @@ export class GuestsService {
     };
   }
 
+  /**
+   * Maps guest response plus reservation and communication history collections.
+   *
+   * @param guestWithReservations - Guest entity loaded with history relations.
+   * @returns Extended guest response containing history arrays.
+   */
   private async mapToResponseWithHistory(guestWithReservations: GuestWithRelations) {
     const base = await this.mapToResponse(guestWithReservations as unknown as Guest);
 

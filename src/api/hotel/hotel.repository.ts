@@ -11,6 +11,13 @@ export class HotelRepository {
   // CRUD OPERATIONS
   // ============================================================================
 
+  /**
+   * Retrieves a hotel by identifier with optional relation includes.
+   *
+   * @param id - Hotel UUID.
+   * @param include - Optional Prisma include graph.
+   * @returns Matching hotel, or `null` when no row exists.
+   */
   async findById(id: string, include?: Prisma.HotelInclude): Promise<Hotel | null> {
     return prisma.hotel.findUnique({
       where: { id },
@@ -18,6 +25,13 @@ export class HotelRepository {
     }) as Promise<Hotel | null>;
   }
 
+  /**
+   * Retrieves a hotel by organization and hotel code.
+   *
+   * @param organizationId - Organization UUID scope.
+   * @param code - Hotel code; normalized to uppercase before lookup.
+   * @returns Matching hotel, or `null` when absent.
+   */
   async findByCode(organizationId: string, code: string): Promise<Hotel | null> {
     return prisma.hotel.findUnique({
       where: {
@@ -29,6 +43,19 @@ export class HotelRepository {
     }) as Promise<Hotel | null>;
   }
 
+  /**
+   * Lists organization hotels with optional filters and pagination.
+   *
+   * Builds a dynamic Prisma `where` object that always scopes to the
+   * organization and excludes soft-deleted rows, then fetches page data and
+   * total count in parallel.
+   *
+   * @param organizationId - Organization UUID scope.
+   * @param filters - Optional hotel filters for status, type, location, and search text.
+   * @param pagination - Optional page and limit configuration.
+   * @returns A hotel page plus total matching count.
+   * @remarks Complexity: O(p) for result mapping plus two database queries.
+   */
   async findByOrganization(
     organizationId: string,
     filters?: {
@@ -82,10 +109,23 @@ export class HotelRepository {
     return { hotels: hotels as Hotel[], total };
   }
 
+  /**
+   * Creates a hotel record.
+   *
+   * @param data - Prisma create payload for the hotel.
+   * @returns Newly created hotel.
+   */
   async create(data: HotelCreateInput): Promise<Hotel> {
     return prisma.hotel.create({ data }) as Promise<Hotel>;
   }
 
+  /**
+   * Updates a hotel by identifier.
+   *
+   * @param id - Hotel UUID to update.
+   * @param data - Partial hotel update payload.
+   * @returns Updated hotel.
+   */
   async update(id: string, data: HotelUpdateInput): Promise<Hotel> {
     return prisma.hotel.update({
       where: {
@@ -95,6 +135,12 @@ export class HotelRepository {
     }) as Promise<Hotel>;
   }
 
+  /**
+   * Soft-deletes a hotel and marks status as `'CLOSED'`.
+   *
+   * @param id - Hotel UUID to mark deleted.
+   * @returns Resolves when the update completes.
+   */
   async softDelete(id: string): Promise<void> {
     await prisma.hotel.update({
       where: { id },
@@ -110,6 +156,12 @@ export class HotelRepository {
   // CAPACITY & COUNTS
   // ============================================================================
 
+  /**
+   * Recalculates and persists total active room count for a hotel.
+   *
+   * @param hotelId - Hotel UUID to recalculate.
+   * @returns Resolves after count and update operations complete.
+   */
   async updateRoomCount(hotelId: string): Promise<void> {
     const count = await prisma.room.count({
       where: { hotelId, deletedAt: null },
@@ -121,6 +173,13 @@ export class HotelRepository {
     });
   }
 
+  /**
+   * Aggregates room counts by status for a hotel.
+   *
+   * @param hotelId - Hotel UUID scope.
+   * @returns Map where keys are room statuses and values are counts.
+   * @remarks Complexity: O(s) in number of grouped statuses returned.
+   */
   async getRoomStatusCount(hotelId: string): Promise<Record<string, number>> {
     const results = await prisma.room.groupBy({
       by: ['status'],
@@ -146,6 +205,15 @@ export class HotelRepository {
   // AVAILABILITY & INVENTORY
   // ============================================================================
 
+  /**
+   * Returns room inventory rows for a date range and optional room type.
+   *
+   * @param hotelId - Hotel UUID scope.
+   * @param startDate - Inclusive range start.
+   * @param endDate - Inclusive range end.
+   * @param roomTypeId - Optional room type UUID filter.
+   * @returns Inventory rows ordered by room type then date.
+   */
   async getAvailabilityCalendar(
     hotelId: string,
     startDate: Date,
@@ -183,6 +251,14 @@ export class HotelRepository {
   // DASHBOARD DATA
   // ============================================================================
 
+  /**
+   * Computes same-day arrivals, departures, and in-house reservation counts.
+   *
+   * @param hotelId - Hotel UUID scope.
+   * @param businessDate - Business date used for reservation cutoffs.
+   * @returns Dashboard counters for arrivals, departures, and in-house stays.
+   * @remarks Complexity: O(1) in application code with three parallel DB counts.
+   */
   async getTodayStats(
     hotelId: string,
     businessDate: Date
@@ -227,6 +303,12 @@ export class HotelRepository {
     return { arrivals, departures, inHouse };
   }
 
+  /**
+   * Returns room availability metrics grouped by room type.
+   *
+   * @param hotelId - Hotel UUID scope.
+   * @returns Raw SQL result rows containing total, available, occupied, and out-of-order counts.
+   */
   async getRoomTypeAvailability(hotelId: string): Promise<unknown[]> {
     return prisma.$queryRaw`
       SELECT 
@@ -251,6 +333,20 @@ export class HotelRepository {
   // CLONE OPERATIONS
   // ============================================================================
 
+  /**
+   * Clones a hotel into a new target hotel inside a transaction.
+   *
+   * The transaction loads source hotel data, creates a new hotel row with
+   * copied profile fields, and optionally duplicates room types. Rate-plan
+   * cloning is intentionally rejected to avoid partially supported behavior.
+   *
+   * @param sourceHotelId - Source hotel UUID to clone from.
+   * @param targetData - Target organization/code/name for the cloned hotel.
+   * @param options - Clone feature flags for room types, rate plans, and settings.
+   * @returns Newly created cloned hotel.
+   * @throws {Error} Thrown when rate-plan copying is requested or the source hotel does not exist.
+   * @remarks Complexity: O(r) in number of copied room types, inside one DB transaction.
+   */
   async cloneHotel(
     sourceHotelId: string,
     targetData: {
@@ -362,6 +458,13 @@ export class HotelRepository {
   // VALIDATION HELPERS
   // ============================================================================
 
+  /**
+   * Checks whether a non-deleted hotel belongs to an organization.
+   *
+   * @param organizationId - Organization UUID scope.
+   * @param hotelId - Hotel UUID to verify.
+   * @returns `true` when the hotel exists inside the organization.
+   */
   async existsInOrganization(organizationId: string, hotelId: string): Promise<boolean> {
     const count = await prisma.hotel.count({
       where: {
@@ -373,6 +476,12 @@ export class HotelRepository {
     return count > 0;
   }
 
+  /**
+   * Counts non-deleted hotels owned by an organization.
+   *
+   * @param organizationId - Organization UUID scope.
+   * @returns Total hotel count for the organization.
+   */
   async countByOrganization(organizationId: string): Promise<number> {
     return prisma.hotel.count({
       where: {

@@ -1,5 +1,17 @@
 import { z } from 'zod';
 
+/**
+ * Normalizes query-string style CSV input into an array for schema validation.
+ *
+ * This preprocessor keeps `undefined`, `null`, and empty-string values as
+ * `undefined` so optional filters remain unset, preserves already-materialized
+ * arrays, and splits comma-delimited strings into trimmed non-empty tokens.
+ * Any non-supported type is passed through to let Zod raise the validation error.
+ *
+ * @param value - Raw incoming value from route params/query/body.
+ * @returns An array of tokens for CSV strings, `undefined` for blank input, or
+ *   the original value when no preprocessing rule applies.
+ */
 const parseCsvArray = (value: unknown): unknown => {
   if (value === undefined || value === null || value === '') {
     return undefined;
@@ -19,6 +31,18 @@ const parseCsvArray = (value: unknown): unknown => {
   return value;
 };
 
+/**
+ * Coerces boolean-like query values before Zod type validation.
+ *
+ * The parser intentionally treats missing/blank values as `undefined` so
+ * optional query flags do not override defaults, accepts native booleans, and
+ * maps the literal strings `"true"`/`"false"` to booleans. All other values are
+ * returned unchanged so schema validation can fail explicitly.
+ *
+ * @param value - Raw incoming value from route params/query/body.
+ * @returns A normalized boolean, `undefined` for blank input, or the original
+ *   value when no safe conversion is available.
+ */
 const parseBoolean = (value: unknown): unknown => {
   if (value === undefined || value === null || value === '') {
     return undefined;
@@ -202,13 +226,10 @@ export const CloseOrderSchema = z
     autoPostToRoom: z.boolean().optional(),
     roomNumber: z.string().max(20).optional(),
   })
-  .refine(
-    (payload) => payload.paidAmount === undefined || payload.paymentMethod !== undefined,
-    {
-      message: 'paymentMethod is required when paidAmount is provided',
-      path: ['paymentMethod'],
-    }
-  );
+  .refine((payload) => payload.paidAmount === undefined || payload.paymentMethod !== undefined, {
+    message: 'paymentMethod is required when paidAmount is provided',
+    path: ['paymentMethod'],
+  });
 
 export const PostToRoomSchema = z.object({
   roomNumber: z.string().max(20).optional(),

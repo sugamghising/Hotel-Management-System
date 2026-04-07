@@ -6,6 +6,11 @@ import type { HealthStatus, ReadinessStatus } from './health.types';
 const packageVersion = '1.0.0'; // In production, you'd read this from package.json
 
 export const healthService = {
+  /**
+   * Builds a liveness snapshot for the running API process.
+   *
+   * @returns Health metadata including uptime, timestamp, version, and runtime environment.
+   */
   getHealth(): HealthStatus {
     return {
       status: 'ok',
@@ -16,6 +21,16 @@ export const healthService = {
     };
   },
 
+  /**
+   * Evaluates API readiness from database dependency health and runtime memory signals.
+   *
+   * Captures start time, checks database readiness, samples Node.js heap usage, and computes
+   * memory utilization percentage. It marks overall readiness as `'healthy'` only when the
+   * database check reports `'healthy'`, then returns diagnostics with dependency and timing data.
+   *
+   * @returns Readiness details including overall status, database diagnostics, memory metrics, and response time.
+   * @remarks Complexity: O(1) in input size; dominated by a single database health check call.
+   */
   async check(): Promise<ReadinessStatus> {
     const startTime = Date.now();
 

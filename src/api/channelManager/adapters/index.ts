@@ -18,6 +18,13 @@ export const channelAdapters: Record<string, IChannelAdapter> = {
   AIRBNB: airbnbAdapter,
 };
 
+/**
+ * Resolves a channel adapter from a raw channel code and falls back to the
+ * generic adapter when no dedicated integration is registered.
+ *
+ * @param channelCode - Raw channel code from API input or webhook payload.
+ * @returns The specialized adapter for the normalized code, or the generic stub.
+ */
 export const getAdapterByChannelCode = (channelCode: string): IChannelAdapter => {
   const normalized = channelCode.trim().toUpperCase();
   return channelAdapters[normalized] ?? genericAdapter;

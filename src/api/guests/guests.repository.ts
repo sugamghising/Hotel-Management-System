@@ -73,12 +73,24 @@ export class GuestsRepository {
   // CRUD OPERATIONS
   // ============================================================================
 
+  /**
+   * Finds a guest by primary ID.
+   *
+   * @param id - Guest ID.
+   * @returns Guest row or `null` when not found.
+   */
   async findById(id: string): Promise<Guest | null> {
     return prisma.guest.findUnique({
       where: { id },
     }) as Promise<Guest | null>;
   }
 
+  /**
+   * Finds a guest with reservation and communication history relations.
+   *
+   * @param id - Guest ID.
+   * @returns Guest with joined history relations or `null`.
+   */
   async findByIdWithReservations(id: string): Promise<GuestWithRelations | null> {
     return prisma.guest.findUnique({
       where: { id },
@@ -105,6 +117,13 @@ export class GuestsRepository {
     });
   }
 
+  /**
+   * Finds a non-deleted guest by normalized email inside an organization.
+   *
+   * @param organizationId - Organization scope ID.
+   * @param email - Guest email address.
+   * @returns Matching guest row or `null`.
+   */
   async findByEmail(organizationId: string, email: string): Promise<Guest | null> {
     return prisma.guest.findFirst({
       where: {
@@ -115,6 +134,14 @@ export class GuestsRepository {
     }) as Promise<Guest | null>;
   }
 
+  /**
+   * Searches guests by organization with optional filter and pagination criteria.
+   *
+   * @param organizationId - Organization scope ID.
+   * @param filters - Optional guest filters.
+   * @param pagination - Optional pagination settings.
+   * @returns Matching guest rows and total count.
+   */
   async findByOrganization(
     organizationId: string,
     filters?: GuestQueryFilters,
@@ -204,10 +231,23 @@ export class GuestsRepository {
     return { guests: guests as unknown as Guest[], total };
   }
 
+  /**
+   * Creates a guest row.
+   *
+   * @param data - Prisma guest create payload.
+   * @returns Persisted guest row.
+   */
   async create(data: GuestCreateInput): Promise<Guest> {
     return prisma.guest.create({ data }) as unknown as Promise<Guest>;
   }
 
+  /**
+   * Updates a guest row.
+   *
+   * @param id - Guest ID.
+   * @param data - Prisma guest update payload.
+   * @returns Updated guest row.
+   */
   async update(id: string, data: GuestUpdateInput): Promise<Guest> {
     return prisma.guest.update({
       where: { id },
@@ -215,6 +255,12 @@ export class GuestsRepository {
     }) as unknown as Promise<Guest>;
   }
 
+  /**
+   * Soft deletes a guest and clears personally identifiable contact fields.
+   *
+   * @param id - Guest ID.
+   * @returns Resolves after soft delete update completes.
+   */
   async softDelete(id: string): Promise<void> {
     await prisma.guest.update({
       where: { id },
@@ -233,6 +279,13 @@ export class GuestsRepository {
   // DUPLICATE DETECTION
   // ============================================================================
 
+  /**
+   * Finds likely duplicate guests and ranks them by heuristic match score.
+   *
+   * @param organizationId - Organization scope ID.
+   * @param input - Candidate identity/contact data and optional threshold.
+   * @returns Duplicate candidates sorted by descending match score.
+   */
   async findPotentialDuplicates(
     organizationId: string,
     input: DuplicateDetectionInput
@@ -303,6 +356,13 @@ export class GuestsRepository {
     }));
   }
 
+  /**
+   * Calculates weighted duplicate confidence score for a candidate guest.
+   *
+   * @param guest - Existing guest candidate.
+   * @param input - Incoming guest identity/contact values.
+   * @returns Score (0-100) and human-readable match reasons.
+   */
   private calculateDuplicateScore(
     guest: GuestRow,
     input: DuplicateDetectionInput
@@ -358,7 +418,20 @@ export class GuestsRepository {
     return { score: Math.min(100, score), reasons };
   }
 
+  /**
+   * Computes normalized similarity between two names.
+   *
+   * @param a - First name string.
+   * @param b - Second name string.
+   * @returns Similarity value between `0` and `1`.
+   */
   private nameSimilarity(a: string, b: string): number {
+    /**
+     * Normalizes a name string before similarity scoring.
+     *
+     * @param s - Raw name value from guest records or input payloads.
+     * @returns Lowercased and trimmed name token.
+     */
     const normalize = (s: string) => s.toLowerCase().trim();
     const na = normalize(a);
     const nb = normalize(b);
@@ -372,6 +445,13 @@ export class GuestsRepository {
     return Math.max(0, 1 - distance / maxLen);
   }
 
+  /**
+   * Computes Levenshtein edit distance between two strings.
+   *
+   * @param a - Source string.
+   * @param b - Target string.
+   * @returns Minimum number of single-character edits required.
+   */
   private levenshteinDistance(a: string, b: string): number {
     const matrix = Array.from({ length: b.length + 1 }, (_, i) =>
       Array.from({ length: a.length + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0))
@@ -396,6 +476,19 @@ export class GuestsRepository {
   // MERGE OPERATIONS
   // ============================================================================
 
+  /**
+   * Merges source guests into a target guest inside one DB transaction.
+   *
+   * Side effects:
+   * - Updates target profile and aggregate stay metrics.
+   * - Reassigns reservations and communications from sources to target.
+   * - Soft deletes source guest rows and clears contact PII.
+   *
+   * @param targetId - Guest ID that remains after merge.
+   * @param sourceIds - Guest IDs merged into target.
+   * @param strategy - Field precedence strategy for profile data.
+   * @returns Updated target guest row.
+   */
   async mergeGuests(
     targetId: string,
     sourceIds: string[],
@@ -470,6 +563,14 @@ export class GuestsRepository {
     });
   }
 
+  /**
+   * Produces merged guest profile fields according to merge strategy.
+   *
+   * @param target - Target guest row.
+   * @param sources - Source guest rows.
+   * @param strategy - Field precedence strategy options.
+   * @returns Partial guest fields to apply to target.
+   */
   private mergeGuestData(
     target: GuestRow,
     sources: GuestRow[],
@@ -530,6 +631,12 @@ export class GuestsRepository {
   // STAY HISTORY
   // ============================================================================
 
+  /**
+   * Returns non-cancelled stay history entries for a guest.
+   *
+   * @param guestId - Guest ID.
+   * @returns Chronological stay history rows enriched with hotel/room/rate details.
+   */
   async getStayHistory(guestId: string): Promise<GuestStayHistory[]> {
     const reservations = await prisma.reservation.findMany({
       where: {
@@ -571,6 +678,13 @@ export class GuestsRepository {
   // IN-HOUSE GUESTS
   // ============================================================================
 
+  /**
+   * Lists checked-in reservations active on the supplied business date.
+   *
+   * @param hotelId - Hotel ID.
+   * @param businessDate - Business date used for in-house filtering.
+   * @returns Reservation rows with guest, room, folio, and payment relations.
+   */
   async getInHouseGuests(hotelId: string, businessDate: Date): Promise<InHouseReservation[]> {
     return prisma.reservation.findMany({
       where: {
@@ -603,6 +717,12 @@ export class GuestsRepository {
   // STATISTICS & ANALYTICS
   // ============================================================================
 
+  /**
+   * Computes guest portfolio statistics for an organization.
+   *
+   * @param organizationId - Organization scope ID.
+   * @returns Aggregated guest metrics and breakdowns.
+   */
   async getStats(organizationId: string): Promise<GuestStats> {
     const [totalGuests, byVIPStatus, byGuestType, byNationality, topCompanies, returningGuests] =
       await Promise.all([
@@ -682,6 +802,13 @@ export class GuestsRepository {
   // HISTORY UPDATE (called by reservation lifecycle)
   // ============================================================================
 
+  /**
+   * Updates aggregated stay metrics after reservation lifecycle completion.
+   *
+   * @param guestId - Guest ID.
+   * @param reservationData - Reservation totals contributing to history metrics.
+   * @returns Resolves after guest history counters are updated.
+   */
   async updateHistoryFromReservation(
     guestId: string,
     reservationData: {
@@ -720,6 +847,13 @@ export class GuestsRepository {
   // VALIDATION
   // ============================================================================
 
+  /**
+   * Checks whether a guest exists in an organization and is not soft deleted.
+   *
+   * @param organizationId - Organization scope ID.
+   * @param guestId - Guest ID.
+   * @returns `true` when guest exists and is active.
+   */
   async existsInOrganization(organizationId: string, guestId: string): Promise<boolean> {
     const count = await prisma.guest.count({
       where: {
@@ -731,6 +865,12 @@ export class GuestsRepository {
     return count > 0;
   }
 
+  /**
+   * Checks whether a guest has active/future reservations that block deletion.
+   *
+   * @param guestId - Guest ID.
+   * @returns `true` when active reservation rows exist.
+   */
   async hasActiveReservations(guestId: string): Promise<boolean> {
     const count = await prisma.reservation.count({
       where: {
@@ -743,6 +883,12 @@ export class GuestsRepository {
     return count > 0;
   }
 
+  /**
+   * Returns blacklist state for a guest.
+   *
+   * @param _guestId - Guest ID.
+   * @returns Placeholder blacklist result in current implementation.
+   */
   async isBlacklisted(_guestId: string): Promise<{ blacklisted: boolean; reason: string | null }> {
     // Would check blacklist table in full implementation
     return { blacklisted: false, reason: null };

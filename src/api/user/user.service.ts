@@ -13,6 +13,11 @@ import type {
   UserWithRoles,
 } from './user.types';
 
+/**
+ * Generates a random temporary password using an ambiguity-safe character set.
+ *
+ * @returns A 12-character password suitable for first-login credential delivery.
+ */
 export function generateTemporaryPassword(): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
   let password = '';
@@ -26,6 +31,12 @@ export class UserService {
   private userRepo: UserRepository;
   private orgService: OrganizationService;
 
+  /**
+   * Creates a user service with repository and organization-service dependencies.
+   *
+   * @param userRepo - Repository used for user persistence operations.
+   * @param orgService - Service used for organization-level validations.
+   */
   constructor(
     userRepo: UserRepository = userRepository,
     orgService: OrganizationService = organizationService
@@ -38,6 +49,22 @@ export class UserService {
   // USER CRUD
   // ============================================================================
 
+  /**
+   * Creates an organization-scoped user and returns the generated temporary password.
+   *
+   * The method validates organization user limits, enforces email uniqueness,
+   * verifies optional manager existence, creates a random temporary password,
+   * persists the user with secure password hash, and re-reads the user with
+   * role relations for API responses.
+   *
+   * @param organizationId - Organization UUID that will own the user.
+   * @param createdByUserId - User UUID that initiated creation.
+   * @param input - Validated user creation payload.
+   * @returns Created user with relations plus plaintext temporary password.
+   * @throws {BadRequestError} Thrown when organization user limits are exceeded.
+   * @throws {ConflictError} Thrown when email already exists in the organization.
+   * @throws {NotFoundError} Thrown when referenced manager is missing or post-create read fails.
+   */
   async createUser(
     organizationId: string,
     createdByUserId: string,
@@ -117,6 +144,14 @@ export class UserService {
     };
   }
 
+  /**
+   * Lists organization users using optional search and attribute filters.
+   *
+   * @param organizationId - Organization UUID scope.
+   * @param filters - Filter and pagination options.
+   * @returns Paginated user list with total count.
+   * @remarks Complexity: O(p) in page size with two parallel repository queries.
+   */
   async findAll(organizationId: string, filters: UserFilters): Promise<UserListResult> {
     const where: Prisma.UserWhereInput = {
       organizationId,
@@ -160,6 +195,13 @@ export class UserService {
     return { data, total };
   }
 
+  /**
+   * Retrieves a single non-deleted user by identifier.
+   *
+   * @param id - User UUID.
+   * @returns User entity cast to `UserWithRoles`.
+   * @throws {NotFoundError} Thrown when the user does not exist or is soft-deleted.
+   */
   async findById(id: string): Promise<UserWithRoles> {
     const user = await this.userRepo.findById(id);
     if (!user || user.deletedAt) {
@@ -169,6 +211,20 @@ export class UserService {
     return user as UserWithRoles;
   }
 
+  /**
+   * Updates mutable user fields while enforcing organization and manager constraints.
+   *
+   * Verifies user ownership, validates manager reassignment rules (no self-manager
+   * and no reporting cycles), applies only defined fields, and returns the
+   * refreshed user with role relations.
+   *
+   * @param id - User UUID to update.
+   * @param organizationId - Organization UUID the user must belong to.
+   * @param input - Partial user update payload.
+   * @returns Updated user with role relations.
+   * @throws {NotFoundError} Thrown when user or new manager is not found.
+   * @throws {BadRequestError} Thrown when update would create invalid manager hierarchy.
+   */
   async updateUser(
     id: string,
     organizationId: string,
@@ -238,6 +294,16 @@ export class UserService {
     return updated;
   }
 
+  /**
+   * Soft-deletes a user after ensuring organizational ownership and no subordinates.
+   *
+   * @param id - User UUID to delete.
+   * @param organizationId - Organization UUID scope.
+   * @returns Resolves when soft deletion completes.
+   * @throws {NotFoundError} Thrown when the user does not exist.
+   * @throws {BadRequestError} Thrown when the user is outside the organization scope.
+   * @throws {ConflictError} Thrown when the user still has subordinate users.
+   */
   async deleteUser(id: string, organizationId: string): Promise<void> {
     const user = await this.userRepo.findById(id);
     if (!user || user.deletedAt) {
@@ -268,6 +334,17 @@ export class UserService {
   // ROLE MANAGEMENT
   // ============================================================================
 
+  /**
+   * Assigns a role to an organization user with optional hotel scope and expiry.
+   *
+   * @param userId - Target user UUID.
+   * @param organizationId - Organization UUID scope.
+   * @param assignedBy - User UUID performing the assignment.
+   * @param input - Role assignment payload.
+   * @returns Resolves when assignment is created.
+   * @throws {NotFoundError} Thrown when target user is missing.
+   * @throws {BadRequestError} Thrown when user is outside the organization scope.
+   */
   async assignRole(
     userId: string,
     organizationId: string,
@@ -303,6 +380,13 @@ export class UserService {
     });
   }
 
+  /**
+   * Removes a user-role assignment.
+   *
+   * @param roleAssignmentId - User-role assignment UUID.
+   * @param _organizationId - Reserved organization scope parameter.
+   * @returns Resolves when the assignment is removed.
+   */
   async removeRole(roleAssignmentId: string, _organizationId: string): Promise<void> {
     // Verify the assignment belongs to this organization
     // Would need to fetch the assignment first
@@ -316,6 +400,13 @@ export class UserService {
   // PROFILE & PERMISSIONS
   // ============================================================================
 
+  /**
+   * Builds a full user profile response including roles, manager, and permissions.
+   *
+   * @param id - User UUID.
+   * @returns User profile DTO enriched with permission codes.
+   * @throws {NotFoundError} Thrown when the user cannot be found.
+   */
   async getUserProfile(id: string): Promise<UserProfile> {
     const user = await this.userRepo.findWithRoles(id);
     if (!user || user.deletedAt) {
@@ -356,10 +447,22 @@ export class UserService {
     };
   }
 
+  /**
+   * Lists distinct department values used by organization users.
+   *
+   * @param organizationId - Organization UUID scope.
+   * @returns Sorted department names.
+   */
   async getDepartments(organizationId: string): Promise<string[]> {
     return this.userRepo.getDepartments(organizationId);
   }
 
+  /**
+   * Lists distinct job titles used by organization users.
+   *
+   * @param organizationId - Organization UUID scope.
+   * @returns Sorted job title names.
+   */
   async getJobTitles(organizationId: string): Promise<string[]> {
     return this.userRepo.getJobTitles(organizationId);
   }
@@ -368,10 +471,26 @@ export class UserService {
   // PRIVATE HELPERS
   // ============================================================================
 
+  /**
+   * Generates a temporary password using the module-level password generator.
+   *
+   * @returns New temporary password string.
+   */
   private generateTemporaryPassword(): string {
     return generateTemporaryPassword();
   }
 
+  /**
+   * Detects whether a proposed manager assignment creates a reporting cycle.
+   *
+   * Traverses upward through manager links from the proposed manager to ensure
+   * the target user is not encountered in the ancestor chain.
+   *
+   * @param userId - User UUID being reassigned.
+   * @param newManagerId - Proposed manager UUID.
+   * @returns `true` when assigning the manager would create a cycle.
+   * @remarks Complexity: O(h) in hierarchy depth from `newManagerId`.
+   */
   private async checkManagerCycle(userId: string, newManagerId: string): Promise<boolean> {
     let currentId: string | null = newManagerId;
     const visited = new Set<string>();

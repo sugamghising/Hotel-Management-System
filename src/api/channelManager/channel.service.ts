@@ -43,18 +43,37 @@ import type {
 
 const CHANNEL_EVENT_ACTOR = 'SYSTEM';
 
+/**
+ * Returns a date shifted by a whole number of days.
+ *
+ * @param date - Base date.
+ * @param days - Number of days to add (can be negative).
+ * @returns New `Date` instance offset from the input date.
+ */
 const addDays = (date: Date, days: number): Date => {
   const next = new Date(date);
   next.setDate(next.getDate() + days);
   return next;
 };
 
+/**
+ * Normalizes a timestamp to start-of-day in local runtime time.
+ *
+ * @param value - Date-time value.
+ * @returns Date with hours/minutes/seconds/millis set to `00:00:00.000`.
+ */
 const toDateOnly = (value: Date): Date => {
   const d = new Date(value);
   d.setHours(0, 0, 0, 0);
   return d;
 };
 
+/**
+ * Converts unknown errors into JSON-safe metadata for sync log persistence.
+ *
+ * @param error - Error thrown by mapping, repository, or adapter calls.
+ * @returns JSON object suitable for Prisma JSON columns.
+ */
 const asErrorDetails = (error: unknown): Prisma.InputJsonValue => {
   if (error instanceof Error) {
     return {
@@ -68,6 +87,12 @@ const asErrorDetails = (error: unknown): Prisma.InputJsonValue => {
   };
 };
 
+/**
+ * Normalizes unknown payload input to a plain object.
+ *
+ * @param value - Raw webhook body or nested payload fragment.
+ * @returns Record view of input, or empty object when not object-like.
+ */
 const asObject = (value: unknown): Record<string, unknown> => {
   if (typeof value === 'object' && value !== null) {
     return value as Record<string, unknown>;
@@ -75,6 +100,12 @@ const asObject = (value: unknown): Record<string, unknown> => {
   return {};
 };
 
+/**
+ * Returns a trimmed non-empty string, otherwise `undefined`.
+ *
+ * @param value - Raw scalar value.
+ * @returns Trimmed string when present.
+ */
 const asString = (value: unknown): string | undefined => {
   if (typeof value === 'string' && value.trim().length > 0) {
     return value.trim();
@@ -82,6 +113,12 @@ const asString = (value: unknown): string | undefined => {
   return undefined;
 };
 
+/**
+ * Maps arbitrary channel codes to the reservation source enum accepted by reservations.
+ *
+ * @param channelCode - Incoming channel code from adapter payloads.
+ * @returns Supported booking source enum value, defaulting to `'METASEARCH'`.
+ */
 const toBookingSource = (
   channelCode: string
 ): 'BOOKING_COM' | 'EXPEDIA' | 'AIRBNB' | 'AGODA' | 'TRIPADVISOR' | 'METASEARCH' => {
@@ -104,6 +141,20 @@ const toBookingSource = (
 };
 
 export class ChannelService {
+  /**
+   * Creates a channel connection after hotel ownership and uniqueness validation.
+   *
+   * The method normalizes channel identifiers, encrypts credential fields before
+   * persistence, initializes empty mapping arrays, and stores the connection as
+   * inactive until explicit activation.
+   *
+   * @param organizationId - Organization scope ID.
+   * @param hotelId - Hotel ID that owns the connection.
+   * @param input - Channel connection attributes and credentials.
+   * @returns Newly created channel connection response.
+   * @throws {NotFoundError} When hotel does not belong to the organization.
+   * @throws {ConflictError} When a connection already exists for the same channel code.
+   */
   async createConnection(
     organizationId: string,
     hotelId: string,
@@ -132,6 +183,13 @@ export class ChannelService {
     return channelRepository.mapConnection(connection);
   }
 
+  /**
+   * Lists channel connections for a hotel after access validation.
+   *
+   * @param organizationId - Organization scope ID.
+   * @param hotelId - Hotel ID to list connections for.
+   * @returns Mapped channel connection responses.
+   */
   async listConnections(
     organizationId: string,
     hotelId: string
@@ -142,6 +200,15 @@ export class ChannelService {
     return rows.map((row) => channelRepository.mapConnection(row));
   }
 
+  /**
+   * Retrieves a scoped channel connection by ID.
+   *
+   * @param organizationId - Organization scope ID.
+   * @param hotelId - Hotel ID owning the connection.
+   * @param connectionId - Connection ID.
+   * @returns Mapped channel connection response.
+   * @throws {NotFoundError} When the connection does not belong to the hotel.
+   */
   async getConnection(
     organizationId: string,
     hotelId: string,
@@ -153,6 +220,18 @@ export class ChannelService {
     return channelRepository.mapConnection(connection);
   }
 
+  /**
+   * Updates mutable fields on a channel connection.
+   *
+   * Credential fields are encrypted before write; empty property IDs are normalized
+   * to `null` to keep DB constraints and webhook lookup behavior consistent.
+   *
+   * @param organizationId - Organization scope ID.
+   * @param hotelId - Hotel scope ID.
+   * @param connectionId - Connection ID to update.
+   * @param input - Partial update payload.
+   * @returns Updated connection response.
+   */
   async updateConnection(
     organizationId: string,
     hotelId: string,
@@ -181,6 +260,14 @@ export class ChannelService {
     return channelRepository.mapConnection(updated);
   }
 
+  /**
+   * Deletes a channel connection within hotel scope.
+   *
+   * @param organizationId - Organization scope ID.
+   * @param hotelId - Hotel scope ID.
+   * @param connectionId - Connection ID to remove.
+   * @returns Resolves when deletion completes.
+   */
   async deleteConnection(
     organizationId: string,
     hotelId: string,
@@ -192,6 +279,14 @@ export class ChannelService {
     await channelRepository.deleteConnection(existing.id);
   }
 
+  /**
+   * Activates a connection so sync jobs can call provider adapters.
+   *
+   * @param organizationId - Organization scope ID.
+   * @param hotelId - Hotel scope ID.
+   * @param connectionId - Connection ID to activate.
+   * @returns Updated active connection response.
+   */
   async activateConnection(
     organizationId: string,
     hotelId: string,
@@ -209,6 +304,14 @@ export class ChannelService {
     return channelRepository.mapConnection(updated);
   }
 
+  /**
+   * Deactivates a connection to disable outbound sync dispatch.
+   *
+   * @param organizationId - Organization scope ID.
+   * @param hotelId - Hotel scope ID.
+   * @param connectionId - Connection ID to deactivate.
+   * @returns Updated inactive connection response.
+   */
   async deactivateConnection(
     organizationId: string,
     hotelId: string,
@@ -225,6 +328,16 @@ export class ChannelService {
     return channelRepository.mapConnection(updated);
   }
 
+  /**
+   * Replaces room mappings after validating each internal room type belongs to the hotel.
+   *
+   * @param organizationId - Organization scope ID.
+   * @param hotelId - Hotel scope ID.
+   * @param connectionId - Connection receiving the mappings.
+   * @param input - Requested room mapping set.
+   * @returns Updated connection response with persisted mappings.
+   * @throws {NotFoundError} When any mapped room type is outside hotel scope.
+   */
   async mapRooms(
     organizationId: string,
     hotelId: string,
@@ -245,6 +358,17 @@ export class ChannelService {
     return channelRepository.mapConnection(updated);
   }
 
+  /**
+   * Replaces rate mappings after validating rate-plan ownership and markup bounds.
+   *
+   * @param organizationId - Organization scope ID.
+   * @param hotelId - Hotel scope ID.
+   * @param connectionId - Connection receiving the mappings.
+   * @param input - Requested rate mapping set with optional markup percentages.
+   * @returns Updated connection response with normalized mappings.
+   * @throws {NotFoundError} When mapped rate plans do not belong to the hotel.
+   * @throws {BadRequestError} When markup falls outside `-50` to `200`.
+   */
   async mapRates(
     organizationId: string,
     hotelId: string,
@@ -274,6 +398,14 @@ export class ChannelService {
     return channelRepository.mapConnection(updated);
   }
 
+  /**
+   * Returns persisted room and rate mappings for a connection.
+   *
+   * @param organizationId - Organization scope ID.
+   * @param hotelId - Hotel scope ID.
+   * @param connectionId - Connection ID.
+   * @returns Connection mapping collections for outbound/inbound translation.
+   */
   async getMappings(
     organizationId: string,
     hotelId: string,
@@ -289,6 +421,32 @@ export class ChannelService {
     };
   }
 
+  /**
+   * Pushes availability and rates to a single active channel connection.
+   *
+   * The workflow validates hotel scope, creates a provisional sync log, expands
+   * mapped inventory/rate payloads for every day in range, calls adapter outbound
+   * methods, and then updates sync/connection status. Mapping-level failures are
+   * captured as partial errors; adapter-level failures mark the sync as failed and
+   * emit a failure outbox event.
+   *
+   * Side effects:
+   * - Reads room inventory and rate overrides from repositories.
+   * - Calls external adapter methods (`pushAvailability`, `pushRates`).
+   * - Writes sync logs and connection health counters.
+   * - Emits outbox events for completion/failure.
+   *
+   * @param organizationId - Organization scope ID.
+   * @param hotelId - Hotel scope ID.
+   * @param connectionId - Connection ID to synchronize.
+   * @param input - Date window for outbound publication.
+   * @param triggeredBy - Sync trigger source for auditing.
+   * @returns Sync execution metrics for API callers.
+   * @throws {ChannelNotActiveError} When the target connection is inactive.
+   * @throws {Error} Propagates adapter/repository failures after logging state.
+   * @remarks Complexity: O(R + P + D×P) where R is room mappings, P is rate mappings,
+   * D is days in range; dominated by repository and provider network calls.
+   */
   async pushAvailabilityAndRates(
     organizationId: string,
     hotelId: string,
@@ -509,6 +667,16 @@ export class ChannelService {
     }
   }
 
+  /**
+   * Executes outbound sync for every active connection in a hotel.
+   *
+   * @param organizationId - Organization scope ID.
+   * @param hotelId - Hotel scope ID.
+   * @param input - Date window for synchronization.
+   * @param triggeredBy - Trigger source for child sync logs.
+   * @returns Aggregate per-connection results with success/failure counts.
+   * @remarks Complexity: O(C + Σ syncCost) where C is active connection count.
+   */
   async syncAll(
     organizationId: string,
     hotelId: string,
@@ -559,6 +727,15 @@ export class ChannelService {
     return summary;
   }
 
+  /**
+   * Retrieves paginated sync history for a scoped connection.
+   *
+   * @param organizationId - Organization scope ID.
+   * @param hotelId - Hotel scope ID.
+   * @param connectionId - Connection ID.
+   * @param filters - Sync log filters and pagination values.
+   * @returns Log rows with pagination metadata.
+   */
   async getSyncLogs(
     organizationId: string,
     hotelId: string,
@@ -581,11 +758,37 @@ export class ChannelService {
     };
   }
 
+  /**
+   * Verifies provider webhook signatures by delegating to the resolved adapter.
+   *
+   * @param channelCode - Channel code from webhook route.
+   * @param req - Raw inbound webhook request.
+   * @returns `true` when adapter-specific verification succeeds.
+   */
   verifyWebhookSignature(channelCode: string, req: Request): boolean {
     const adapter = this.getAdapter(channelCode);
     return adapter.verifyWebhookSignature(req);
   }
 
+  /**
+   * Handles inbound reservation-create webhooks for active channel connections.
+   *
+   * The method resolves connection scope, parses provider payloads via adapter mapping
+   * rules, enforces room/rate mapping integrity, creates guests/reservations when
+   * needed, sends confirmation communications, emits outbox events, and finalizes
+   * inbound sync logs for success/failure observability.
+   *
+   * Side effects:
+   * - Writes inbound sync log rows.
+   * - Reads and writes guests/reservations.
+   * - Sends reservation confirmation communication.
+   * - Emits `channel.reservation_received` outbox event.
+   *
+   * @param channelCode - Channel code from webhook route.
+   * @param rawBody - Raw webhook payload body.
+   * @param hotelId - Optional resolved hotel ID from headers/query/body.
+   * @returns Processing result with handled flag and optional reservation ID.
+   */
   async handleInboundReservation(
     channelCode: string,
     rawBody: unknown,
@@ -695,6 +898,18 @@ export class ChannelService {
     }
   }
 
+  /**
+   * Handles inbound reservation-modification webhooks.
+   *
+   * The method resolves and validates connection/hotel context, applies only provided
+   * mutable reservation fields, sends modification communications, and tracks outcome
+   * through inbound sync logs.
+   *
+   * @param channelCode - Channel code from webhook route.
+   * @param rawBody - Raw webhook payload body.
+   * @param hotelId - Optional resolved hotel ID from headers/query/body.
+   * @returns Processing result with handled flag and optional reservation ID.
+   */
   async handleInboundModification(
     channelCode: string,
     rawBody: unknown,
@@ -769,6 +984,17 @@ export class ChannelService {
     }
   }
 
+  /**
+   * Handles inbound reservation-cancellation webhooks.
+   *
+   * For non-cancelled reservations, this method calls reservation cancellation APIs,
+   * triggers cancellation communications, and records success/failure in sync logs.
+   *
+   * @param channelCode - Channel code from webhook route.
+   * @param rawBody - Raw webhook payload body.
+   * @param hotelId - Optional resolved hotel ID from headers/query/body.
+   * @returns Processing result with handled flag and optional reservation ID.
+   */
   async handleInboundCancellation(
     channelCode: string,
     rawBody: unknown,
@@ -837,6 +1063,15 @@ export class ChannelService {
     }
   }
 
+  /**
+   * Triggers a post-night-audit sync window from today through 30 days out.
+   *
+   * Errors are logged and suppressed to avoid blocking the night-audit flow.
+   *
+   * @param organizationId - Organization scope ID.
+   * @param hotelId - Hotel ID whose active channels should be synchronized.
+   * @returns Resolves after best-effort sync attempt.
+   */
   async handleNightAuditCompleted(organizationId: string, hotelId: string): Promise<void> {
     const today = toDateOnly(new Date());
     const dateTo = addDays(today, 30);
@@ -860,6 +1095,15 @@ export class ChannelService {
     }
   }
 
+  /**
+   * Triggers best-effort sync after pricing or inventory updates.
+   *
+   * @param organizationId - Organization scope ID.
+   * @param hotelId - Hotel ID owning affected inventory/rates.
+   * @param dateFrom - Start date for sync.
+   * @param dateTo - End date for sync.
+   * @returns Resolves after attempting `syncAll`.
+   */
   async handleRateOrInventoryUpdated(
     organizationId: string,
     hotelId: string,
@@ -885,6 +1129,15 @@ export class ChannelService {
     }
   }
 
+  /**
+   * Sends in-app notifications to manager roles when channel sync failures occur.
+   *
+   * The method queries hotel-scoped role assignments and dispatches one notification
+   * payload to all unique recipients.
+   *
+   * @param payload - Failure context from sync-failed events.
+   * @returns Resolves when notification dispatch completes or is skipped.
+   */
   async handleSyncFailedNotification(payload: {
     connectionId: string;
     channelCode: string;
@@ -922,6 +1175,14 @@ export class ChannelService {
     });
   }
 
+  /**
+   * Verifies that a hotel belongs to the specified organization.
+   *
+   * @param organizationId - Organization ID.
+   * @param hotelId - Hotel ID.
+   * @returns Resolves when access is valid.
+   * @throws {NotFoundError} When the hotel is outside organization scope.
+   */
   private async verifyHotelAccess(organizationId: string, hotelId: string): Promise<void> {
     const exists = await hotelRepository.existsInOrganization(organizationId, hotelId);
     if (!exists) {
@@ -929,6 +1190,14 @@ export class ChannelService {
     }
   }
 
+  /**
+   * Loads a connection and enforces hotel ownership.
+   *
+   * @param connectionId - Channel connection ID.
+   * @param hotelId - Expected hotel ID.
+   * @returns Connection record scoped to the hotel.
+   * @throws {NotFoundError} When connection is missing or belongs to another hotel.
+   */
   private async getConnectionOrThrow(
     connectionId: string,
     hotelId: string
@@ -940,10 +1209,23 @@ export class ChannelService {
     return connection;
   }
 
+  /**
+   * Resolves the adapter implementation for a channel code.
+   *
+   * @param channelCode - Raw or normalized channel code.
+   * @returns Matching adapter implementation (or generic fallback).
+   */
   private getAdapter(channelCode: string): IChannelAdapter {
     return getAdapterByChannelCode(channelCode);
   }
 
+  /**
+   * Creates an inbound sync log initialized in `'FAILED'` state until completion.
+   *
+   * @param connection - Scoped channel connection.
+   * @param syncType - Inbound sync classification.
+   * @returns Persisted sync log record.
+   */
   private async beginInboundSyncLog(
     connection: ChannelConnectionRecord,
     syncType: string
@@ -961,6 +1243,16 @@ export class ChannelService {
     });
   }
 
+  /**
+   * Finalizes an inbound sync log with status, counters, and optional error details.
+   *
+   * @param log - Sync log record to update.
+   * @param status - Terminal sync status.
+   * @param recordsProcessed - Successfully processed record count.
+   * @param recordsFailed - Failed record count.
+   * @param errorDetails - Optional JSON payload with failure diagnostics.
+   * @returns Resolves after sync log update completes.
+   */
   private async completeInboundSyncLog(
     log: ChannelSyncLogRecord,
     status: 'SUCCESS' | 'FAILED' | 'PARTIAL',
@@ -977,6 +1269,16 @@ export class ChannelService {
     });
   }
 
+  /**
+   * Persists an outbox event for asynchronous integration processing.
+   *
+   * Errors are logged and swallowed so primary channel flows remain non-blocking.
+   *
+   * @param eventType - Outbox event type.
+   * @param aggregateId - Aggregate identifier (`ChannelConnection` ID).
+   * @param payload - JSON-serializable event payload.
+   * @returns Resolves after best-effort outbox insert.
+   */
   private async emitOutboxEvent(
     eventType: string,
     aggregateId: string,
@@ -1000,6 +1302,18 @@ export class ChannelService {
     }
   }
 
+  /**
+   * Resolves the active connection for inbound webhooks.
+   *
+   * Resolution order prefers explicit hotel scope, then payload hotel ID, and
+   * finally provider `propertyId` matching for channels that send only property
+   * identifiers in webhook bodies.
+   *
+   * @param channelCode - Raw channel code from route.
+   * @param rawBody - Raw webhook body.
+   * @param hotelId - Optional hotel ID from request metadata.
+   * @returns Matching active channel connection or `null`.
+   */
   private async resolveInboundConnection(
     channelCode: string,
     rawBody: unknown,
@@ -1023,6 +1337,15 @@ export class ChannelService {
     );
   }
 
+  /**
+   * Finds a room mapping by external room code using case-insensitive matching.
+   *
+   * @param mappings - Persisted room mappings for a connection.
+   * @param externalCode - External room code from channel payload.
+   * @param channelCode - Channel code for error context.
+   * @returns Matching room mapping record.
+   * @throws {MappingNotFoundError} When no mapping exists for the external code.
+   */
   private findRoomMapping(
     mappings: RoomMapping[],
     externalCode: string,
@@ -1040,6 +1363,15 @@ export class ChannelService {
     return match;
   }
 
+  /**
+   * Finds a rate mapping by external rate code using case-insensitive matching.
+   *
+   * @param mappings - Persisted rate mappings for a connection.
+   * @param externalCode - External rate code from channel payload.
+   * @param channelCode - Channel code for error context.
+   * @returns Matching rate mapping record.
+   * @throws {MappingNotFoundError} When no mapping exists for the external code.
+   */
   private findRateMapping(
     mappings: RatePlanMapping[],
     externalCode: string,
@@ -1057,6 +1389,14 @@ export class ChannelService {
     return match;
   }
 
+  /**
+   * Reuses an existing guest by email or creates a new guest from channel payload data.
+   *
+   * @param organizationId - Organization scope ID.
+   * @param reservation - Parsed channel reservation payload.
+   * @param defaultLanguage - Hotel default language fallback.
+   * @returns Guest ID associated with the inbound reservation.
+   */
   private async findOrCreateGuest(
     organizationId: string,
     reservation: ChannelReservation,
