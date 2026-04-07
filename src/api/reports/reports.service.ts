@@ -9,6 +9,7 @@ import { type ReportsRepository, reportsRepository } from './reports.repository'
 import type {
   ADRReportResponse,
   ArrivalsDeparturesResponse,
+  BaseReportFilters,
   DashboardFilters,
   FolioSummaryResponse,
   GroupByPeriod,
