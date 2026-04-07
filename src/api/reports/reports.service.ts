@@ -8,7 +8,7 @@ import { Prisma } from '../../generated/prisma';
 import { type ReportsRepository, reportsRepository } from './reports.repository';
 import type {
   ADRReportResponse,
-  ArrivalsDeporturesResponse,
+  ArrivalsDeparturesResponse,
   BaseReportFilters,
   DashboardFilters,
   FolioSummaryResponse,
@@ -437,13 +437,13 @@ export class ReportsService {
    * @throws {NotFoundError} When the hotel is missing or outside organization scope.
    * @remarks Complexity: O(n) reductions over `n` movement rows.
    */
-  async getArrivalsDeporturesReport(
+  async getArrivalsDeparturesReport(
     organizationId: string,
     hotelId: string,
     dateFrom: Date,
     dateTo: Date,
     groupBy: GroupByPeriod = 'DAY'
-  ): Promise<ArrivalsDeporturesResponse> {
+  ): Promise<ArrivalsDeparturesResponse> {
     await this.validateHotel(organizationId, hotelId);
 
     const filters: BaseReportFilters = {
@@ -454,7 +454,7 @@ export class ReportsService {
       groupBy,
     };
 
-    const rows = await this.repo.getArrivalsDeporturesReport(filters);
+    const rows = await this.repo.getArrivalsDeparturesReport(filters);
 
     // Calculate summary
     const totalArrivals = rows.reduce((sum, row) => sum + row.arrivals, 0);

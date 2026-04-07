@@ -225,7 +225,7 @@ export class ReportsController {
    * @param req - Express request containing scoped route params and report filters.
    * @param res - Express response for arrivals/departures metrics.
    */
-  getArrivalsDeporturesReport = asyncHandler(async (req: Request, res: Response) => {
+  getArrivalsDeparturesReport = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId } = req.params as {
       organizationId: string;
       hotelId: string;
@@ -236,7 +236,7 @@ export class ReportsController {
       groupBy?: GroupByPeriod;
     };
 
-    const report = await this.service.getArrivalsDeporturesReport(
+    const report = await this.service.getArrivalsDeparturesReport(
       organizationId,
       hotelId,
       new Date(dateFrom),

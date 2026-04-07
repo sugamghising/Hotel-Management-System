@@ -548,7 +548,7 @@ export class ReportsRepository {
    * @returns Movement rows for arrivals, departures, no-shows, walk-ins, and stayovers.
    * @remarks Complexity: O(d + r) in database execution where `d` is date-series length and `r` is joined reservation rows.
    */
-  async getArrivalsDeporturesReport(filters: BaseReportFilters) {
+  async getArrivalsDeparturesReport(filters: BaseReportFilters) {
     const { hotelId, dateFrom, dateTo, groupBy = 'DAY' } = filters;
     const dateExpr = groupBy === 'DAY' ? 'date' : `DATE_TRUNC('${groupBy.toLowerCase()}', date)`;
 
