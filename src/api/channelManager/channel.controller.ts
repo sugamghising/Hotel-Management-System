@@ -45,13 +45,22 @@ const resolveInboundHotelId = (req: Request): string | undefined => {
   return undefined;
 };
 
+/**
+ * Controller transport handlers for channel management.
+ *
+ * Module base routes: /api/v1/organizations/:organizationId/hotels/:hotelId/channels; /webhooks/channels.
+ */
 export class ChannelController {
   /**
-   * Creates a channel connection for a hotel and returns the persisted record.
+   * Handles create connection requests for channel management.
    *
-   * @param req - Express request containing organization/hotel params and payload.
-   * @param res - Express response writer.
-   * @returns Sends a `201` response with the created connection.
+   * Route: POST /api/v1/organizations/:organizationId/hotels/:hotelId/channels/connections
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   createConnection = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId } = req.params as { organizationId: string; hotelId: string };
@@ -66,11 +75,15 @@ export class ChannelController {
   });
 
   /**
-   * Lists all channel connections configured for a hotel.
+   * Handles list connections requests for channel management.
    *
-   * @param req - Express request containing organization and hotel identifiers.
-   * @param res - Express response writer.
-   * @returns Sends a success response with ordered connection rows.
+   * Route: GET /api/v1/organizations/:organizationId/hotels/:hotelId/channels/connections
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   listConnections = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId } = req.params as { organizationId: string; hotelId: string };
@@ -84,11 +97,15 @@ export class ChannelController {
   });
 
   /**
-   * Retrieves one channel connection by ID within hotel scope.
+   * Handles get connection requests for channel management.
    *
-   * @param req - Express request containing organization, hotel, and connection IDs.
-   * @param res - Express response writer.
-   * @returns Sends a success response with the requested connection.
+   * Route: GET /api/v1/organizations/:organizationId/hotels/:hotelId/channels/connections/:connectionId
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   getConnection = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId, connectionId } = req.params as {
@@ -106,11 +123,15 @@ export class ChannelController {
   });
 
   /**
-   * Updates editable channel connection attributes (name, credentials, property mapping).
+   * Handles update connection requests for channel management.
    *
-   * @param req - Express request containing route identifiers and update payload.
-   * @param res - Express response writer.
-   * @returns Sends a success response with the updated connection.
+   * Route: PATCH /api/v1/organizations/:organizationId/hotels/:hotelId/channels/connections/:connectionId
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   updateConnection = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId, connectionId } = req.params as {
@@ -134,11 +155,15 @@ export class ChannelController {
   });
 
   /**
-   * Deletes a channel connection after scope validation.
+   * Handles delete connection requests for channel management.
    *
-   * @param req - Express request containing organization, hotel, and connection IDs.
-   * @param res - Express response writer.
-   * @returns Sends a success response with no payload.
+   * Route: DELETE /api/v1/organizations/:organizationId/hotels/:hotelId/channels/connections/:connectionId
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   deleteConnection = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId, connectionId } = req.params as {
@@ -153,11 +178,15 @@ export class ChannelController {
   });
 
   /**
-   * Activates a channel connection so outbound sync jobs can dispatch to providers.
+   * Handles activate connection requests for channel management.
    *
-   * @param req - Express request containing scoped route identifiers.
-   * @param res - Express response writer.
-   * @returns Sends a success response with the activated connection state.
+   * Route: POST /api/v1/organizations/:organizationId/hotels/:hotelId/channels/connections/:connectionId/activate
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   activateConnection = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId, connectionId } = req.params as {
@@ -179,11 +208,15 @@ export class ChannelController {
   });
 
   /**
-   * Deactivates a channel connection to stop outbound synchronization attempts.
+   * Handles deactivate connection requests for channel management.
    *
-   * @param req - Express request containing scoped route identifiers.
-   * @param res - Express response writer.
-   * @returns Sends a success response with the deactivated connection state.
+   * Route: POST /api/v1/organizations/:organizationId/hotels/:hotelId/channels/connections/:connectionId/deactivate
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   deactivateConnection = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId, connectionId } = req.params as {
@@ -205,11 +238,15 @@ export class ChannelController {
   });
 
   /**
-   * Replaces room-type mappings used to translate internal inventory to channel room codes.
+   * Handles map rooms requests for channel management.
    *
-   * @param req - Express request containing mapping payload and scoped IDs.
-   * @param res - Express response writer.
-   * @returns Sends a success response with updated mapping state.
+   * Route: PUT /api/v1/organizations/:organizationId/hotels/:hotelId/channels/connections/:connectionId/mappings/rooms
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   mapRooms = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId, connectionId } = req.params as {
@@ -225,11 +262,15 @@ export class ChannelController {
   });
 
   /**
-   * Replaces rate-plan mappings used for outbound channel rate publication.
+   * Handles map rates requests for channel management.
    *
-   * @param req - Express request containing mapping payload and scoped IDs.
-   * @param res - Express response writer.
-   * @returns Sends a success response with updated rate mapping state.
+   * Route: PUT /api/v1/organizations/:organizationId/hotels/:hotelId/channels/connections/:connectionId/mappings/rates
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   mapRates = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId, connectionId } = req.params as {
@@ -245,11 +286,15 @@ export class ChannelController {
   });
 
   /**
-   * Fetches current room and rate mappings for a connection.
+   * Handles get mappings requests for channel management.
    *
-   * @param req - Express request containing scoped route identifiers.
-   * @param res - Express response writer.
-   * @returns Sends mapping collections used by channel sync jobs.
+   * Route: GET /api/v1/organizations/:organizationId/hotels/:hotelId/channels/connections/:connectionId/mappings
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   getMappings = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId, connectionId } = req.params as {
@@ -264,11 +309,15 @@ export class ChannelController {
   });
 
   /**
-   * Runs an on-demand outbound availability and rate sync for one connection.
+   * Handles sync connection requests for channel management.
    *
-   * @param req - Express request with sync date range and scoped identifiers.
-   * @param res - Express response writer.
-   * @returns Sends sync execution metrics from the service layer.
+   * Route: POST /api/v1/organizations/:organizationId/hotels/:hotelId/channels/connections/:connectionId/sync
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   syncConnection = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId, connectionId } = req.params as {
@@ -290,11 +339,15 @@ export class ChannelController {
   });
 
   /**
-   * Runs outbound synchronization for all active channel connections in a hotel.
+   * Handles sync all requests for channel management.
    *
-   * @param req - Express request with sync window and hotel scope.
-   * @param res - Express response writer.
-   * @returns Sends an aggregate success/failure summary per connection.
+   * Route: POST /api/v1/organizations/:organizationId/hotels/:hotelId/channels/sync/all
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   syncAll = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId } = req.params as { organizationId: string; hotelId: string };
@@ -306,11 +359,15 @@ export class ChannelController {
   });
 
   /**
-   * Returns paginated sync logs for a channel connection.
+   * Handles get sync logs requests for channel management.
    *
-   * @param req - Express request with route identifiers and log query filters.
-   * @param res - Express response writer.
-   * @returns Sends log entries plus pagination metadata.
+   * Route: GET /api/v1/organizations/:organizationId/hotels/:hotelId/channels/connections/:connectionId/sync-logs
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   getSyncLogs = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId, connectionId } = req.params as {
@@ -326,15 +383,15 @@ export class ChannelController {
   });
 
   /**
-   * Processes reservation-create webhooks after signature validation.
+   * Handles handle reservation webhook requests for channel management.
    *
-   * The handler rejects invalid signatures with `401` and, for valid payloads,
-   * forwards raw webhook data to the channel service which performs mapping,
-   * persistence, and communication side effects.
+   * Route: POST /webhooks/channels/:channelCode/reservation
    *
-   * @param req - Express webhook request containing `channelCode`, headers, and payload.
-   * @param res - Express response writer.
-   * @returns Sends unauthorized or webhook processing results.
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   handleReservationWebhook = asyncHandler(async (req: Request, res: Response) => {
     const { channelCode } = req.params as { channelCode: string };
@@ -355,11 +412,15 @@ export class ChannelController {
   });
 
   /**
-   * Processes reservation-modification webhooks after signature validation.
+   * Handles handle modification webhook requests for channel management.
    *
-   * @param req - Express webhook request containing `channelCode`, headers, and payload.
-   * @param res - Express response writer.
-   * @returns Sends unauthorized or webhook processing results.
+   * Route: POST /webhooks/channels/:channelCode/modification
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   handleModificationWebhook = asyncHandler(async (req: Request, res: Response) => {
     const { channelCode } = req.params as { channelCode: string };
@@ -380,11 +441,15 @@ export class ChannelController {
   });
 
   /**
-   * Processes reservation-cancellation webhooks after signature validation.
+   * Handles handle cancellation webhook requests for channel management.
    *
-   * @param req - Express webhook request containing `channelCode`, headers, and payload.
-   * @param res - Express response writer.
-   * @returns Sends unauthorized or webhook processing results.
+   * Route: POST /webhooks/channels/:channelCode/cancellation
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   handleCancellationWebhook = asyncHandler(async (req: Request, res: Response) => {
     const { channelCode } = req.params as { channelCode: string };

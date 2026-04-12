@@ -17,13 +17,26 @@ import type {
 import { communicationsService } from './communications.service';
 import type { CommunicationType, ProviderChannel } from './communications.types';
 
+/**
+ * Controller transport handlers for guest communications.
+ *
+ * Module base routes: /api/v1/organizations/:organizationId/communications; /api/v1/organizations/:organizationId/hotels/:hotelId/reservations/:reservationId/communications; /webhooks/communications.
+ */
 export class CommunicationsController {
   // ============================================================================
   // SEND COMMUNICATIONS
   // ============================================================================
 
   /**
-   * POST /:organizationId/communications/send
+   * Handles send requests for guest communications.
+   *
+   * Route: POST /api/v1/organizations/:organizationId/communications/send
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   send = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId } = req.params as { organizationId: string };
@@ -42,7 +55,15 @@ export class CommunicationsController {
   });
 
   /**
-   * POST /:organizationId/communications/send/bulk
+   * Handles send bulk requests for guest communications.
+   *
+   * Route: POST /api/v1/organizations/:organizationId/communications/send/bulk
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   sendBulk = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId } = req.params as { organizationId: string };
@@ -61,7 +82,15 @@ export class CommunicationsController {
   // ============================================================================
 
   /**
-   * GET /:organizationId/communications
+   * Handles list requests for guest communications.
+   *
+   * Route: GET /api/v1/organizations/:organizationId/communications
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   list = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId } = req.params as { organizationId: string };
@@ -73,7 +102,15 @@ export class CommunicationsController {
   });
 
   /**
-   * GET /:organizationId/communications/:communicationId
+   * Handles get by id requests for guest communications.
+   *
+   * Route: GET /api/v1/organizations/:organizationId/communications/:communicationId
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   getById = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, communicationId } = req.params as {
@@ -90,7 +127,15 @@ export class CommunicationsController {
   });
 
   /**
-   * GET /:organizationId/hotels/:hotelId/reservations/:reservationId/communications
+   * Handles get by reservation requests for guest communications.
+   *
+   * Route: GET /api/v1/organizations/:organizationId/hotels/:hotelId/reservations/:reservationId/communications
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   getByReservation = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId, reservationId } = req.params as {
@@ -115,7 +160,15 @@ export class CommunicationsController {
   });
 
   /**
-   * GET /:organizationId/communications/analytics
+   * Handles get analytics requests for guest communications.
+   *
+   * Route: GET /api/v1/organizations/:organizationId/communications/analytics
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   getAnalytics = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId } = req.params as { organizationId: string };
@@ -131,7 +184,15 @@ export class CommunicationsController {
   // ============================================================================
 
   /**
-   * POST /:organizationId/hotels/:hotelId/reservations/:reservationId/communications/confirmation
+   * Handles send confirmation requests for guest communications.
+   *
+   * Route: POST /api/v1/organizations/:organizationId/hotels/:hotelId/reservations/:reservationId/communications/confirmation
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   sendConfirmation = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId, reservationId } = req.params as {
@@ -161,7 +222,15 @@ export class CommunicationsController {
   });
 
   /**
-   * POST /:organizationId/hotels/:hotelId/reservations/:reservationId/communications/pre-arrival
+   * Handles send pre arrival requests for guest communications.
+   *
+   * Route: POST /api/v1/organizations/:organizationId/hotels/:hotelId/reservations/:reservationId/communications/pre-arrival
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   sendPreArrival = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId, reservationId } = req.params as {
@@ -191,7 +260,15 @@ export class CommunicationsController {
   });
 
   /**
-   * POST /:organizationId/hotels/:hotelId/reservations/:reservationId/communications/checkout-reminder
+   * Handles send checkout reminder requests for guest communications.
+   *
+   * Route: POST /api/v1/organizations/:organizationId/hotels/:hotelId/reservations/:reservationId/communications/checkout-reminder
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   sendCheckoutReminder = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId, reservationId } = req.params as {
@@ -221,7 +298,15 @@ export class CommunicationsController {
   });
 
   /**
-   * POST /:organizationId/hotels/:hotelId/reservations/:reservationId/communications/survey
+   * Handles send survey requests for guest communications.
+   *
+   * Route: POST /api/v1/organizations/:organizationId/hotels/:hotelId/reservations/:reservationId/communications/survey
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   sendSurvey = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId, reservationId } = req.params as {
@@ -255,7 +340,15 @@ export class CommunicationsController {
   // ============================================================================
 
   /**
-   * POST /:organizationId/communications/templates
+   * Handles create template requests for guest communications.
+   *
+   * Route: POST /api/v1/organizations/:organizationId/communications/templates
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   createTemplate = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId } = req.params as { organizationId: string };
@@ -274,7 +367,15 @@ export class CommunicationsController {
   });
 
   /**
-   * GET /:organizationId/communications/templates
+   * Handles list templates requests for guest communications.
+   *
+   * Route: GET /api/v1/organizations/:organizationId/communications/templates
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   listTemplates = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId } = req.params as { organizationId: string };
@@ -286,7 +387,15 @@ export class CommunicationsController {
   });
 
   /**
-   * GET /:organizationId/communications/templates/:templateId
+   * Handles get template requests for guest communications.
+   *
+   * Route: GET /api/v1/organizations/:organizationId/communications/templates/:templateId
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   getTemplate = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, templateId } = req.params as {
@@ -300,7 +409,15 @@ export class CommunicationsController {
   });
 
   /**
-   * PATCH /:organizationId/communications/templates/:templateId
+   * Handles update template requests for guest communications.
+   *
+   * Route: PATCH /api/v1/organizations/:organizationId/communications/templates/:templateId
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   updateTemplate = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, templateId } = req.params as {
@@ -320,7 +437,15 @@ export class CommunicationsController {
   });
 
   /**
-   * DELETE /:organizationId/communications/templates/:templateId
+   * Handles delete template requests for guest communications.
+   *
+   * Route: DELETE /api/v1/organizations/:organizationId/communications/templates/:templateId
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   deleteTemplate = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, templateId } = req.params as {
@@ -334,7 +459,15 @@ export class CommunicationsController {
   });
 
   /**
-   * POST /:organizationId/communications/templates/:templateId/preview
+   * Handles preview template requests for guest communications.
+   *
+   * Route: POST /api/v1/organizations/:organizationId/communications/templates/:templateId/preview
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   previewTemplate = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, templateId } = req.params as {
@@ -353,7 +486,15 @@ export class CommunicationsController {
   // ============================================================================
 
   /**
-   * POST /webhooks/communications/email
+   * Handles handle email webhook requests for guest communications.
+   *
+   * Route: POST /webhooks/communications/email
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   handleEmailWebhook = asyncHandler(async (req: Request, res: Response) => {
     const signatureValid = communicationsService.verifyWebhookSignature('EMAIL', req);
@@ -410,7 +551,15 @@ export class CommunicationsController {
   });
 
   /**
-   * POST /webhooks/communications/sms
+   * Handles handle sms webhook requests for guest communications.
+   *
+   * Route: POST /webhooks/communications/sms
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   handleSmsWebhook = asyncHandler(async (req: Request, res: Response) => {
     const signatureValid = communicationsService.verifyWebhookSignature('SMS', req);

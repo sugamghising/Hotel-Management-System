@@ -6,9 +6,22 @@ import { ServiceResponse, handleServiceResponse } from '../../common';
 import { asyncHandler } from '../../core';
 import { folioService } from './folio.service';
 
+/**
+ * Controller transport handlers for folio and billing operations.
+ *
+ * Module base route: /api/v1/organizations/:organizationId/hotels/:hotelId.
+ */
 export class FolioController {
   /**
-   * GET /organizations/:organizationId/hotels/:hotelId/reservations/:reservationId/folio
+   * Handles get folio requests for folio and billing operations.
+   *
+   * Route: GET /api/v1/organizations/:organizationId/hotels/:hotelId/reservations/:reservationId/folio
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   getFolio = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId, reservationId } = req.params as {
@@ -23,7 +36,15 @@ export class FolioController {
   });
 
   /**
-   * POST /organizations/:organizationId/hotels/:hotelId/reservations/:reservationId/folio/charges
+   * Handles post charge requests for folio and billing operations.
+   *
+   * Route: POST /api/v1/organizations/:organizationId/hotels/:hotelId/reservations/:reservationId/folio/charges
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   postCharge = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId, reservationId } = req.params as {
@@ -48,7 +69,15 @@ export class FolioController {
   });
 
   /**
-   * POST /organizations/:organizationId/hotels/:hotelId/reservations/:reservationId/folio/charges/bulk
+   * Handles post bulk charges requests for folio and billing operations.
+   *
+   * Route: POST /api/v1/organizations/:organizationId/hotels/:hotelId/reservations/:reservationId/folio/charges/bulk
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   postBulkCharges = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId, reservationId } = req.params as {
@@ -73,7 +102,15 @@ export class FolioController {
   });
 
   /**
-   * POST /organizations/:organizationId/hotels/:hotelId/reservations/:reservationId/folio/charges/:itemId/void
+   * Handles void charge requests for folio and billing operations.
+   *
+   * Route: POST /api/v1/organizations/:organizationId/hotels/:hotelId/reservations/:reservationId/folio/charges/:itemId/void
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   voidCharge = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, itemId } = req.params as { organizationId: string; itemId: string };
@@ -85,7 +122,15 @@ export class FolioController {
   });
 
   /**
-   * POST /organizations/:organizationId/hotels/:hotelId/reservations/:reservationId/folio/charges/:itemId/adjust
+   * Handles adjust charge requests for folio and billing operations.
+   *
+   * Route: POST /api/v1/organizations/:organizationId/hotels/:hotelId/reservations/:reservationId/folio/charges/:itemId/adjust
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   adjustCharge = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, itemId } = req.params as { organizationId: string; itemId: string };
@@ -103,7 +148,15 @@ export class FolioController {
   });
 
   /**
-   * POST /organizations/:organizationId/hotels/:hotelId/reservations/:reservationId/folio/payments
+   * Handles process payment requests for folio and billing operations.
+   *
+   * Route: POST /api/v1/organizations/:organizationId/hotels/:hotelId/reservations/:reservationId/folio/payments
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   processPayment = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId, reservationId } = req.params as {
@@ -128,7 +181,15 @@ export class FolioController {
   });
 
   /**
-   * POST /organizations/:organizationId/hotels/:hotelId/reservations/:reservationId/folio/payments/:paymentId/refund
+   * Handles refund payment requests for folio and billing operations.
+   *
+   * Route: POST /api/v1/organizations/:organizationId/hotels/:hotelId/reservations/:reservationId/folio/payments/:paymentId/refund
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   refundPayment = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, paymentId } = req.params as {
@@ -151,7 +212,15 @@ export class FolioController {
   });
 
   /**
-   * POST /organizations/:organizationId/hotels/:hotelId/reservations/:reservationId/folio/transfer
+   * Handles transfer charges requests for folio and billing operations.
+   *
+   * Route: POST /api/v1/organizations/:organizationId/hotels/:hotelId/reservations/:reservationId/folio/transfer
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   transferCharges = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId, reservationId } = req.params as {
@@ -161,13 +230,27 @@ export class FolioController {
     };
     const input = req.body;
 
-    await folioService.transferCharges(reservationId, organizationId, input, req.user?.sub, hotelId);
+    await folioService.transferCharges(
+      reservationId,
+      organizationId,
+      input,
+      req.user?.sub,
+      hotelId
+    );
 
     handleServiceResponse(ServiceResponse.success({}, 'Charges transferred successfully'), res);
   });
 
   /**
-   * POST /organizations/:organizationId/hotels/:hotelId/reservations/:reservationId/folio/invoices
+   * Handles create invoice requests for folio and billing operations.
+   *
+   * Route: POST /api/v1/organizations/:organizationId/hotels/:hotelId/reservations/:reservationId/folio/invoices
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   createInvoice = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId, reservationId } = req.params as {
@@ -192,7 +275,15 @@ export class FolioController {
   });
 
   /**
-   * GET /organizations/:organizationId/hotels/:hotelId/reservations/:reservationId/folio/invoices/:invoiceId
+   * Handles get invoice requests for folio and billing operations.
+   *
+   * Route: GET /api/v1/organizations/:organizationId/hotels/:hotelId/reservations/:reservationId/folio/invoices/:invoiceId
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   getInvoice = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, invoiceId } = req.params as {
@@ -209,7 +300,15 @@ export class FolioController {
   });
 
   /**
-   * POST /organizations/:organizationId/hotels/:hotelId/reservations/:reservationId/folio/invoices/:invoiceId/send
+   * Handles send invoice requests for folio and billing operations.
+   *
+   * Route: POST /api/v1/organizations/:organizationId/hotels/:hotelId/reservations/:reservationId/folio/invoices/:invoiceId/send
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   sendInvoice = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, invoiceId } = req.params as {
@@ -224,7 +323,15 @@ export class FolioController {
   });
 
   /**
-   * POST /organizations/:organizationId/hotels/:hotelId/reservations/:reservationId/folio/invoices/:invoiceId/payment
+   * Handles record invoice payment requests for folio and billing operations.
+   *
+   * Route: POST /api/v1/organizations/:organizationId/hotels/:hotelId/reservations/:reservationId/folio/invoices/:invoiceId/payment
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   recordInvoicePayment = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, invoiceId } = req.params as {
@@ -248,7 +355,15 @@ export class FolioController {
   });
 
   /**
-   * GET /organizations/:organizationId/hotels/:hotelId/reservations/:reservationId/folio/checkout-validation
+   * Handles validate checkout requests for folio and billing operations.
+   *
+   * Route: GET /api/v1/organizations/:organizationId/hotels/:hotelId/reservations/:reservationId/folio/checkout-validation
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   validateCheckout = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId, reservationId } = req.params as {
@@ -266,7 +381,15 @@ export class FolioController {
   });
 
   /**
-   * POST /organizations/:organizationId/hotels/:hotelId/night-audit/room-charges
+   * Handles post room charges requests for folio and billing operations.
+   *
+   * Route: POST /api/v1/organizations/:organizationId/hotels/:hotelId/night-audit/room-charges
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   postRoomCharges = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId } = req.params as { organizationId: string; hotelId: string };

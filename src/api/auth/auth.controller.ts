@@ -10,9 +10,22 @@ import type {
 import { authService } from './auth.service';
 import type { ChangePasswordInput, LoginInput, RegisterInput } from './auth.types';
 
+/**
+ * Controller transport handlers for authentication.
+ *
+ * Module base route: /api/v1/auth.
+ */
 export class AuthController {
   /**
-   * POST /auth/login
+   * Handles login requests for authentication.
+   *
+   * Route: POST /api/v1/auth/login
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   login = asyncHandler(async (req: Request, res: Response, _next: NextFunction) => {
     const input = req.body as LoginInput;
@@ -45,7 +58,15 @@ export class AuthController {
   });
 
   /**
-   * POST: /auth/register
+   * Handles register requests for authentication.
+   *
+   * Route: POST /api/v1/auth/register
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   register = asyncHandler(async (req: Request, res: Response, _next: NextFunction) => {
     const input = req.body as RegisterInput;
@@ -57,7 +78,15 @@ export class AuthController {
   });
 
   /**
-   * POST /auth/refresh
+   * Handles refresh requests for authentication.
+   *
+   * Route: POST /api/v1/auth/refresh
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   refresh = asyncHandler(async (req: Request, res: Response, _next: NextFunction) => {
     const input = req.body as RefreshTokenInput;
@@ -69,7 +98,15 @@ export class AuthController {
   });
 
   /**
-   * POST /auth/logout
+   * Handles logout requests for authentication.
+   *
+   * Route: POST /api/v1/auth/logout
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   logout = asyncHandler(async (req: Request, res: Response, _next: NextFunction) => {
     const { refreshToken } = req.body;
@@ -81,7 +118,15 @@ export class AuthController {
   });
 
   /**
-   *  POST /auth/logout-all
+   * Handles logout all requests for authentication.
+   *
+   * Route: POST /api/v1/auth/logout-all
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   logoutAll = asyncHandler(async (req: Request, res: Response, _next: NextFunction) => {
     const { refreshToken } = req.body;
@@ -101,7 +146,15 @@ export class AuthController {
   });
 
   /**
-   * POST /auth/change-password
+   * Handles change password requests for authentication.
+   *
+   * Route: POST /api/v1/auth/change-password
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   changePassword = asyncHandler(async (req: Request, res: Response, _next: NextFunction) => {
     const input = req.body as ChangePasswordInput;
@@ -116,7 +169,15 @@ export class AuthController {
   });
 
   /**
-   *  POST /auth/forgot-password
+   * Handles forgot password requests for authentication.
+   *
+   * Route: POST /api/v1/auth/forgot-password
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   forgotPassword = asyncHandler(async (req: Request, res: Response, _next: NextFunction) => {
     const input = req.body as ForgotPasswordInput;
@@ -128,7 +189,15 @@ export class AuthController {
   });
 
   /**
-   *  POST /auth/reset-password
+   * Handles reset password requests for authentication.
+   *
+   * Route: POST /api/v1/auth/reset-password
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   resetPassword = asyncHandler(async (req: Request, res: Response, _next: NextFunction) => {
     const input = req.body as ResetPasswordInput;
@@ -137,7 +206,15 @@ export class AuthController {
   });
 
   /**
-   * POST /auth/mfa/setup
+   * Handles setup mfa requests for authentication.
+   *
+   * Route: POST /api/v1/auth/mfa/set-up
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   setupMfa = asyncHandler(async (req: Request, res: Response, _next: NextFunction) => {
     if (!req.user) {
@@ -155,7 +232,15 @@ export class AuthController {
   });
 
   /**
-   * POST /auth/mfa/verify
+   * Handles verify mfa requests for authentication.
+   *
+   * Route: POST /api/v1/auth/mfa/verify
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   verifyMfa = asyncHandler(async (req: Request, res: Response, _next: NextFunction) => {
     const { code, secret } = req.body as VerifyMfaInput & { secret: string };
@@ -168,7 +253,15 @@ export class AuthController {
   });
 
   /**
-   * POST /auth/mfa/disable
+   * Handles disable mfa requests for authentication.
+   *
+   * Route: POST /api/v1/auth/mfa/disable
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   disableMfa = asyncHandler(async (req: Request, res: Response, _next: NextFunction) => {
     const { password } = req.body;
@@ -186,7 +279,15 @@ export class AuthController {
   });
 
   /**
-   * GET /auth/me
+   * Handles me requests for authentication.
+   *
+   * Route: GET /api/v1/auth/me
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   me = asyncHandler(async (req: Request, res: Response, _next: NextFunction) => {
     if (!req.user) {

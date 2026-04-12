@@ -5,10 +5,22 @@ import type { AssignRoleInput, CreateUserInput, UserQueryInput } from './user.sc
 import { userService } from './user.service';
 import type { UpdateUserInput } from './user.types';
 
+/**
+ * Controller transport handlers for user administration.
+ *
+ * Module base route: /api/v1/users.
+ */
 export class UserController {
   /**
-   * Get All Users
-   * GET /users
+   * Handles get all requests for user administration.
+   *
+   * Route: GET /api/v1/users
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   getAll = asyncHandler(async (req: Request, res: Response, _next: NextFunction) => {
     const query = req.query as unknown as UserQueryInput;
@@ -40,8 +52,15 @@ export class UserController {
   });
 
   /**
-   * Get By Id
-   * GET /users/:id
+   * Handles get by id requests for user administration.
+   *
+   * Route: GET /api/v1/users/:id
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   getById = asyncHandler(async (req: Request, res: Response, _next: NextFunction) => {
     const { id } = req.params;
@@ -55,8 +74,15 @@ export class UserController {
   });
 
   /**
-   * Get user profiles
-   * GET /users/:id/profile
+   * Handles get profile requests for user administration.
+   *
+   * Route: GET /api/v1/users/:id/profile
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   getProfile = asyncHandler(async (req: Request, res: Response, _next: NextFunction) => {
     const { id } = req.params;
@@ -70,8 +96,15 @@ export class UserController {
   });
 
   /**
-   * Create User
-   * POST /users
+   * Handles create requests for user administration.
+   *
+   * Route: POST /api/v1/users
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   create = asyncHandler(async (req: Request, res: Response, _next: NextFunction) => {
     const input: CreateUserInput = req.body as CreateUserInput;
@@ -88,8 +121,15 @@ export class UserController {
   });
 
   /**
-   * Update user
-   * PATCH /users/:id
+   * Handles update requests for user administration.
+   *
+   * Route: PATCH /api/v1/users/:id
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   update = asyncHandler(async (req: Request, res: Response, _next: NextFunction) => {
     const { id } = req.params;
@@ -106,8 +146,15 @@ export class UserController {
   });
 
   /**
-   * Delete User
-   * DELETE /users/:id
+   * Handles delete requests for user administration.
+   *
+   * Route: DELETE /api/v1/users/:id
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   delete = asyncHandler(async (req: Request, res: Response, _next: NextFunction) => {
     const { id } = req.params;
@@ -122,8 +169,15 @@ export class UserController {
   });
 
   /**
-   * Assign Role
-   * POST /users/:id/roles
+   * Handles assign role requests for user administration.
+   *
+   * Route: POST /api/v1/users/:id/roles
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   assignRole = asyncHandler(async (req: Request, res: Response, _next: NextFunction) => {
     const { id } = req.params;
@@ -140,8 +194,15 @@ export class UserController {
   });
 
   /**
-   * Remove Role
-   * DELETE /users/:id/roles/:roleAssignmentId
+   * Handles remove role requests for user administration.
+   *
+   * Route: DELETE /api/v1/users/:id/roles/:roleAssignmentId
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   removeRole = asyncHandler(async (req: Request, res: Response, _next: NextFunction) => {
     const { roleAssignmentId } = req.params;
@@ -155,8 +216,15 @@ export class UserController {
   });
 
   /**
-   * Get User Departments
-   * GET /users/departments
+   * Handles get departments requests for user administration.
+   *
+   * Route: GET /api/v1/users/departments
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   getDepartments = asyncHandler(async (req: Request, res: Response, _next: NextFunction) => {
     const organizationId = req.user?.org.id;
@@ -169,8 +237,15 @@ export class UserController {
   });
 
   /**
-   * Get user job titles
-   * GET /users/job-titles
+   * Handles get job titles requests for user administration.
+   *
+   * Route: GET /api/v1/users/job-titles
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   getJobTitles = asyncHandler(async (req: Request, res: Response, _next: NextFunction) => {
     const organizationId = req.user?.org.id;

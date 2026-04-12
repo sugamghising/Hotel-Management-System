@@ -10,9 +10,22 @@ import type {
 } from './organization.dto';
 import { organizationService } from './organization.service';
 
+/**
+ * Controller transport handlers for organization management.
+ *
+ * Module base route: /api/v1/organizations.
+ */
 export class OrganizationController {
   /**
-   * GET /organizations
+   * Handles get all requests for organization management.
+   *
+   * Route: GET /api/v1/organizations
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   getAll = asyncHandler(async (req: Request, res: Response) => {
     const query = req.query as unknown as OrganizationQueryInput;
@@ -37,7 +50,15 @@ export class OrganizationController {
   });
 
   /**
-   * GET /organizations/:id
+   * Handles get by id requests for organization management.
+   *
+   * Route: GET /api/v1/organizations/:id
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   getById = asyncHandler(async (req: Request, res: Response) => {
     const { id } = req.params;
@@ -51,7 +72,15 @@ export class OrganizationController {
   });
 
   /**
-   * POST /organizations
+   * Handles create requests for organization management.
+   *
+   * Route: POST /api/v1/organizations
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   create = asyncHandler(async (req: Request, res: Response) => {
     const data = req.body as OrganizationCreateInput;
@@ -62,7 +91,15 @@ export class OrganizationController {
   });
 
   /**
-   * PATCH /organizations/:id
+   * Handles update requests for organization management.
+   *
+   * Route: PATCH /api/v1/organizations/:id
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   update = asyncHandler(async (req: Request, res: Response) => {
     const { id } = req.params;
@@ -77,7 +114,15 @@ export class OrganizationController {
   });
 
   /**
-   * POST /organizations/:id/subscription
+   * Handles update subscription requests for organization management.
+   *
+   * Route: POST /api/v1/organizations/:id/subscription
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   updateSubscription = asyncHandler(async (req: Request, res: Response) => {
     const { id } = req.params;
@@ -93,7 +138,15 @@ export class OrganizationController {
   });
 
   /**
-   * GET /organizations/:id/stats
+   * Handles get stats requests for organization management.
+   *
+   * Route: GET /api/v1/organizations/:id/stats
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   getStats = asyncHandler(async (req: Request, res: Response) => {
     const { id } = req.params;
@@ -107,7 +160,15 @@ export class OrganizationController {
   });
 
   /**
-   * GET /organizations/:id/limits
+   * Handles check limits requests for organization management.
+   *
+   * Route: GET /api/v1/organizations/:id/limits
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   checkLimits = asyncHandler(async (req: Request, res: Response) => {
     const { id } = req.params;
@@ -130,7 +191,15 @@ export class OrganizationController {
   });
 
   /**
-   * DELETE /organizations/:id
+   * Handles delete requests for organization management.
+   *
+   * Route: DELETE /api/v1/organizations/:id
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   delete = asyncHandler(async (req: Request, res: Response) => {
     const { id } = req.params;

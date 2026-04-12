@@ -25,9 +25,22 @@ import type {
   WalkInInput as SvcWalkInInput,
 } from './reservations.types';
 
+/**
+ * Controller transport handlers for reservation management.
+ *
+ * Module base route: /api/v1/organizations/:organizationId/hotels/:hotelId/reservations.
+ */
 export class ReservationsController {
   /**
-   * POST /organizations/:organizationId/hotels/:hotelId/reservations
+   * Handles create requests for reservation management.
+   *
+   * Route: POST /api/v1/organizations/:organizationId/hotels/:hotelId/reservations
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   create = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId } = req.params as { organizationId: string; hotelId: string };
@@ -47,7 +60,15 @@ export class ReservationsController {
   });
 
   /**
-   * POST /organizations/:organizationId/hotels/:hotelId/reservations/walk-in
+   * Handles walk in requests for reservation management.
+   *
+   * Route: POST /api/v1/organizations/:organizationId/hotels/:hotelId/reservations/walk-in
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   walkIn = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId } = req.params as { organizationId: string; hotelId: string };
@@ -67,7 +88,15 @@ export class ReservationsController {
   });
 
   /**
-   * GET /organizations/:organizationId/hotels/:hotelId/reservations
+   * Handles list requests for reservation management.
+   *
+   * Route: GET /api/v1/organizations/:organizationId/hotels/:hotelId/reservations
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   list = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId } = req.params as { organizationId: string; hotelId: string };
@@ -94,7 +123,15 @@ export class ReservationsController {
   });
 
   /**
-   * GET /organizations/:organizationId/hotels/:hotelId/reservations/:reservationId
+   * Handles get by id requests for reservation management.
+   *
+   * Route: GET /api/v1/organizations/:organizationId/hotels/:hotelId/reservations/:reservationId
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   getById = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId, reservationId } = req.params as {
@@ -109,7 +146,15 @@ export class ReservationsController {
   });
 
   /**
-   * GET /organizations/:organizationId/reservations/confirm/:confirmationNumber
+   * Handles get by confirmation requests for reservation management.
+   *
+   * Route: GET /api/v1/organizations/:organizationId/reservations/confirm/:confirmationNumber
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   getByConfirmation = asyncHandler(async (req: Request, res: Response) => {
     const { confirmationNumber } = req.params as { confirmationNumber: string };
@@ -124,7 +169,15 @@ export class ReservationsController {
   });
 
   /**
-   * PATCH /organizations/:organizationId/hotels/:hotelId/reservations/:reservationId
+   * Handles update requests for reservation management.
+   *
+   * Route: PATCH /api/v1/organizations/:organizationId/hotels/:hotelId/reservations/:reservationId
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   update = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId, reservationId } = req.params as {
@@ -146,7 +199,15 @@ export class ReservationsController {
   });
 
   /**
-   * POST /organizations/:organizationId/hotels/:hotelId/reservations/:reservationId/check-in
+   * Handles check in requests for reservation management.
+   *
+   * Route: POST /api/v1/organizations/:organizationId/hotels/:hotelId/reservations/:reservationId/check-in
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   checkIn = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId, reservationId } = req.params as {
@@ -168,7 +229,15 @@ export class ReservationsController {
   });
 
   /**
-   * POST /organizations/:organizationId/hotels/:hotelId/reservations/:reservationId/check-out
+   * Handles check out requests for reservation management.
+   *
+   * Route: POST /api/v1/organizations/:organizationId/hotels/:hotelId/reservations/:reservationId/check-out
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   checkOut = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId, reservationId } = req.params as {
@@ -190,7 +259,15 @@ export class ReservationsController {
   });
 
   /**
-   * POST /organizations/:organizationId/hotels/:hotelId/reservations/:reservationId/assign-room
+   * Handles assign room requests for reservation management.
+   *
+   * Route: POST /api/v1/organizations/:organizationId/hotels/:hotelId/reservations/:reservationId/assign-room
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   assignRoom = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId, reservationId } = req.params as {
@@ -212,7 +289,15 @@ export class ReservationsController {
   });
 
   /**
-   * POST /organizations/:organizationId/hotels/:hotelId/reservations/:reservationId/unassign-room
+   * Handles unassign room requests for reservation management.
+   *
+   * Route: POST /api/v1/organizations/:organizationId/hotels/:hotelId/reservations/:reservationId/unassign-room
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   unassignRoom = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId, reservationId } = req.params as {
@@ -231,7 +316,15 @@ export class ReservationsController {
   });
 
   /**
-   * POST /organizations/:organizationId/hotels/:hotelId/reservations/:reservationId/cancel
+   * Handles cancel requests for reservation management.
+   *
+   * Route: POST /api/v1/organizations/:organizationId/hotels/:hotelId/reservations/:reservationId/cancel
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   cancel = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId, reservationId } = req.params as {
@@ -254,7 +347,15 @@ export class ReservationsController {
   });
 
   /**
-   * POST /organizations/:organizationId/hotels/:hotelId/reservations/:reservationId/no-show
+   * Handles no show requests for reservation management.
+   *
+   * Route: POST /api/v1/organizations/:organizationId/hotels/:hotelId/reservations/:reservationId/no-show
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   noShow = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId, reservationId } = req.params as {
@@ -276,7 +377,15 @@ export class ReservationsController {
   });
 
   /**
-   * POST /organizations/:organizationId/hotels/:hotelId/reservations/:reservationId/split
+   * Handles split requests for reservation management.
+   *
+   * Route: POST /api/v1/organizations/:organizationId/hotels/:hotelId/reservations/:reservationId/split
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   split = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId, reservationId } = req.params as {
@@ -298,7 +407,15 @@ export class ReservationsController {
   });
 
   /**
-   * GET /organizations/:organizationId/hotels/:hotelId/reservations/today/arrivals
+   * Handles get today arrivals requests for reservation management.
+   *
+   * Route: GET /api/v1/organizations/:organizationId/hotels/:hotelId/reservations/today/arrivals
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   getTodayArrivals = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId } = req.params as { organizationId: string; hotelId: string };
@@ -312,7 +429,15 @@ export class ReservationsController {
   });
 
   /**
-   * GET /organizations/:organizationId/hotels/:hotelId/reservations/today/departures
+   * Handles get today departures requests for reservation management.
+   *
+   * Route: GET /api/v1/organizations/:organizationId/hotels/:hotelId/reservations/today/departures
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   getTodayDepartures = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId } = req.params as { organizationId: string; hotelId: string };
@@ -326,7 +451,15 @@ export class ReservationsController {
   });
 
   /**
-   * GET /organizations/:organizationId/hotels/:hotelId/reservations/in-house
+   * Handles get in house requests for reservation management.
+   *
+   * Route: GET /api/v1/organizations/:organizationId/hotels/:hotelId/reservations/in-house
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   getInHouse = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId } = req.params as { organizationId: string; hotelId: string };

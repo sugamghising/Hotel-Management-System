@@ -11,7 +11,23 @@ import type {
 } from './nightAudit.schema';
 import { nightAuditService } from './nightAudit.service';
 
+/**
+ * Controller transport handlers for night audit operations.
+ *
+ * Module base route: /api/v1/organizations/:organizationId/hotels/:hotelId.
+ */
 export class NightAuditController {
+  /**
+   * Handles pre check requests for night audit operations.
+   *
+   * Route: GET /api/v1/organizations/:organizationId/hotels/:hotelId/night-audit/pre-check
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
+   */
   preCheck = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId } = req.params as { organizationId: string; hotelId: string };
     const query = req.query as unknown as NightAuditDateQueryInput;
@@ -24,6 +40,17 @@ export class NightAuditController {
     );
   });
 
+  /**
+   * Handles run audit requests for night audit operations.
+   *
+   * Route: POST /api/v1/organizations/:organizationId/hotels/:hotelId/night-audit/run
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
+   */
   runAudit = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId } = req.params as { organizationId: string; hotelId: string };
     const input = req.body as RunNightAuditInput;
@@ -36,6 +63,17 @@ export class NightAuditController {
     );
   });
 
+  /**
+   * Handles get status requests for night audit operations.
+   *
+   * Route: GET /api/v1/organizations/:organizationId/hotels/:hotelId/night-audit/status
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
+   */
   getStatus = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId } = req.params as { organizationId: string; hotelId: string };
 
@@ -47,6 +85,17 @@ export class NightAuditController {
     );
   });
 
+  /**
+   * Handles get history requests for night audit operations.
+   *
+   * Route: GET /api/v1/organizations/:organizationId/hotels/:hotelId/night-audit/history
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
+   */
   getHistory = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId } = req.params as { organizationId: string; hotelId: string };
     const query = req.query as unknown as NightAuditHistoryQueryInput;
@@ -59,6 +108,17 @@ export class NightAuditController {
     );
   });
 
+  /**
+   * Handles get report requests for night audit operations.
+   *
+   * Route: GET /api/v1/organizations/:organizationId/hotels/:hotelId/night-audit/report
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
+   */
   getReport = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId } = req.params as { organizationId: string; hotelId: string };
     const query = req.query as unknown as NightAuditReportQueryInput;
@@ -71,6 +131,17 @@ export class NightAuditController {
     );
   });
 
+  /**
+   * Handles rollback requests for night audit operations.
+   *
+   * Route: POST /api/v1/organizations/:organizationId/hotels/:hotelId/night-audit/rollback
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
+   */
   rollback = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId } = req.params as { organizationId: string; hotelId: string };
     const input = req.body as RollbackNightAuditInput;

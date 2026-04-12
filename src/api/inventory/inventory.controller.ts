@@ -26,7 +26,23 @@ import type {
 } from './inventory.schema';
 import { inventoryService } from './inventory.service';
 
+/**
+ * Controller transport handlers for inventory and procurement operations.
+ *
+ * Module base route: /api/v1/organizations/:organizationId/hotels/:hotelId/inventory.
+ */
 export class InventoryController {
+  /**
+   * Handles create inventory item requests for inventory and procurement operations.
+   *
+   * Route: POST /api/v1/organizations/:organizationId/hotels/:hotelId/inventory/items
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
+   */
   createInventoryItem = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId } = req.params as { organizationId: string; hotelId: string };
     const input = req.body as CreateInventoryItemInput;
@@ -44,6 +60,17 @@ export class InventoryController {
     );
   });
 
+  /**
+   * Handles list inventory items requests for inventory and procurement operations.
+   *
+   * Route: GET /api/v1/organizations/:organizationId/hotels/:hotelId/inventory/items
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
+   */
   listInventoryItems = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId } = req.params as { organizationId: string; hotelId: string };
     const query = req.query as unknown as ListInventoryItemsQueryInput;
@@ -53,6 +80,17 @@ export class InventoryController {
     handleServiceResponse(ServiceResponse.success(data, 'Inventory items retrieved'), res);
   });
 
+  /**
+   * Handles get inventory item requests for inventory and procurement operations.
+   *
+   * Route: GET /api/v1/organizations/:organizationId/hotels/:hotelId/inventory/items/:itemId
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
+   */
   getInventoryItem = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId, itemId } = req.params as {
       organizationId: string;
@@ -65,6 +103,17 @@ export class InventoryController {
     handleServiceResponse(ServiceResponse.success(data, 'Inventory item retrieved'), res);
   });
 
+  /**
+   * Handles update inventory item requests for inventory and procurement operations.
+   *
+   * Route: PATCH /api/v1/organizations/:organizationId/hotels/:hotelId/inventory/items/:itemId
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
+   */
   updateInventoryItem = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId, itemId } = req.params as {
       organizationId: string;
@@ -78,6 +127,17 @@ export class InventoryController {
     handleServiceResponse(ServiceResponse.success(data, 'Inventory item updated'), res);
   });
 
+  /**
+   * Handles delete inventory item requests for inventory and procurement operations.
+   *
+   * Route: DELETE /api/v1/organizations/:organizationId/hotels/:hotelId/inventory/items/:itemId
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
+   */
   deleteInventoryItem = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId, itemId } = req.params as {
       organizationId: string;
@@ -90,6 +150,17 @@ export class InventoryController {
     handleServiceResponse(ServiceResponse.success(data, 'Inventory item deleted'), res);
   });
 
+  /**
+   * Handles adjust inventory stock requests for inventory and procurement operations.
+   *
+   * Route: POST /api/v1/organizations/:organizationId/hotels/:hotelId/inventory/items/:itemId/adjust
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
+   */
   adjustInventoryStock = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId, itemId } = req.params as {
       organizationId: string;
@@ -109,6 +180,17 @@ export class InventoryController {
     handleServiceResponse(ServiceResponse.success(data, 'Inventory stock adjusted'), res);
   });
 
+  /**
+   * Handles consume inventory stock requests for inventory and procurement operations.
+   *
+   * Route: POST /api/v1/organizations/:organizationId/hotels/:hotelId/inventory/items/:itemId/consume
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
+   */
   consumeInventoryStock = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId, itemId } = req.params as {
       organizationId: string;
@@ -128,6 +210,17 @@ export class InventoryController {
     handleServiceResponse(ServiceResponse.success(data, 'Inventory stock consumed'), res);
   });
 
+  /**
+   * Handles list inventory transactions requests for inventory and procurement operations.
+   *
+   * Route: GET /api/v1/organizations/:organizationId/hotels/:hotelId/inventory/transactions
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
+   */
   listInventoryTransactions = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId } = req.params as { organizationId: string; hotelId: string };
     const query = req.query as unknown as ListInventoryTransactionsQueryInput;
@@ -137,6 +230,17 @@ export class InventoryController {
     handleServiceResponse(ServiceResponse.success(data, 'Inventory transactions retrieved'), res);
   });
 
+  /**
+   * Handles create vendor requests for inventory and procurement operations.
+   *
+   * Route: POST /api/v1/organizations/:organizationId/hotels/:hotelId/inventory/vendors
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
+   */
   createVendor = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId } = req.params as { organizationId: string; hotelId: string };
     const input = req.body as CreateVendorInput;
@@ -149,6 +253,17 @@ export class InventoryController {
     );
   });
 
+  /**
+   * Handles list vendors requests for inventory and procurement operations.
+   *
+   * Route: GET /api/v1/organizations/:organizationId/hotels/:hotelId/inventory/vendors
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
+   */
   listVendors = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId } = req.params as { organizationId: string; hotelId: string };
     const query = req.query as unknown as ListVendorsQueryInput;
@@ -158,6 +273,17 @@ export class InventoryController {
     handleServiceResponse(ServiceResponse.success(data, 'Vendors retrieved'), res);
   });
 
+  /**
+   * Handles get vendor requests for inventory and procurement operations.
+   *
+   * Route: GET /api/v1/organizations/:organizationId/hotels/:hotelId/inventory/vendors/:vendorId
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
+   */
   getVendor = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId, vendorId } = req.params as {
       organizationId: string;
@@ -170,6 +296,17 @@ export class InventoryController {
     handleServiceResponse(ServiceResponse.success(data, 'Vendor retrieved'), res);
   });
 
+  /**
+   * Handles update vendor requests for inventory and procurement operations.
+   *
+   * Route: PATCH /api/v1/organizations/:organizationId/hotels/:hotelId/inventory/vendors/:vendorId
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
+   */
   updateVendor = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId, vendorId } = req.params as {
       organizationId: string;
@@ -183,6 +320,17 @@ export class InventoryController {
     handleServiceResponse(ServiceResponse.success(data, 'Vendor updated'), res);
   });
 
+  /**
+   * Handles approve vendor requests for inventory and procurement operations.
+   *
+   * Route: POST /api/v1/organizations/:organizationId/hotels/:hotelId/inventory/vendors/:vendorId/approve
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
+   */
   approveVendor = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId, vendorId } = req.params as {
       organizationId: string;
@@ -196,6 +344,17 @@ export class InventoryController {
     handleServiceResponse(ServiceResponse.success(data, 'Vendor approval updated'), res);
   });
 
+  /**
+   * Handles create purchase order requests for inventory and procurement operations.
+   *
+   * Route: POST /api/v1/organizations/:organizationId/hotels/:hotelId/inventory/purchase-orders
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
+   */
   createPurchaseOrder = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId } = req.params as { organizationId: string; hotelId: string };
     const input = req.body as CreatePurchaseOrderInput;
@@ -213,6 +372,17 @@ export class InventoryController {
     );
   });
 
+  /**
+   * Handles list purchase orders requests for inventory and procurement operations.
+   *
+   * Route: GET /api/v1/organizations/:organizationId/hotels/:hotelId/inventory/purchase-orders
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
+   */
   listPurchaseOrders = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId } = req.params as { organizationId: string; hotelId: string };
     const query = req.query as unknown as ListPurchaseOrdersQueryInput;
@@ -222,6 +392,17 @@ export class InventoryController {
     handleServiceResponse(ServiceResponse.success(data, 'Purchase orders retrieved'), res);
   });
 
+  /**
+   * Handles get purchase order requests for inventory and procurement operations.
+   *
+   * Route: GET /api/v1/organizations/:organizationId/hotels/:hotelId/inventory/purchase-orders/:purchaseOrderId
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
+   */
   getPurchaseOrder = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId, purchaseOrderId } = req.params as {
       organizationId: string;
@@ -234,6 +415,17 @@ export class InventoryController {
     handleServiceResponse(ServiceResponse.success(data, 'Purchase order retrieved'), res);
   });
 
+  /**
+   * Handles update purchase order requests for inventory and procurement operations.
+   *
+   * Route: PATCH /api/v1/organizations/:organizationId/hotels/:hotelId/inventory/purchase-orders/:purchaseOrderId
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
+   */
   updatePurchaseOrder = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId, purchaseOrderId } = req.params as {
       organizationId: string;
@@ -252,6 +444,17 @@ export class InventoryController {
     handleServiceResponse(ServiceResponse.success(data, 'Purchase order updated'), res);
   });
 
+  /**
+   * Handles add purchase order item requests for inventory and procurement operations.
+   *
+   * Route: POST /api/v1/organizations/:organizationId/hotels/:hotelId/inventory/purchase-orders/:purchaseOrderId/items
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
+   */
   addPurchaseOrderItem = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId, purchaseOrderId } = req.params as {
       organizationId: string;
@@ -270,6 +473,17 @@ export class InventoryController {
     handleServiceResponse(ServiceResponse.success(data, 'Purchase order item added'), res);
   });
 
+  /**
+   * Handles update purchase order item requests for inventory and procurement operations.
+   *
+   * Route: PATCH /api/v1/organizations/:organizationId/hotels/:hotelId/inventory/purchase-orders/:purchaseOrderId/items/:poItemId
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
+   */
   updatePurchaseOrderItem = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId, purchaseOrderId, poItemId } = req.params as {
       organizationId: string;
@@ -290,6 +504,17 @@ export class InventoryController {
     handleServiceResponse(ServiceResponse.success(data, 'Purchase order item updated'), res);
   });
 
+  /**
+   * Handles remove purchase order item requests for inventory and procurement operations.
+   *
+   * Route: DELETE /api/v1/organizations/:organizationId/hotels/:hotelId/inventory/purchase-orders/:purchaseOrderId/items/:poItemId
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
+   */
   removePurchaseOrderItem = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId, purchaseOrderId, poItemId } = req.params as {
       organizationId: string;
@@ -308,6 +533,17 @@ export class InventoryController {
     handleServiceResponse(ServiceResponse.success(data, 'Purchase order item removed'), res);
   });
 
+  /**
+   * Handles submit purchase order requests for inventory and procurement operations.
+   *
+   * Route: POST /api/v1/organizations/:organizationId/hotels/:hotelId/inventory/purchase-orders/:purchaseOrderId/submit
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
+   */
   submitPurchaseOrder = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId, purchaseOrderId } = req.params as {
       organizationId: string;
@@ -327,6 +563,17 @@ export class InventoryController {
     handleServiceResponse(ServiceResponse.success(data, 'Purchase order submitted'), res);
   });
 
+  /**
+   * Handles approve purchase order requests for inventory and procurement operations.
+   *
+   * Route: POST /api/v1/organizations/:organizationId/hotels/:hotelId/inventory/purchase-orders/:purchaseOrderId/approve
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
+   */
   approvePurchaseOrder = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId, purchaseOrderId } = req.params as {
       organizationId: string;
@@ -346,6 +593,17 @@ export class InventoryController {
     handleServiceResponse(ServiceResponse.success(data, 'Purchase order approved'), res);
   });
 
+  /**
+   * Handles receive purchase order requests for inventory and procurement operations.
+   *
+   * Route: POST /api/v1/organizations/:organizationId/hotels/:hotelId/inventory/purchase-orders/:purchaseOrderId/receive
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
+   */
   receivePurchaseOrder = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId, purchaseOrderId } = req.params as {
       organizationId: string;
@@ -365,6 +623,17 @@ export class InventoryController {
     handleServiceResponse(ServiceResponse.success(data, 'Purchase order received'), res);
   });
 
+  /**
+   * Handles cancel purchase order requests for inventory and procurement operations.
+   *
+   * Route: POST /api/v1/organizations/:organizationId/hotels/:hotelId/inventory/purchase-orders/:purchaseOrderId/cancel
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
+   */
   cancelPurchaseOrder = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId, purchaseOrderId } = req.params as {
       organizationId: string;
@@ -384,6 +653,17 @@ export class InventoryController {
     handleServiceResponse(ServiceResponse.success(data, 'Purchase order cancelled'), res);
   });
 
+  /**
+   * Handles get dashboard requests for inventory and procurement operations.
+   *
+   * Route: GET /api/v1/organizations/:organizationId/hotels/:hotelId/inventory/dashboard
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
+   */
   getDashboard = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId } = req.params as { organizationId: string; hotelId: string };
     const query = req.query as unknown as InventoryDashboardQueryInput;

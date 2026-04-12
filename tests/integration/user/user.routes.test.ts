@@ -16,6 +16,7 @@ describe('User Routes', () => {
 
       expect(response.body.success).toBe(false);
       expect(response.body.error.code).toBe('UNAUTHORIZED');
+      expect(response.body.error.stack).toBeUndefined();
     });
 
     it('should return 401 when token is invalid', async () => {

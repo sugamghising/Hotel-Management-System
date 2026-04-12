@@ -30,9 +30,22 @@ import type {
   UpdateTaskInput,
 } from './housekeeping.types';
 
+/**
+ * Controller transport handlers for housekeeping operations.
+ *
+ * Module base route: /api/v1/organizations/:organizationId/hotels/:hotelId/housekeeping.
+ */
 export class HousekeepingController {
   /**
-   * POST /organizations/:organizationId/hotels/:hotelId/housekeeping/tasks
+   * Handles create task requests for housekeeping operations.
+   *
+   * Route: POST /api/v1/organizations/:organizationId/hotels/:hotelId/housekeeping/tasks
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   createTask = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId } = req.params as { organizationId: string; hotelId: string };
@@ -52,7 +65,15 @@ export class HousekeepingController {
   });
 
   /**
-   * GET /organizations/:organizationId/hotels/:hotelId/housekeeping/tasks
+   * Handles list tasks requests for housekeeping operations.
+   *
+   * Route: GET /api/v1/organizations/:organizationId/hotels/:hotelId/housekeeping/tasks
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   listTasks = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId } = req.params as { organizationId: string; hotelId: string };
@@ -85,7 +106,15 @@ export class HousekeepingController {
   });
 
   /**
-   * GET /organizations/:organizationId/hotels/:hotelId/housekeeping/tasks/:taskId
+   * Handles get task detail requests for housekeeping operations.
+   *
+   * Route: GET /api/v1/organizations/:organizationId/hotels/:hotelId/housekeeping/tasks/:taskId
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   getTaskDetail = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId, taskId } = req.params as {
@@ -100,7 +129,15 @@ export class HousekeepingController {
   });
 
   /**
-   * PATCH /organizations/:organizationId/hotels/:hotelId/housekeeping/tasks/:taskId
+   * Handles update task requests for housekeeping operations.
+   *
+   * Route: PATCH /api/v1/organizations/:organizationId/hotels/:hotelId/housekeeping/tasks/:taskId
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   updateTask = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId, taskId } = req.params as {
@@ -116,7 +153,15 @@ export class HousekeepingController {
   });
 
   /**
-   * POST /organizations/:organizationId/hotels/:hotelId/housekeeping/tasks/:taskId/assign
+   * Handles assign task requests for housekeeping operations.
+   *
+   * Route: POST /api/v1/organizations/:organizationId/hotels/:hotelId/housekeeping/tasks/:taskId/assign
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   assignTask = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId, taskId } = req.params as {
@@ -132,7 +177,15 @@ export class HousekeepingController {
   });
 
   /**
-   * POST /organizations/:organizationId/hotels/:hotelId/housekeeping/tasks/:taskId/start
+   * Handles start task requests for housekeeping operations.
+   *
+   * Route: POST /api/v1/organizations/:organizationId/hotels/:hotelId/housekeeping/tasks/:taskId/start
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   startTask = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId, taskId } = req.params as {
@@ -152,7 +205,15 @@ export class HousekeepingController {
   });
 
   /**
-   * POST /organizations/:organizationId/hotels/:hotelId/housekeeping/tasks/:taskId/complete
+   * Handles complete task requests for housekeeping operations.
+   *
+   * Route: POST /api/v1/organizations/:organizationId/hotels/:hotelId/housekeeping/tasks/:taskId/complete
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   completeTask = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId, taskId } = req.params as {
@@ -174,7 +235,15 @@ export class HousekeepingController {
   });
 
   /**
-   * POST /organizations/:organizationId/hotels/:hotelId/housekeeping/tasks/:taskId/dnd
+   * Handles mark dnd requests for housekeeping operations.
+   *
+   * Route: POST /api/v1/organizations/:organizationId/hotels/:hotelId/housekeeping/tasks/:taskId/dnd
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   markDnd = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId, taskId } = req.params as {
@@ -196,7 +265,15 @@ export class HousekeepingController {
   });
 
   /**
-   * POST /organizations/:organizationId/hotels/:hotelId/housekeeping/tasks/:taskId/cancel
+   * Handles cancel task requests for housekeeping operations.
+   *
+   * Route: POST /api/v1/organizations/:organizationId/hotels/:hotelId/housekeeping/tasks/:taskId/cancel
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   cancelTask = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId, taskId } = req.params as {
@@ -218,7 +295,15 @@ export class HousekeepingController {
   });
 
   /**
-   * POST /organizations/:organizationId/hotels/:hotelId/housekeeping/tasks/auto-generate
+   * Handles auto generate tasks requests for housekeeping operations.
+   *
+   * Route: POST /api/v1/organizations/:organizationId/hotels/:hotelId/housekeeping/tasks/auto-generate
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   autoGenerateTasks = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId } = req.params as { organizationId: string; hotelId: string };
@@ -235,7 +320,15 @@ export class HousekeepingController {
   });
 
   /**
-   * POST /organizations/:organizationId/hotels/:hotelId/housekeeping/tasks/bulk-assign
+   * Handles bulk assign requests for housekeeping operations.
+   *
+   * Route: POST /api/v1/organizations/:organizationId/hotels/:hotelId/housekeeping/tasks/bulk-assign
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   bulkAssign = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId } = req.params as { organizationId: string; hotelId: string };
@@ -247,7 +340,15 @@ export class HousekeepingController {
   });
 
   /**
-   * POST /organizations/:organizationId/hotels/:hotelId/housekeeping/inspections
+   * Handles submit inspection requests for housekeeping operations.
+   *
+   * Route: POST /api/v1/organizations/:organizationId/hotels/:hotelId/housekeeping/inspections
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   submitInspection = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId } = req.params as { organizationId: string; hotelId: string };
@@ -271,7 +372,15 @@ export class HousekeepingController {
   });
 
   /**
-   * GET /organizations/:organizationId/hotels/:hotelId/housekeeping/inspections
+   * Handles list inspections requests for housekeeping operations.
+   *
+   * Route: GET /api/v1/organizations/:organizationId/hotels/:hotelId/housekeeping/inspections
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   listInspections = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId } = req.params as { organizationId: string; hotelId: string };
@@ -304,7 +413,15 @@ export class HousekeepingController {
   });
 
   /**
-   * GET /organizations/:organizationId/hotels/:hotelId/housekeeping/inspections/:inspId
+   * Handles get inspection detail requests for housekeeping operations.
+   *
+   * Route: GET /api/v1/organizations/:organizationId/hotels/:hotelId/housekeeping/inspections/:inspId
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   getInspectionDetail = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId, inspId } = req.params as {
@@ -326,7 +443,15 @@ export class HousekeepingController {
   });
 
   /**
-   * GET /organizations/:organizationId/hotels/:hotelId/housekeeping/tasks/:taskId/inspections
+   * Handles get task inspections requests for housekeeping operations.
+   *
+   * Route: GET /api/v1/organizations/:organizationId/hotels/:hotelId/housekeeping/tasks/:taskId/inspections
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   getTaskInspections = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId, taskId } = req.params as {
@@ -348,7 +473,15 @@ export class HousekeepingController {
   });
 
   /**
-   * GET /organizations/:organizationId/hotels/:hotelId/housekeeping/staff/:staffId/scores
+   * Handles get staff scores requests for housekeeping operations.
+   *
+   * Route: GET /api/v1/organizations/:organizationId/hotels/:hotelId/housekeeping/staff/:staffId/scores
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   getStaffScores = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId, staffId } = req.params as {
@@ -370,7 +503,15 @@ export class HousekeepingController {
   });
 
   /**
-   * GET /organizations/:organizationId/hotels/:hotelId/housekeeping/rooms/:roomId/inspections
+   * Handles get room inspections requests for housekeeping operations.
+   *
+   * Route: GET /api/v1/organizations/:organizationId/hotels/:hotelId/housekeeping/rooms/:roomId/inspections
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   getRoomInspections = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId, roomId } = req.params as {
@@ -392,7 +533,15 @@ export class HousekeepingController {
   });
 
   /**
-   * POST /organizations/:organizationId/hotels/:hotelId/housekeeping/shifts
+   * Handles create shift requests for housekeeping operations.
+   *
+   * Route: POST /api/v1/organizations/:organizationId/hotels/:hotelId/housekeeping/shifts
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   createShift = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId } = req.params as { organizationId: string; hotelId: string };
@@ -407,7 +556,15 @@ export class HousekeepingController {
   });
 
   /**
-   * GET /organizations/:organizationId/hotels/:hotelId/housekeeping/shifts
+   * Handles list shifts requests for housekeeping operations.
+   *
+   * Route: GET /api/v1/organizations/:organizationId/hotels/:hotelId/housekeeping/shifts
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   listShifts = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId } = req.params as { organizationId: string; hotelId: string };
@@ -432,7 +589,15 @@ export class HousekeepingController {
   });
 
   /**
-   * GET /organizations/:organizationId/hotels/:hotelId/housekeeping/shifts/:shiftId
+   * Handles get shift detail requests for housekeeping operations.
+   *
+   * Route: GET /api/v1/organizations/:organizationId/hotels/:hotelId/housekeeping/shifts/:shiftId
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   getShiftDetail = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId, shiftId } = req.params as {
@@ -447,7 +612,15 @@ export class HousekeepingController {
   });
 
   /**
-   * PATCH /organizations/:organizationId/hotels/:hotelId/housekeeping/shifts/:shiftId
+   * Handles update shift requests for housekeeping operations.
+   *
+   * Route: PATCH /api/v1/organizations/:organizationId/hotels/:hotelId/housekeeping/shifts/:shiftId
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   updateShift = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId, shiftId } = req.params as {
@@ -463,7 +636,15 @@ export class HousekeepingController {
   });
 
   /**
-   * POST /organizations/:organizationId/hotels/:hotelId/housekeeping/shifts/:shiftId/assign-staff
+   * Handles assign shift staff requests for housekeeping operations.
+   *
+   * Route: POST /api/v1/organizations/:organizationId/hotels/:hotelId/housekeeping/shifts/:shiftId/assign-staff
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   assignShiftStaff = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId, shiftId } = req.params as {
@@ -487,7 +668,15 @@ export class HousekeepingController {
   });
 
   /**
-   * GET /organizations/:organizationId/hotels/:hotelId/housekeeping/staff/workload
+   * Handles get staff workload requests for housekeeping operations.
+   *
+   * Route: GET /api/v1/organizations/:organizationId/hotels/:hotelId/housekeeping/staff/workload
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   getStaffWorkload = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId } = req.params as { organizationId: string; hotelId: string };
@@ -506,7 +695,15 @@ export class HousekeepingController {
   });
 
   /**
-   * GET /organizations/:organizationId/hotels/:hotelId/housekeeping/dashboard
+   * Handles get dashboard requests for housekeeping operations.
+   *
+   * Route: GET /api/v1/organizations/:organizationId/hotels/:hotelId/housekeeping/dashboard
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   getDashboard = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId } = req.params as { organizationId: string; hotelId: string };
@@ -521,7 +718,15 @@ export class HousekeepingController {
   });
 
   /**
-   * POST /organizations/:organizationId/hotels/:hotelId/housekeeping/lost-found
+   * Handles create lost found item requests for housekeeping operations.
+   *
+   * Route: POST /api/v1/organizations/:organizationId/hotels/:hotelId/housekeeping/lost-found
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   createLostFoundItem = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId } = req.params as { organizationId: string; hotelId: string };
@@ -541,7 +746,15 @@ export class HousekeepingController {
   });
 
   /**
-   * GET /organizations/:organizationId/hotels/:hotelId/housekeeping/lost-found
+   * Handles list lost found items requests for housekeeping operations.
+   *
+   * Route: GET /api/v1/organizations/:organizationId/hotels/:hotelId/housekeeping/lost-found
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   listLostFoundItems = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId } = req.params as { organizationId: string; hotelId: string };
@@ -573,7 +786,15 @@ export class HousekeepingController {
   });
 
   /**
-   * GET /organizations/:organizationId/hotels/:hotelId/housekeeping/lost-found/:itemId
+   * Handles get lost found item detail requests for housekeeping operations.
+   *
+   * Route: GET /api/v1/organizations/:organizationId/hotels/:hotelId/housekeeping/lost-found/:itemId
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   getLostFoundItemDetail = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId, itemId } = req.params as {
@@ -588,7 +809,15 @@ export class HousekeepingController {
   });
 
   /**
-   * PATCH /organizations/:organizationId/hotels/:hotelId/housekeeping/lost-found/:itemId
+   * Handles update lost found item requests for housekeeping operations.
+   *
+   * Route: PATCH /api/v1/organizations/:organizationId/hotels/:hotelId/housekeeping/lost-found/:itemId
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   updateLostFoundItem = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId, itemId } = req.params as {
@@ -609,7 +838,15 @@ export class HousekeepingController {
   });
 
   /**
-   * POST /organizations/:organizationId/hotels/:hotelId/housekeeping/lost-found/:itemId/notify
+   * Handles notify lost found owner requests for housekeeping operations.
+   *
+   * Route: POST /api/v1/organizations/:organizationId/hotels/:hotelId/housekeeping/lost-found/:itemId/notify
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   notifyLostFoundOwner = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId, itemId } = req.params as {
