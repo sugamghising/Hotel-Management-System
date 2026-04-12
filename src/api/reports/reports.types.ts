@@ -193,7 +193,7 @@ export interface FolioSummaryResponse {
 // ARRIVALS/DEPARTURES REPORT
 // ============================================================================
 
-export interface ArrivalsDeporturesRow {
+export interface ArrivalsDeparturesRow {
   date: Date;
   arrivals: number;
   departures: number;
@@ -202,7 +202,7 @@ export interface ArrivalsDeporturesRow {
   stayovers: number;
 }
 
-export interface ArrivalsDeporturesSummary {
+export interface ArrivalsDeparturesSummary {
   totalArrivals: number;
   totalDepartures: number;
   totalNoShows: number;
@@ -211,9 +211,9 @@ export interface ArrivalsDeporturesSummary {
   avgDailyDepartures: Decimal;
 }
 
-export interface ArrivalsDeporturesResponse {
-  rows: ArrivalsDeporturesRow[];
-  summary: ArrivalsDeporturesSummary;
+export interface ArrivalsDeparturesResponse {
+  rows: ArrivalsDeparturesRow[];
+  summary: ArrivalsDeparturesSummary;
 }
 
 // ============================================================================

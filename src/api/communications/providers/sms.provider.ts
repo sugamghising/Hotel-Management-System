@@ -4,18 +4,34 @@ import type { ProviderPayload } from '../communications.types';
 import type { ICommunicationProvider, ProviderConfig } from './provider.interface';
 
 /**
- * Stub SMS provider for development and testing.
- * Logs the payload and returns a mock external ID.
- * Replace with real implementation (Twilio, Nexmo, MessageBird, etc.) in production.
+ * Implements a stub SMS provider for local and test environments.
+ *
+ * The provider avoids external API calls by logging outbound payloads and
+ * returning a generated tracking ID.
  */
 export class SmsProvider implements ICommunicationProvider {
   readonly channel = CommunicationChannel.SMS;
   private config: ProviderConfig;
 
+  /**
+   * Creates the SMS provider with optional sender and sandbox configuration.
+   *
+   * @param config - Provider configuration such as default sender and sandbox mode.
+   */
   constructor(config: ProviderConfig = {}) {
     this.config = config;
   }
 
+  /**
+   * Simulates SMS delivery and returns a synthetic provider message ID.
+   *
+   * Side effects:
+   * - Writes structured logs including destination and truncated body preview.
+   * - Waits briefly to imitate async provider latency.
+   *
+   * @param payload - Outbound SMS payload.
+   * @returns Generated external message ID for later webhook correlation.
+   */
   async send(payload: ProviderPayload): Promise<string> {
     const externalId = `sms_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 
@@ -39,6 +55,16 @@ export class SmsProvider implements ICommunicationProvider {
     return externalId;
   }
 
+  /**
+   * Verifies webhook signatures for SMS provider callbacks.
+   *
+   * Sandbox mode accepts all signatures. Non-sandbox mode currently rejects
+   * callbacks because this stub does not implement vendor-specific signature checks.
+   *
+   * @param signature - Signature header from the webhook request.
+   * @param _body - Raw webhook body, reserved for real signature checks.
+   * @returns `true` in sandbox mode; otherwise `false`.
+   */
   verifyWebhookSignature(signature: string, _body: string): boolean {
     // Stub: accept any signature in dev mode
     if (this.config.sandbox) {
@@ -48,7 +74,9 @@ export class SmsProvider implements ICommunicationProvider {
 
     // In production, implement actual signature verification
     // e.g., for Twilio: verify X-Twilio-Signature header
-    logger.warn('📱 [SMS STUB] Webhook signature verification not implemented; rejecting webhook in non-sandbox mode');
+    logger.warn(
+      '📱 [SMS STUB] Webhook signature verification not implemented; rejecting webhook in non-sandbox mode'
+    );
     return false;
   }
 }

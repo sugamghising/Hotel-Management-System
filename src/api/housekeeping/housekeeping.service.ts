@@ -47,10 +47,30 @@ const SYSTEM_ACTOR_ID = config.system.userId;
 export class HousekeepingService {
   private housekeepingRepo: HousekeepingRepository;
 
+  /**
+   * Creates a housekeeping service with an overridable repository dependency.
+   *
+   * @param repository - Repository implementation used for housekeeping persistence and queries.
+   */
   constructor(repository: HousekeepingRepository = housekeepingRepository) {
     this.housekeepingRepo = repository;
   }
 
+  /**
+   * Creates a housekeeping task after validating room scope and duplicate-active-task rules.
+   *
+   * Validates that the room belongs to the organization and hotel, normalizes the scheduled date,
+   * and blocks creation when a similar task already exists in active statuses for the same room/day.
+   * It then persists the task with fallback assignment and priority defaults and returns the mapped API shape.
+   *
+   * @param organizationId - Organization UUID used for tenant scoping.
+   * @param hotelId - Hotel UUID used for property scoping.
+   * @param input - Task creation payload including room, task type, schedule, and optional assignment.
+   * @param userId - Optional actor UUID; defaults to the configured system actor when omitted.
+   * @returns The created housekeeping task response.
+   * @throws {NotFoundError} When the target room does not exist in the requested hotel scope.
+   * @throws {ConflictError} When an active duplicate task exists for the same room, date, and task type.
+   */
   async createTask(
     organizationId: string,
     hotelId: string,
@@ -112,6 +132,15 @@ export class HousekeepingService {
     return this.mapTask(task);
   }
 
+  /**
+   * Lists housekeeping tasks for a hotel with filter and pagination controls.
+   *
+   * @param organizationId - Organization UUID used for tenant scoping.
+   * @param hotelId - Hotel UUID used for property scoping.
+   * @param filters - Query filters for status, type, assignee, room, and schedule window.
+   * @param pagination - Pagination controls containing 1-based page and page size limit.
+   * @returns Task responses mapped to API contract plus total count metadata.
+   */
   async listTasks(
     organizationId: string,
     hotelId: string,
@@ -131,6 +160,15 @@ export class HousekeepingService {
     };
   }
 
+  /**
+   * Retrieves a single housekeeping task by identifier within organization and hotel scope.
+   *
+   * @param organizationId - Organization UUID used for tenant scoping.
+   * @param hotelId - Hotel UUID used for property scoping.
+   * @param taskId - Housekeeping task UUID.
+   * @returns Task response for the requested identifier.
+   * @throws {NotFoundError} When no scoped task exists for the given identifier.
+   */
   async getTaskDetail(
     organizationId: string,
     hotelId: string,
@@ -145,6 +183,17 @@ export class HousekeepingService {
     return this.mapTask(task);
   }
 
+  /**
+   * Updates mutable housekeeping task fields when the task is still operational.
+   *
+   * @param organizationId - Organization UUID used for tenant scoping.
+   * @param hotelId - Hotel UUID used for property scoping.
+   * @param taskId - Housekeeping task UUID to modify.
+   * @param input - Partial update payload for priority, notes, requests, and schedule date.
+   * @returns Updated task mapped to API response shape.
+   * @throws {NotFoundError} When the scoped task cannot be found.
+   * @throws {BadRequestError} When attempting to modify tasks already `VERIFIED` or `CANCELLED`.
+   */
   async updateTask(
     organizationId: string,
     hotelId: string,
@@ -173,6 +222,16 @@ export class HousekeepingService {
     return this.mapTask(updated);
   }
 
+  /**
+   * Assigns a housekeeping task to an active staff member.
+   *
+   * @param organizationId - Organization UUID used for tenant scoping.
+   * @param hotelId - Hotel UUID used for property scoping.
+   * @param taskId - Housekeeping task UUID to assign.
+   * @param input - Assignment payload containing the target staff UUID.
+   * @returns Updated task response with assignment fields set.
+   * @throws {NotFoundError} When the task or staff member is missing in scope.
+   */
   async assignTask(
     organizationId: string,
     hotelId: string,
@@ -207,6 +266,21 @@ export class HousekeepingService {
     return this.mapTask(updated);
   }
 
+  /**
+   * Starts a housekeeping task and synchronizes room status to an active cleaning state.
+   *
+   * The method validates transition eligibility (`PENDING`, `ISSUES_REPORTED`, or `DND`), derives
+   * an acting assignee fallback, and performs a transaction that updates both room and task records.
+   * Room status is mapped to `OCCUPIED_CLEANING` or `VACANT_CLEANING` based on occupancy prefix.
+   *
+   * @param organizationId - Organization UUID used for tenant scoping.
+   * @param hotelId - Hotel UUID used for property scoping.
+   * @param taskId - Housekeeping task UUID to start.
+   * @param userId - Optional actor UUID used when no assignee exists.
+   * @returns Updated task response in `IN_PROGRESS` state.
+   * @throws {NotFoundError} When the scoped task or linked room cannot be found.
+   * @throws {BadRequestError} When the current status does not allow starting work.
+   */
   async startTask(
     organizationId: string,
     hotelId: string,
@@ -260,6 +334,22 @@ export class HousekeepingService {
     return this.mapTask(updated);
   }
 
+  /**
+   * Completes an in-progress housekeeping task and transitions room cleanliness status.
+   *
+   * Computes effective completion duration (with a minimum one-minute fallback), then uses a
+   * transaction to mark the room as dirty post-cleaning and store completion notes, photos,
+   * supplies, and actual minutes on the task.
+   *
+   * @param organizationId - Organization UUID used for tenant scoping.
+   * @param hotelId - Hotel UUID used for property scoping.
+   * @param taskId - Housekeeping task UUID to complete.
+   * @param input - Completion payload with optional notes, media, supplies, and explicit minutes.
+   * @param _userId - Optional actor UUID reserved for interface consistency.
+   * @returns Updated task response in `COMPLETED` status.
+   * @throws {NotFoundError} When the scoped task cannot be found.
+   * @throws {BadRequestError} When the task is not currently `IN_PROGRESS`.
+   */
   async completeTask(
     organizationId: string,
     hotelId: string,
@@ -313,6 +403,18 @@ export class HousekeepingService {
     return this.mapTask(updated);
   }
 
+  /**
+   * Marks a housekeeping task as do-not-disturb and records DND metadata.
+   *
+   * @param organizationId - Organization UUID used for tenant scoping.
+   * @param hotelId - Hotel UUID used for property scoping.
+   * @param taskId - Housekeeping task UUID to update.
+   * @param input - DND payload with optional reason text.
+   * @param userId - Optional actor UUID; falls back to assignee or creator.
+   * @returns Updated task response in `DND` state.
+   * @throws {NotFoundError} When the scoped task cannot be found.
+   * @throws {BadRequestError} When the task is already `VERIFIED` or `CANCELLED`.
+   */
   async markDnd(
     organizationId: string,
     hotelId: string,
@@ -340,6 +442,18 @@ export class HousekeepingService {
     return this.mapTask(updated);
   }
 
+  /**
+   * Cancels a housekeeping task and stores cancellation audit fields.
+   *
+   * @param organizationId - Organization UUID used for tenant scoping.
+   * @param hotelId - Hotel UUID used for property scoping.
+   * @param taskId - Housekeeping task UUID to cancel.
+   * @param input - Cancellation payload containing required reason text.
+   * @param userId - Optional actor UUID; defaults to task creator when omitted.
+   * @returns Updated task response in `CANCELLED` status.
+   * @throws {NotFoundError} When the scoped task cannot be found.
+   * @throws {BadRequestError} When the task is already `VERIFIED` or `CANCELLED`.
+   */
   async cancelTask(
     organizationId: string,
     hotelId: string,
@@ -367,6 +481,21 @@ export class HousekeepingService {
     return this.mapTask(updated);
   }
 
+  /**
+   * Generates stayover cleaning tasks for in-house reservations on a target business date.
+   *
+   * Iterates stayover reservations, skips records without a room reference, de-duplicates against
+   * existing tasks across active and completed statuses, and creates `CLEANING_STAYOVER` tasks with
+   * optional night-audit batch metadata.
+   *
+   * @param organizationId - Organization UUID used for tenant scoping.
+   * @param hotelId - Hotel UUID used for property scoping.
+   * @param input - Generator payload containing the date to evaluate.
+   * @param userId - Optional actor UUID stored as creator for generated tasks.
+   * @param options - Optional metadata such as `nightAuditBatchId` for provenance.
+   * @returns Count of stayover tasks created during this batch run.
+   * @remarks Complexity: O(r) repository lookups and conditional inserts where r is stayover reservations returned for the date.
+   */
   async autoGenerateStayoverTasks(
     organizationId: string,
     hotelId: string,
@@ -420,6 +549,20 @@ export class HousekeepingService {
     return { created };
   }
 
+  /**
+   * Auto-assigns pending housekeeping tasks across active staff using round-robin distribution.
+   *
+   * Validates staff scope, resolves candidate tasks from explicit IDs or date-based pending queues,
+   * prioritizes tasks by priority and creation time, and performs assignment updates in one transaction.
+   *
+   * @param organizationId - Organization UUID used for tenant scoping.
+   * @param hotelId - Hotel UUID used for property scoping.
+   * @param input - Batch assignment payload including staff IDs and optional task/date filters.
+   * @returns Assignment summary with affected task count and task-to-staff pairs.
+   * @throws {BadRequestError} When no staff IDs are provided.
+   * @throws {NotFoundError} When no valid active staff records are found.
+   * @remarks Complexity: O(t log t + t) where t is assignable task count; sorting dominates before transactional updates.
+   */
   async bulkAutoAssign(
     organizationId: string,
     hotelId: string,
@@ -502,6 +645,22 @@ export class HousekeepingService {
     };
   }
 
+  /**
+   * Records a housekeeping inspection, updates task/room outcomes, and optionally raises maintenance.
+   *
+   * The workflow enforces that only `COMPLETED` tasks can be inspected, computes weighted score and
+   * auto-fail outcome, persists inspection data, transitions the task to `VERIFIED` or `ISSUES_REPORTED`,
+   * updates room cleanliness status, and can create a follow-up maintenance request when required.
+   *
+   * @param organizationId - Organization UUID used for tenant scoping.
+   * @param hotelId - Hotel UUID used for property scoping.
+   * @param input - Inspection payload including scores, optional failure items, and maintenance flags.
+   * @param userId - Optional inspector UUID; defaults to task creator when omitted.
+   * @returns Created inspection mapped to API response shape.
+   * @throws {NotFoundError} When the referenced housekeeping task is missing in scope.
+   * @throws {BadRequestError} When attempting inspection for a task not in `COMPLETED` status.
+   * @remarks Complexity: O(f) where f is failure item count; dominant cost is transactional DB writes across inspection, task, room, and optional maintenance records.
+   */
   async submitInspection(
     organizationId: string,
     hotelId: string,
@@ -618,6 +777,15 @@ export class HousekeepingService {
     return this.mapInspection(inspection);
   }
 
+  /**
+   * Lists housekeeping inspections for a hotel with filters and pagination.
+   *
+   * @param organizationId - Organization UUID used for tenant scoping.
+   * @param hotelId - Hotel UUID used for property scoping.
+   * @param filters - Inspection query filters for task, room, staff, outcome, and date range.
+   * @param pagination - Pagination controls containing page and page-size values.
+   * @returns Mapped inspection responses plus total result count.
+   */
   async listInspections(
     organizationId: string,
     hotelId: string,
@@ -637,6 +805,15 @@ export class HousekeepingService {
     };
   }
 
+  /**
+   * Retrieves a single inspection by identifier within organization and hotel scope.
+   *
+   * @param organizationId - Organization UUID used for tenant scoping.
+   * @param hotelId - Hotel UUID used for property scoping.
+   * @param inspectionId - Inspection UUID to fetch.
+   * @returns Inspection response for the requested identifier.
+   * @throws {NotFoundError} When no scoped inspection exists.
+   */
   async getInspectionDetail(
     organizationId: string,
     hotelId: string,
@@ -655,6 +832,14 @@ export class HousekeepingService {
     return this.mapInspection(inspection);
   }
 
+  /**
+   * Returns inspection history for a specific housekeeping task.
+   *
+   * @param organizationId - Organization UUID used for tenant scoping.
+   * @param hotelId - Hotel UUID used for property scoping.
+   * @param taskId - Housekeeping task UUID whose inspections are requested.
+   * @returns Task inspection responses ordered by repository query ordering.
+   */
   async getTaskInspections(organizationId: string, hotelId: string, taskId: string) {
     const inspections = await this.housekeepingRepo.getTaskInspections(
       taskId,
@@ -664,6 +849,14 @@ export class HousekeepingService {
     return inspections.map((item) => this.mapInspection(item));
   }
 
+  /**
+   * Returns inspection history for a room within organization and hotel scope.
+   *
+   * @param organizationId - Organization UUID used for tenant scoping.
+   * @param hotelId - Hotel UUID used for property scoping.
+   * @param roomId - Room UUID whose inspection history is requested.
+   * @returns Room inspection responses ordered by repository query ordering.
+   */
   async getRoomInspectionHistory(organizationId: string, hotelId: string, roomId: string) {
     const inspections = await this.housekeepingRepo.getRoomInspections(
       roomId,
@@ -673,6 +866,21 @@ export class HousekeepingService {
     return inspections.map((item) => this.mapInspection(item));
   }
 
+  /**
+   * Builds staff quality analytics from inspections, completions, durations, and failure rates.
+   *
+   * Aggregates repository metrics across a date range, computes pass/reinspection rates and average
+   * timing, derives category averages, identifies weak areas, and estimates trend direction from score
+   * progression to support coaching and performance reviews.
+   *
+   * @param organizationId - Organization UUID used for tenant scoping.
+   * @param hotelId - Hotel UUID used for property scoping.
+   * @param staffId - Staff UUID whose quality metrics are evaluated.
+   * @param from - Optional period start; defaults to 30 days before now.
+   * @param to - Optional period end; defaults to current timestamp.
+   * @returns Staff quality history summary, category averages, weak area, and trend classification.
+   * @remarks Complexity: O(i + d) where i is inspection count and d is duration entry count for the selected period.
+   */
   async getStaffQualityHistory(
     organizationId: string,
     hotelId: string,
@@ -767,6 +975,16 @@ export class HousekeepingService {
     };
   }
 
+  /**
+   * Creates a housekeeping shift after validating schedule boundaries and supervisor scope.
+   *
+   * @param organizationId - Organization UUID used for tenant scoping.
+   * @param hotelId - Hotel UUID used for property scoping.
+   * @param input - Shift creation payload with date, time range, and optional supervisor.
+   * @returns Created shift response including assignment list.
+   * @throws {BadRequestError} When `endTime` is not later than `startTime`.
+   * @throws {NotFoundError} When the provided supervisor is not an active scoped user.
+   */
   async createShift(
     organizationId: string,
     hotelId: string,
@@ -816,6 +1034,15 @@ export class HousekeepingService {
     return this.mapShift(createdShift);
   }
 
+  /**
+   * Lists housekeeping shifts with query filters and pagination.
+   *
+   * @param organizationId - Organization UUID used for tenant scoping.
+   * @param hotelId - Hotel UUID used for property scoping.
+   * @param filters - Shift filters for status and date boundaries.
+   * @param pagination - Pagination controls containing page and page-size values.
+   * @returns Mapped shift responses plus total result count.
+   */
   async listShifts(
     organizationId: string,
     hotelId: string,
@@ -835,6 +1062,15 @@ export class HousekeepingService {
     };
   }
 
+  /**
+   * Retrieves a shift by identifier within organization and hotel scope.
+   *
+   * @param organizationId - Organization UUID used for tenant scoping.
+   * @param hotelId - Hotel UUID used for property scoping.
+   * @param shiftId - Shift UUID to fetch.
+   * @returns Shift response including current assignment set.
+   * @throws {NotFoundError} When no scoped shift exists.
+   */
   async getShiftDetail(
     organizationId: string,
     hotelId: string,
@@ -849,6 +1085,17 @@ export class HousekeepingService {
     return this.mapShift(shift);
   }
 
+  /**
+   * Updates editable shift fields with time-window and supervisor validation.
+   *
+   * @param organizationId - Organization UUID used for tenant scoping.
+   * @param hotelId - Hotel UUID used for property scoping.
+   * @param shiftId - Shift UUID to modify.
+   * @param input - Partial shift update payload for times, status, supervisor, and notes.
+   * @returns Updated shift response.
+   * @throws {NotFoundError} When the shift or provided supervisor cannot be found in scope.
+   * @throws {BadRequestError} When resulting end time is not later than start time.
+   */
   async updateShift(
     organizationId: string,
     hotelId: string,
@@ -895,6 +1142,22 @@ export class HousekeepingService {
     return this.mapShift(updated);
   }
 
+  /**
+   * Assigns staff members to a shift, optionally replacing existing assignments.
+   *
+   * Deduplicates incoming staff IDs, validates all staff are active in the organization, then runs
+   * a transaction that can clear existing assignments before inserting the new set with duplicate
+   * protection.
+   *
+   * @param organizationId - Organization UUID used for tenant scoping.
+   * @param hotelId - Hotel UUID used for property scoping.
+   * @param shiftId - Shift UUID whose staffing should be updated.
+   * @param input - Assignment payload containing staff IDs, optional role, and replace behavior.
+   * @returns Updated shift response with refreshed assignments.
+   * @throws {NotFoundError} When the shift is missing or any requested staff member is invalid.
+   * @throws {BadRequestError} When no staff IDs are supplied.
+   * @remarks Complexity: O(s) over unique staff IDs s, plus transactional delete/insert operations when replacement is requested.
+   */
   async assignStaffToShift(
     organizationId: string,
     hotelId: string,
@@ -955,6 +1218,18 @@ export class HousekeepingService {
     return this.mapShift(updated);
   }
 
+  /**
+   * Computes per-staff workload metrics from assigned tasks and active shift assignments.
+   *
+   * Aggregates daily task and shift records into per-staff buckets, derives counts and average task
+   * duration, enriches with user display names, and returns workload rows ordered by task volume.
+   *
+   * @param organizationId - Organization UUID used for tenant scoping.
+   * @param hotelId - Hotel UUID used for property scoping.
+   * @param date - Optional business date; defaults to current UTC day.
+   * @returns Staff workload metrics including assignment, completion, shift, and timing summaries.
+   * @remarks Complexity: O(t + a + s log s) where t is task count, a is shift assignment count, and s is distinct staff IDs.
+   */
   async getStaffWorkload(
     organizationId: string,
     hotelId: string,
@@ -995,6 +1270,12 @@ export class HousekeepingService {
       }
     >();
 
+    /**
+     * Returns the mutable accumulator bucket for a staff member, creating one when absent.
+     *
+     * @param staffId - Staff UUID used as the aggregation key.
+     * @returns Existing or newly initialized workload bucket for the staff member.
+     */
     const ensure = (staffId: string) => {
       const existing = accumulator.get(staffId);
       if (existing) {
@@ -1101,6 +1382,18 @@ export class HousekeepingService {
       });
   }
 
+  /**
+   * Builds a housekeeping dashboard snapshot for tasks, shifts, lost-and-found, and inspections.
+   *
+   * Executes grouped status/outcome queries for a UTC business date window, folds group counts into
+   * dashboard buckets, and computes inspection pass rate from passed versus failed totals.
+   *
+   * @param organizationId - Organization UUID used for tenant scoping.
+   * @param hotelId - Hotel UUID used for property scoping.
+   * @param date - Optional business date; defaults to current UTC day.
+   * @returns Dashboard response with per-domain counters and inspection pass-rate percentage.
+   * @remarks Complexity: O(g) post-query aggregation where g is total group rows returned across the four groupBy queries.
+   */
   async getDashboard(
     organizationId: string,
     hotelId: string,
@@ -1245,6 +1538,16 @@ export class HousekeepingService {
     };
   }
 
+  /**
+   * Creates a lost-and-found item after optional room scope validation.
+   *
+   * @param organizationId - Organization UUID used for tenant scoping.
+   * @param hotelId - Hotel UUID used for property scoping.
+   * @param input - Item creation payload with discovery, custody, and optional guest data.
+   * @param userId - Optional finder UUID; defaults to system actor when omitted.
+   * @returns Created lost-and-found item mapped to API response shape.
+   * @throws {NotFoundError} When a provided room is not found in scope.
+   */
   async createLostFoundItem(
     organizationId: string,
     hotelId: string,
@@ -1286,6 +1589,15 @@ export class HousekeepingService {
     return this.mapLostFoundItem(item);
   }
 
+  /**
+   * Lists lost-and-found items with filters and pagination.
+   *
+   * @param organizationId - Organization UUID used for tenant scoping.
+   * @param hotelId - Hotel UUID used for property scoping.
+   * @param filters - Lost-and-found filters for status, category, room, and date range.
+   * @param pagination - Pagination controls containing page and page-size values.
+   * @returns Mapped lost-and-found items plus total count.
+   */
   async listLostFoundItems(
     organizationId: string,
     hotelId: string,
@@ -1305,6 +1617,15 @@ export class HousekeepingService {
     };
   }
 
+  /**
+   * Retrieves one lost-and-found item by identifier.
+   *
+   * @param organizationId - Organization UUID used for tenant scoping.
+   * @param hotelId - Hotel UUID used for property scoping.
+   * @param itemId - Lost-and-found item UUID.
+   * @returns Item response for the requested identifier.
+   * @throws {NotFoundError} When no scoped item exists.
+   */
   async getLostFoundItemDetail(
     organizationId: string,
     hotelId: string,
@@ -1319,6 +1640,20 @@ export class HousekeepingService {
     return this.mapLostFoundItem(item);
   }
 
+  /**
+   * Updates lost-and-found custody status while enforcing claim and disposal rules.
+   *
+   * Prevents status reversal after disposal, requires claimant data before `CLAIMED`, requires disposal
+   * method before `DISPOSED`, and auto-stamps claim/disposal timestamps when a first transition occurs.
+   *
+   * @param organizationId - Organization UUID used for tenant scoping.
+   * @param hotelId - Hotel UUID used for property scoping.
+   * @param itemId - Lost-and-found item UUID to modify.
+   * @param input - Partial update payload for status and custody fields.
+   * @returns Updated lost-and-found item response.
+   * @throws {NotFoundError} When the scoped item cannot be found.
+   * @throws {BadRequestError} When transitions violate disposal or required-field rules.
+   */
   async updateLostFoundItem(
     organizationId: string,
     hotelId: string,
@@ -1364,6 +1699,17 @@ export class HousekeepingService {
     return this.mapLostFoundItem(updated);
   }
 
+  /**
+   * Logs a lost-and-found owner notification attempt and returns dispatch metadata.
+   *
+   * @param organizationId - Organization UUID used for tenant scoping.
+   * @param hotelId - Hotel UUID used for property scoping.
+   * @param itemId - Lost-and-found item UUID being communicated about.
+   * @param input - Notification payload including message and optional channel.
+   * @param userId - Optional sender UUID; defaults to system actor when omitted.
+   * @returns Notification acknowledgement payload with channel, sender, and timestamp.
+   * @throws {NotFoundError} When the scoped item cannot be found.
+   */
   async notifyLostFoundOwner(
     organizationId: string,
     hotelId: string,
@@ -1396,6 +1742,12 @@ export class HousekeepingService {
     };
   }
 
+  /**
+   * Calculates a rounded weighted inspection score from per-category values.
+   *
+   * @param scores - Category score map used with configured inspection weights.
+   * @returns Rounded weighted total score.
+   */
   calculateInspectionScore(scores: InspectionScores): number {
     const weightedScore = Object.entries(INSPECTION_WEIGHTS).reduce((sum, [key, weight]) => {
       const value = scores[key as keyof InspectionScores] ?? 0;
@@ -1405,14 +1757,32 @@ export class HousekeepingService {
     return Math.round(weightedScore);
   }
 
+  /**
+   * Determines whether any inspection category breaches the auto-fail threshold.
+   *
+   * @param scores - Category score map to evaluate.
+   * @returns True when at least one category score is below 50.
+   */
   hasAutoFailCategory(scores: InspectionScores): boolean {
     return Object.values(scores).some((value) => value < 50);
   }
 
+  /**
+   * Normalizes a timestamp to a UTC date-only value at midnight.
+   *
+   * @param value - Source timestamp to normalize.
+   * @returns UTC midnight date preserving year, month, and day components.
+   */
   private asDateOnly(value: Date): Date {
     return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate()));
   }
 
+  /**
+   * Serializes structured inspection failure items into a compact audit string.
+   *
+   * @param failureItems - Optional failure item list containing area, issue, and severity.
+   * @returns Semicolon-delimited failure summary string, or null when no items are provided.
+   */
   private serializeFailureItems(
     failureItems?: Array<{ area: keyof InspectionScores; issue: string; severity: string }>
   ): string | null {
@@ -1423,6 +1793,12 @@ export class HousekeepingService {
     return failureItems.map((item) => `[${item.area}] ${item.issue} (${item.severity})`).join('; ');
   }
 
+  /**
+   * Converts unknown persisted score JSON into a complete `InspectionScores` object.
+   *
+   * @param value - Raw score payload from persistence.
+   * @returns Normalized score object with numeric values for every category.
+   */
   private normalizeScores(value: unknown): InspectionScores {
     const fallback: InspectionScores = {
       bedding: 0,
@@ -1449,6 +1825,13 @@ export class HousekeepingService {
     };
   }
 
+  /**
+   * Computes rounded average inspection scores per category.
+   *
+   * @param scoresList - Collection of raw score payloads to aggregate.
+   * @returns Category averages, or zeroed values when the input list is empty.
+   * @remarks Complexity: O(n) where n is number of score payloads.
+   */
   private computeCategoryAverages(scoresList: unknown[]): InspectionScores {
     const base: InspectionScores = {
       bedding: 0,
@@ -1483,12 +1866,24 @@ export class HousekeepingService {
     };
   }
 
+  /**
+   * Identifies the lowest-scoring inspection category.
+   *
+   * @param scores - Category average scores.
+   * @returns Category key with the lowest value, defaulting to `amenities` when empty.
+   */
   private findWeakArea(scores: InspectionScores): keyof InspectionScores {
     const entries = Object.entries(scores) as Array<[keyof InspectionScores, number]>;
     entries.sort((left, right) => left[1] - right[1]);
     return entries[0]?.[0] ?? 'amenities';
   }
 
+  /**
+   * Classifies score trajectory as improving, declining, or stable.
+   *
+   * @param values - Ordered score series with newest values first.
+   * @returns Trend classification based on half-window average delta.
+   */
   private computeTrend(values: number[]): 'IMPROVING' | 'DECLINING' | 'STABLE' {
     if (values.length < 4) {
       return 'STABLE';
@@ -1514,6 +1909,12 @@ export class HousekeepingService {
     return 'STABLE';
   }
 
+  /**
+   * Maps a persistence task record to the public housekeeping task response contract.
+   *
+   * @param task - Raw task row with DB-oriented field types.
+   * @returns API response object with typed task and status literals.
+   */
   private mapTask(task: {
     id: string;
     organizationId: string;
@@ -1582,6 +1983,12 @@ export class HousekeepingService {
     };
   }
 
+  /**
+   * Maps a persistence inspection record to the public inspection response contract.
+   *
+   * @param inspection - Raw inspection row with JSON score/failure payloads.
+   * @returns API response object with normalized scores and typed outcome fields.
+   */
   private mapInspection(inspection: {
     id: string;
     organizationId: string;
@@ -1622,6 +2029,12 @@ export class HousekeepingService {
     };
   }
 
+  /**
+   * Maps a persistence shift record to the public shift response contract.
+   *
+   * @param shift - Raw shift row including assignment children.
+   * @returns API response object with typed status and assignment items.
+   */
   private mapShift(shift: {
     id: string;
     organizationId: string;
@@ -1662,6 +2075,12 @@ export class HousekeepingService {
     };
   }
 
+  /**
+   * Maps a persistence lost-and-found row to the public response contract.
+   *
+   * @param item - Raw lost-and-found row from persistence.
+   * @returns API response object with typed lost-and-found status.
+   */
   private mapLostFoundItem(item: {
     id: string;
     organizationId: string;

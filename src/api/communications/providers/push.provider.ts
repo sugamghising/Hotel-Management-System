@@ -4,18 +4,34 @@ import type { ProviderPayload } from '../communications.types';
 import type { ICommunicationProvider, ProviderConfig } from './provider.interface';
 
 /**
- * Stub push notification provider for development and testing.
- * Logs the payload and returns a mock external ID.
- * Replace with real implementation (Firebase FCM, APNs, OneSignal, etc.) in production.
+ * Implements a stub push-notification provider for local environments.
+ *
+ * Instead of calling FCM/APNs, the provider records outbound payload data in logs
+ * and returns a generated external identifier.
  */
 export class PushProvider implements ICommunicationProvider {
   readonly channel = CommunicationChannel.PUSH;
   private config: ProviderConfig;
 
+  /**
+   * Creates the push provider with optional sandbox configuration.
+   *
+   * @param config - Provider configuration flags.
+   */
   constructor(config: ProviderConfig = {}) {
     this.config = config;
   }
 
+  /**
+   * Simulates push notification delivery and returns a synthetic external ID.
+   *
+   * Side effects:
+   * - Logs metadata and content preview for debugging.
+   * - Introduces a short delay to mimic network dispatch.
+   *
+   * @param payload - Outbound push payload (recipient token/user + message body).
+   * @returns Generated external message ID.
+   */
   async send(payload: ProviderPayload): Promise<string> {
     const externalId = `push_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 

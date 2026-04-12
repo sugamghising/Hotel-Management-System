@@ -9,7 +9,7 @@ import { requirePermission } from '../../core/middleware/requirePermission';
 import { reportsController } from './reports.controller';
 import {
   ADRReportQuerySchema,
-  ArrivalsDeporturesQuerySchema,
+  ArrivalsDeparturesQuerySchema,
   FolioSummaryQuerySchema,
   GuestStatisticsQuerySchema,
   HousekeepingReportQuerySchema,
@@ -54,8 +54,8 @@ router.get(
 router.get(
   '/reports/arrivals-departures',
   requirePermission('REPORT.OCCUPANCY'),
-  validate({ params: OrgHotelParamsSchema, query: ArrivalsDeporturesQuerySchema }),
-  reportsController.getArrivalsDeporturesReport
+  validate({ params: OrgHotelParamsSchema, query: ArrivalsDeparturesQuerySchema }),
+  reportsController.getArrivalsDeparturesReport
 );
 
 /**

@@ -35,27 +35,67 @@ export interface NightAuditListResult {
   total: number;
 }
 
+/**
+ * Normalizes timestamps to UTC midnight for business-date comparisons and writes.
+ *
+ * @param value - Source timestamp.
+ * @returns Date-only UTC value.
+ */
 const asDateOnly = (value: Date): Date =>
   new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate()));
 
+/**
+ * Returns the inclusive end-of-day boundary in UTC for aggregate payment queries.
+ *
+ * @param value - Business date anchor.
+ * @returns UTC timestamp at `23:59:59.999`.
+ */
 const endOfDayUtc = (value: Date): Date =>
   new Date(
     Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate(), 23, 59, 59, 999)
   );
 
+/**
+ * Computes the next UTC business date from a normalized date.
+ *
+ * @param value - Current business date.
+ * @returns Next day at UTC midnight.
+ */
 const nextDay = (value: Date): Date => {
   const date = asDateOnly(value);
   date.setUTCDate(date.getUTCDate() + 1);
   return date;
 };
 
+/**
+ * Converts nullable Prisma Decimal values to native numbers.
+ *
+ * @param value - Aggregate decimal value or `null`.
+ * @returns Numeric value with `0` fallback when absent.
+ */
 const toNumber = (value: Prisma.Decimal | null): number =>
   value ? Number.parseFloat(value.toString()) : 0;
 
+/**
+ * Produces a JSON-safe deep clone for Prisma JSON persistence.
+ *
+ * @param value - Arbitrary serializable payload.
+ * @returns Payload typed as `Prisma.InputJsonValue`.
+ */
 const asJson = (value: unknown): Prisma.InputJsonValue =>
   JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 
 export class NightAuditRepository {
+  /**
+   * Resolves and validates the hotel scope by organization and hotel identifiers.
+   *
+   * This enforces tenant boundaries for all night-audit operations that follow.
+   *
+   * @param organizationId - Organization tenant identifier.
+   * @param hotelId - Hotel identifier expected to belong to the organization.
+   * @returns Minimal hotel scope metadata used by service-level orchestration.
+   * @throws {NotFoundError} When the hotel is missing, deleted, or outside the organization scope.
+   */
   async findHotelScope(organizationId: string, hotelId: string): Promise<NightAuditHotelScope> {
     const hotel = await prisma.hotel.findFirst({
       where: {
@@ -78,6 +118,13 @@ export class NightAuditRepository {
     return hotel;
   }
 
+  /**
+   * Retrieves a single audit by id with optional hotel scoping.
+   *
+   * @param auditId - Audit primary key.
+   * @param hotelId - Optional hotel scope guard for multi-tenant safety.
+   * @returns Matching audit or `null` when not found.
+   */
   async findAuditById(auditId: string, hotelId?: string): Promise<NightAudit | null> {
     return prisma.nightAudit.findFirst({
       where: {
@@ -87,6 +134,13 @@ export class NightAuditRepository {
     });
   }
 
+  /**
+   * Retrieves an audit for a specific hotel business date.
+   *
+   * @param hotelId - Hotel identifier.
+   * @param businessDate - Business date normalized to UTC date-only in query.
+   * @returns Matching audit or `null`.
+   */
   async findAuditByBusinessDate(hotelId: string, businessDate: Date): Promise<NightAudit | null> {
     return prisma.nightAudit.findFirst({
       where: {
@@ -96,6 +150,12 @@ export class NightAuditRepository {
     });
   }
 
+  /**
+   * Returns the most recent audit for a hotel ordered by business date descending.
+   *
+   * @param hotelId - Hotel identifier.
+   * @returns Latest audit row or `null` when no audits exist.
+   */
   async findLatestAudit(hotelId: string): Promise<NightAudit | null> {
     return prisma.nightAudit.findFirst({
       where: { hotelId },
@@ -103,6 +163,16 @@ export class NightAuditRepository {
     });
   }
 
+  /**
+   * Lists paginated audit history and total count for a hotel.
+   *
+   * Both queries execute in a single Prisma transaction to keep paging metadata
+   * and result set consistent within the same read snapshot.
+   *
+   * @param hotelId - Hotel identifier.
+   * @param query - Pagination options (`page`, `limit`).
+   * @returns Paginated audits with total row count.
+   */
   async listAuditHistory(
     hotelId: string,
     query: NightAuditHistoryQueryInput
@@ -120,6 +190,20 @@ export class NightAuditRepository {
     return { items, total };
   }
 
+  /**
+   * Builds the pre-check snapshot used to decide whether a night audit can run.
+   *
+   * The method executes five scoped read queries in parallel to capture unresolved
+   * departures, unbalanced folios, in-house occupancy, posted room-charge coverage,
+   * and room-status discrepancies for the target business date. It then derives
+   * blocker messages and `canRun` from those counters without mutating any state.
+   *
+   * @param organizationId - Organization identifier used for tenant scoping.
+   * @param hotelId - Hotel identifier constrained to the organization.
+   * @param businessDate - Candidate business date for the audit run.
+   * @returns Snapshot counters, blocker details, and final run eligibility.
+   * @remarks Complexity: O(1) application-side processing with five database queries whose runtime scales with scoped reservation, folio, and room volumes.
+   */
   async calculatePreCheckSnapshot(
     organizationId: string,
     hotelId: string,
@@ -219,6 +303,21 @@ export class NightAuditRepository {
     };
   }
 
+  /**
+   * Creates or reinitializes an audit record in `IN_PROGRESS` state.
+   *
+   * Guards prevent duplicate completion and concurrent in-progress batches for the same hotel.
+   * On existing non-completed rows for the same business date, state is reset for rerun.
+   *
+   * @param hotelId - Hotel identifier.
+   * @param businessDate - Target audit business date.
+   * @param performedBy - User/system actor id assigned to the audit.
+   * @param notes - Optional operator notes persisted on the audit row.
+   * @param preCheck - Snapshot counters copied into the audit record.
+   * @returns Newly created or updated `IN_PROGRESS` audit.
+   * @throws {AuditAlreadyCompletedError} When the audit date is already finalized.
+   * @throws {AuditAlreadyInProgressError} When another audit run is active for the hotel.
+   */
   async startAudit(
     hotelId: string,
     businessDate: Date,
@@ -293,6 +392,18 @@ export class NightAuditRepository {
       });
   }
 
+  /**
+   * Finalizes an audit as `COMPLETED` and persists financial/action summaries.
+   *
+   * Step execution results are embedded into the `errors` JSON payload for report rendering.
+   *
+   * @param auditId - Audit identifier.
+   * @param financial - Computed room/other revenue and payment totals.
+   * @param actions - Batch action counters captured during execution.
+   * @param steps - Ordered step outcomes.
+   * @param warningCount - Number of non-hard-fail step failures.
+   * @returns Updated completed audit row.
+   */
   async completeAudit(
     auditId: string,
     financial: NightAuditFinancialSummary,
@@ -318,6 +429,13 @@ export class NightAuditRepository {
     });
   }
 
+  /**
+   * Marks an audit as `FAILED` with structured failure payload.
+   *
+   * @param auditId - Audit identifier.
+   * @param payload - Failure metadata and captured step context.
+   * @returns Updated failed audit row.
+   */
   async failAudit(auditId: string, payload: Prisma.InputJsonValue): Promise<NightAudit> {
     return prisma.nightAudit.update({
       where: { id: auditId },
@@ -329,6 +447,14 @@ export class NightAuditRepository {
     });
   }
 
+  /**
+   * Marks an audit as `ROLLED_BACK` and persists rollback metadata.
+   *
+   * @param auditId - Audit identifier.
+   * @param rollbackPayload - Structured rollback details saved to `errors`.
+   * @param notes - Optional operator-visible rollback note.
+   * @returns Updated rolled-back audit row.
+   */
   async markRolledBack(
     auditId: string,
     rollbackPayload: Prisma.InputJsonValue,
@@ -344,6 +470,16 @@ export class NightAuditRepository {
     });
   }
 
+  /**
+   * Computes financial totals for a hotel's audit date window.
+   *
+   * Revenue is split into room and non-room folio categories, while payments are
+   * aggregated from captured non-refund transactions processed on the same day.
+   *
+   * @param hotelId - Hotel identifier.
+   * @param businessDate - Audit business date used for UTC date boundaries.
+   * @returns Financial summary consumed by audit completion.
+   */
   async computeFinancialSummary(
     hotelId: string,
     businessDate: Date
@@ -406,6 +542,21 @@ export class NightAuditRepository {
     };
   }
 
+  /**
+   * Marks eligible confirmed reservations as no-show for the audit date.
+   *
+   * Writes occur inside a single transaction boundary:
+   * - reservation status transitions (`CONFIRMED` -> `NO_SHOW`)
+   * - outbox event creation for downstream processing
+   *
+   * Organization/hotel constraints are applied in the candidate selection query.
+   *
+   * @param auditId - Audit identifier stamped onto affected reservations.
+   * @param organizationId - Organization tenant identifier.
+   * @param hotelId - Hotel identifier constrained to the organization.
+   * @param businessDate - Effective business date for eligibility.
+   * @returns Count and ids of reservations transitioned to no-show.
+   */
   async markNoShowsForAudit(
     auditId: string,
     organizationId: string,
@@ -476,6 +627,18 @@ export class NightAuditRepository {
     };
   }
 
+  /**
+   * Voids non-voided room charges generated by a specific night audit batch.
+   *
+   * Only folio items with `source = 'NIGHT_AUDIT'`, matching `sourceRef`, and
+   * `itemType = 'ROOM_CHARGE'` are targeted. The method first aggregates count and
+   * monetary impact, then applies a bulk void update when there is anything to reverse.
+   *
+   * @param auditId - Night audit identifier stored in `folio_items.sourceRef`.
+   * @param actorId - User/system actor stored in void-audit metadata.
+   * @returns Count of voided room charges and combined amount-plus-tax reversed.
+   * @remarks Complexity: O(f) in matching folio rows, dominated by aggregate + bulk update scans.
+   */
   async rollbackRoomCharges(
     auditId: string,
     actorId: string
@@ -516,6 +679,16 @@ export class NightAuditRepository {
     };
   }
 
+  /**
+   * Reverts reservations auto-marked as `'NO_SHOW'` by the target audit batch.
+   *
+   * Matching rows are reset back to `'CONFIRMED'` and no-show/cancellation fields
+   * are cleared so front-office state reflects pre-audit status.
+   *
+   * @param auditId - Night audit identifier stamped in `reservation.noShowAuditId`.
+   * @returns Number of reservations reverted from `'NO_SHOW'` to `'CONFIRMED'`.
+   * @remarks Complexity: O(r) in matching reservation rows processed by a single bulk update.
+   */
   async rollbackNoShows(auditId: string): Promise<number> {
     const updated = await prisma.reservation.updateMany({
       where: {
@@ -535,6 +708,18 @@ export class NightAuditRepository {
     return updated.count;
   }
 
+  /**
+   * Cancels generated stayover housekeeping tasks linked to a night audit batch.
+   *
+   * Only active task states (`'PENDING'`, `'IN_PROGRESS'`, `'DND'`, `'ISSUES_REPORTED'`)
+   * are transitioned to `'CANCELLED'`, preserving completed history.
+   *
+   * @param auditId - Night audit identifier stored in `nightAuditBatchId`.
+   * @param actorId - User/system actor stored in cancellation metadata.
+   * @param reason - Human-readable cancellation reason saved on each task.
+   * @returns Number of housekeeping tasks moved to `'CANCELLED'`.
+   * @remarks Complexity: O(t) in matching housekeeping-task rows updated in bulk.
+   */
   async rollbackStayoverTasks(auditId: string, actorId: string, reason: string): Promise<number> {
     const updated = await prisma.housekeepingTask.updateMany({
       where: {
@@ -554,6 +739,18 @@ export class NightAuditRepository {
     return updated.count;
   }
 
+  /**
+   * Cancels open preventive maintenance requests generated by the audit batch.
+   *
+   * Requests are matched by `source = 'PREVENTIVE'` and `sourceRef = auditId`, then
+   * open statuses are transitioned to `'CANCELLED'` with actor and reason metadata.
+   *
+   * @param auditId - Night audit identifier stored in `maintenance_requests.sourceRef`.
+   * @param actorId - User/system actor stored in cancellation metadata.
+   * @param reason - Human-readable cancellation reason saved on each request.
+   * @returns Number of preventive requests transitioned to `'CANCELLED'`.
+   * @remarks Complexity: O(m) in matching maintenance-request rows updated in bulk.
+   */
   async rollbackPreventiveRequests(
     auditId: string,
     actorId: string,
@@ -577,6 +774,19 @@ export class NightAuditRepository {
     return updated.count;
   }
 
+  /**
+   * Sets the hotel's current business date to a normalized UTC day boundary.
+   *
+   * The update is organization/hotel scoped and rejects missing/deleted hotel rows
+   * by requiring exactly one row to be updated.
+   *
+   * @param organizationId - Organization identifier used for tenant scoping.
+   * @param hotelId - Hotel identifier to update.
+   * @param businessDate - New business date (normalized to UTC date-only precision).
+   * @returns Persisted normalized business date value.
+   * @throws {NotFoundError} When the scoped hotel does not exist.
+   * @remarks Complexity: O(1) application work with one scoped bulk-update statement.
+   */
   async updateHotelBusinessDate(
     organizationId: string,
     hotelId: string,
@@ -602,6 +812,19 @@ export class NightAuditRepository {
     return targetDate;
   }
 
+  /**
+   * Advances the scoped hotel's business date by one UTC calendar day.
+   *
+   * This helper computes the next date from the provided business date and delegates
+   * persistence/validation to `updateHotelBusinessDate`.
+   *
+   * @param organizationId - Organization identifier used for tenant scoping.
+   * @param hotelId - Hotel identifier to advance.
+   * @param businessDate - Current business date baseline.
+   * @returns Next business date persisted for the hotel.
+   * @throws {NotFoundError} When the scoped hotel does not exist.
+   * @remarks Complexity: O(1) plus the delegated single-row update.
+   */
   async advanceHotelBusinessDate(
     organizationId: string,
     hotelId: string,
@@ -612,6 +835,18 @@ export class NightAuditRepository {
     return nextBusinessDate;
   }
 
+  /**
+   * Persists a night-audit domain event into the outbox for async processing.
+   *
+   * Outbox rows are written with fixed retry policy (`maxAttempts = 5`) and initial
+   * status `'PENDING'` so downstream dispatch workers can pick them up.
+   *
+   * @param eventType - Domain event name (for example `night_audit.completed`).
+   * @param aggregateId - Night audit identifier associated with the event.
+   * @param payload - JSON payload serialized for downstream consumers.
+   * @returns Resolves when the outbox row has been inserted.
+   * @remarks Complexity: O(1) single-row insert.
+   */
   async createOutboxEvent(
     eventType: string,
     aggregateId: string,
@@ -629,10 +864,32 @@ export class NightAuditRepository {
     });
   }
 
+  /**
+   * Returns the configured system user identifier for automated audit actions.
+   *
+   * @returns Stable system actor id from runtime configuration.
+   */
   getSystemActorId(): string {
     return config.system.userId;
   }
 
+  /**
+   * Executes the full night-audit rollback mutation set atomically.
+   *
+   * Inside one database transaction, this method:
+   * 1) voids `'ROOM_CHARGE'` folio items posted by the audit,
+   * 2) reverts audit-marked reservation `'NO_SHOW'` statuses to `'CONFIRMED'`,
+   * 3) cancels generated stayover housekeeping tasks,
+   * 4) cancels generated preventive maintenance requests,
+   * 5) restores the hotel's business date to the audit date,
+   * 6) marks the audit row as `'ROLLED_BACK'`, and
+   * 7) writes a `night_audit.rolled_back` outbox event.
+   *
+   * @param params - Rollback context including target audit id, scope ids, actor, reason, and previous status.
+   * @returns Rollback counters plus the persisted rolled-back audit record.
+   * @throws {NotFoundError} When the scoped hotel cannot be updated during rollback.
+   * @remarks Complexity: O(f + r + h + m) where `f` is matched folio rows, `r` matched reservations, `h` matched housekeeping tasks, and `m` matched maintenance requests.
+   */
   async performRollbackTransaction(params: {
     targetAuditId: string;
     businessDate: Date;

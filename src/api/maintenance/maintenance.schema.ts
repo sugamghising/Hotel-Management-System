@@ -1,5 +1,11 @@
 import { z } from 'zod';
 
+/**
+ * Normalizes comma-separated query values into an array shape for schema parsing.
+ *
+ * @param value - Raw incoming query value that may be empty, an array, or a comma-delimited string.
+ * @returns An array-ready value for downstream Zod validation, or undefined when the input is blank.
+ */
 const parseCsvArray = (value: unknown): unknown => {
   if (value === undefined || value === null || value === '') {
     return undefined;

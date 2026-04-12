@@ -52,30 +52,80 @@ import type {
 const ZERO = new Prisma.Decimal(0);
 const REOPEN_WINDOW_MINUTES = 15;
 
+/**
+ * Normalizes numeric-like inputs into Prisma Decimal instances.
+ *
+ * @param value - Decimal, number, or numeric string value.
+ * @returns Decimal instance preserving currency precision semantics.
+ */
 const asDecimal = (value: Prisma.Decimal | number | string): Prisma.Decimal =>
   value instanceof Prisma.Decimal ? value : new Prisma.Decimal(value);
 
+/**
+ * Converts a timestamp to a UTC date-only value at midnight.
+ *
+ * @param value - Source date-time value.
+ * @returns UTC date truncated to year-month-day.
+ */
 const asDateOnly = (value: Date): Date =>
   new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate()));
 
+/**
+ * Computes the inclusive UTC start boundary for a business day.
+ *
+ * @param value - Any date within the target UTC day.
+ * @returns Date representing `00:00:00.000` UTC.
+ */
 const startOfDayUtc = (value: Date): Date =>
   new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate(), 0, 0, 0, 0));
 
+/**
+ * Computes the inclusive UTC end boundary for a business day.
+ *
+ * @param value - Any date within the target UTC day.
+ * @returns Date representing `23:59:59.999` UTC.
+ */
 const endOfDayUtc = (value: Date): Date =>
   new Date(
     Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate(), 23, 59, 59, 999)
   );
 
+/**
+ * Serializes arbitrary values into Prisma-compatible JSON payloads.
+ *
+ * @param value - Value to serialize for outbox event payloads.
+ * @returns JSON-safe value accepted by `Prisma.InputJsonValue`.
+ */
 const asJson = (value: unknown): Prisma.InputJsonValue =>
   JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 
 export class PosService {
   private readonly repo: PosRepositoryType;
 
+  /**
+   * Creates a POS service with an overridable repository implementation.
+   *
+   * @param repository - Repository dependency used for persistence operations.
+   */
   constructor(repository: PosRepositoryType = posRepository) {
     this.repo = repository;
   }
 
+  /**
+   * Creates a new POS outlet under an organization and hotel scope.
+   *
+   * Validates hotel access, normalizes the outlet code for uniqueness checks,
+   * parses optional opening hours, and persists the outlet record.
+   *
+   * @param organizationId - Organization UUID used for scope validation.
+   * @param hotelId - Hotel UUID that owns the outlet.
+   * @param input - Outlet profile, posting capabilities, and operating hours.
+   * @returns The created outlet payload.
+   * @throws {NotFoundError} When the hotel is outside the provided scope.
+   * @throws {ConflictError} When another outlet already uses the normalized code.
+   * @throws {BadRequestError} When provided time fields are not valid `HH:mm[:ss]` values.
+   * @remarks Complexity: O(1) service work with two reads and one write.
+   */
   async createOutlet(
     organizationId: string,
     hotelId: string,
@@ -118,6 +168,15 @@ export class PosService {
     };
   }
 
+  /**
+   * Lists POS outlets with pagination metadata.
+   *
+   * @param organizationId - Organization UUID used for scope validation.
+   * @param hotelId - Hotel UUID whose outlets are requested.
+   * @param query - Outlet list filters and pagination controls.
+   * @returns Outlet page plus pagination metadata.
+   * @throws {NotFoundError} When the hotel is outside the provided scope.
+   */
   async listOutlets(
     organizationId: string,
     hotelId: string,
@@ -133,6 +192,20 @@ export class PosService {
     };
   }
 
+  /**
+   * Updates mutable outlet attributes in organization and hotel scope.
+   *
+   * Applies partial updates only for supplied fields, including parsed opening
+   * and closing times when present.
+   *
+   * @param organizationId - Organization UUID used for scope validation.
+   * @param hotelId - Hotel UUID that owns the outlet.
+   * @param outletId - Outlet UUID to update.
+   * @param input - Partial outlet fields to mutate.
+   * @returns Updated outlet payload.
+   * @throws {NotFoundError} When the hotel or outlet cannot be found in scope.
+   * @throws {BadRequestError} When provided time fields are not valid `HH:mm[:ss]` values.
+   */
   async updateOutlet(
     organizationId: string,
     hotelId: string,
@@ -168,6 +241,19 @@ export class PosService {
     };
   }
 
+  /**
+   * Creates a POS menu item for an outlet.
+   *
+   * Verifies outlet availability in scope, enforces hotel-level SKU uniqueness,
+   * and persists Decimal-safe pricing and tax configuration.
+   *
+   * @param organizationId - Organization UUID used for scope validation.
+   * @param hotelId - Hotel UUID that owns the menu item.
+   * @param input - Menu item details, outlet link, and monetary fields.
+   * @returns Created menu item with numeric API-safe monetary values.
+   * @throws {NotFoundError} When the hotel or outlet cannot be found in scope.
+   * @throws {ConflictError} When another menu item already uses the normalized SKU.
+   */
   async createMenuItem(
     organizationId: string,
     hotelId: string,
@@ -215,6 +301,18 @@ export class PosService {
     };
   }
 
+  /**
+   * Lists menu items with filter-aware pagination.
+   *
+   * Converts Decimal fields from repository results into number fields expected
+   * by the POS API contract.
+   *
+   * @param organizationId - Organization UUID used for scope validation.
+   * @param hotelId - Hotel UUID whose menu items are requested.
+   * @param query - Menu item filters and pagination controls.
+   * @returns Paginated menu items with converted monetary fields.
+   * @throws {NotFoundError} When the hotel is outside the provided scope.
+   */
   async listMenuItems(
     organizationId: string,
     hotelId: string,
@@ -241,6 +339,19 @@ export class PosService {
     };
   }
 
+  /**
+   * Updates mutable fields of a POS menu item.
+   *
+   * Supports partial field updates, including Decimal-safe pricing changes and
+   * lifecycle flags used by order-entry validation.
+   *
+   * @param organizationId - Organization UUID used for scope validation.
+   * @param hotelId - Hotel UUID that owns the menu item.
+   * @param menuItemId - Menu item UUID to update.
+   * @param input - Partial menu item updates.
+   * @returns Updated menu item with numeric API-safe monetary values.
+   * @throws {NotFoundError} When the hotel or menu item cannot be found in scope.
+   */
   async updateMenuItem(
     organizationId: string,
     hotelId: string,
@@ -276,6 +387,30 @@ export class PosService {
     };
   }
 
+  /**
+   * Creates a POS order and its initial item set in one transaction.
+   *
+   * The flow validates outlet availability, generates a unique order number,
+   * resolves menu/custom item pricing rules, computes subtotal/tax/total, writes
+   * order + line items, and emits a `pos.order.created` outbox event before
+   * reloading the full order aggregate for API mapping.
+   *
+   * @param organizationId - Organization UUID used for scope validation.
+   * @param hotelId - Hotel UUID that owns the order.
+   * @param input - Order header details and requested line items.
+   * @param userId - Optional actor ID; falls back to system user when omitted.
+   * @returns Newly created order in API response shape.
+   * @throws {NotFoundError} When scope validation fails, outlet is inactive, or the persisted order cannot be reloaded.
+   * @throws {BadRequestError} When custom item payloads are incomplete.
+   * @remarks Complexity: O(i + a) where `i` is `input.items.length` and `a` is order-number attempts (max 10); DB writes dominate.
+   * @example
+   * const order = await service.createOrder(organizationId, hotelId, {
+   *   outletId,
+   *   items: [{ menuItemId, quantity: 2 }],
+   *   discountTotal: 0,
+   *   serviceCharge: 0,
+   * });
+   */
   async createOrder(
     organizationId: string,
     hotelId: string,
@@ -372,6 +507,15 @@ export class PosService {
     return this.repo.toApiOrder(order);
   }
 
+  /**
+   * Retrieves a single POS order in organization and hotel scope.
+   *
+   * @param organizationId - Organization UUID used for scope validation.
+   * @param hotelId - Hotel UUID that owns the order.
+   * @param orderId - POS order UUID.
+   * @returns Order payload mapped to API response shape.
+   * @throws {NotFoundError} When the hotel or order is not found in scope.
+   */
   async getOrder(
     organizationId: string,
     hotelId: string,
@@ -387,6 +531,15 @@ export class PosService {
     return this.repo.toApiOrder(order);
   }
 
+  /**
+   * Lists POS orders with pagination metadata.
+   *
+   * @param organizationId - Organization UUID used for scope validation.
+   * @param hotelId - Hotel UUID whose orders are requested.
+   * @param query - Order filters and pagination controls.
+   * @returns Paginated orders mapped into API response shape.
+   * @throws {NotFoundError} When the hotel is outside the provided scope.
+   */
   async listOrders(
     organizationId: string,
     hotelId: string,
@@ -402,6 +555,23 @@ export class PosService {
     };
   }
 
+  /**
+   * Appends additional line items to an existing open POS order.
+   *
+   * Runs under one transaction: validates order state, resolves incoming item
+   * definitions against menu/custom rules, inserts order items, recomputes totals,
+   * and emits an outbox event for downstream integrations.
+   *
+   * @param organizationId - Organization UUID used for scope validation.
+   * @param hotelId - Hotel UUID that owns the order.
+   * @param orderId - POS order UUID to mutate.
+   * @param input - New line items to append.
+   * @returns Updated order mapped to API response shape.
+   * @throws {NotFoundError} When the hotel/order is not found in scope.
+   * @throws {PosOrderNotOpenError} When the order status is not `'OPEN'`.
+   * @throws {BadRequestError} When custom item payloads are incomplete.
+   * @remarks Complexity: O(i + m) where `i` is added item count and `m` is recomputed active item count.
+   */
   async addOrderItems(
     organizationId: string,
     hotelId: string,
@@ -462,6 +632,22 @@ export class PosService {
     return this.repo.toApiOrder(order);
   }
 
+  /**
+   * Updates quantity, pricing, or notes for an existing order item.
+   *
+   * Ensures the parent order is open, rejects voided line edits, applies changes,
+   * recomputes aggregate order totals, and publishes an item-updated outbox event.
+   *
+   * @param organizationId - Organization UUID used for scope validation.
+   * @param hotelId - Hotel UUID that owns the order.
+   * @param orderId - POS order UUID that contains the item.
+   * @param itemId - POS order item UUID to update.
+   * @param input - Partial item updates for quantity/pricing/notes.
+   * @returns Updated order mapped to API response shape.
+   * @throws {NotFoundError} When the hotel, order, or item cannot be found.
+   * @throws {PosOrderNotOpenError} When the order status is not `'OPEN'`.
+   * @throws {ConflictError} When the target item is already voided.
+   */
   async updateOrderItem(
     organizationId: string,
     hotelId: string,
@@ -527,6 +713,21 @@ export class PosService {
     return this.repo.toApiOrder(order);
   }
 
+  /**
+   * Voids an order item and recomputes its parent order totals.
+   *
+   * Marks the item void (idempotently), recalculates order subtotal/tax/total, and
+   * emits a `pos.order.item_voided` outbox event with reason metadata.
+   *
+   * @param organizationId - Organization UUID used for scope validation.
+   * @param hotelId - Hotel UUID that owns the order.
+   * @param orderId - POS order UUID that contains the item.
+   * @param itemId - POS order item UUID to void.
+   * @param input - Optional void reason payload.
+   * @returns Updated order mapped to API response shape.
+   * @throws {NotFoundError} When the hotel, order, or item cannot be found.
+   * @throws {PosOrderNotOpenError} When the order status is not `'OPEN'`.
+   */
   async removeOrderItem(
     organizationId: string,
     hotelId: string,
@@ -581,6 +782,28 @@ export class PosService {
     return this.repo.toApiOrder(order);
   }
 
+  /**
+   * Closes an order, settles optional direct-bill payment, and optionally posts to room.
+   *
+   * Inside one transaction, the method validates order state, recomputes totals,
+   * enforces outlet billing policy, optionally captures a direct-bill payment to a
+   * checked-in reservation, sets final status (`'CLOSED'` or `'PAID'`), emits
+   * `pos.order.closed`, and optionally chains into room posting.
+   *
+   * @param organizationId - Organization UUID used for scope validation.
+   * @param hotelId - Hotel UUID that owns the order.
+   * @param orderId - POS order UUID to close.
+   * @param input - Closure options including payment details and room-posting flag.
+   * @param userId - Optional actor ID used for payment/folio attribution.
+   * @returns Closed or paid order mapped to API response shape.
+   * @throws {NotFoundError} When the hotel/order/reservation cannot be found.
+   * @throws {PosOrderAlreadyVoidedError} When attempting to close a voided order.
+   * @throws {UnprocessableEntityError} When all order items are voided.
+   * @throws {PosDirectBillNotAllowedError} When outlet policy disallows direct billing.
+   * @throws {BadRequestError} When direct billing is requested without `roomNumber`.
+   * @throws {ConflictError} When outlet is inactive during close processing.
+   * @remarks Complexity: O(n + m) where `n` is active item count and `m` is room-posting side effects when `autoPostToRoom` is enabled.
+   */
   async closeOrder(
     organizationId: string,
     hotelId: string,
@@ -727,6 +950,23 @@ export class PosService {
     return this.repo.toApiOrder(closed);
   }
 
+  /**
+   * Posts a closed/paid order charge to an in-house room folio.
+   *
+   * Loads the order in a transaction, enforces status preconditions, and delegates
+   * posting semantics to `postToRoomInternal` for idempotent folio integration.
+   *
+   * @param organizationId - Organization UUID used for scope validation.
+   * @param hotelId - Hotel UUID that owns the order.
+   * @param orderId - POS order UUID to post.
+   * @param input - Room target and optional force flag for credit-stop override.
+   * @param userId - Optional actor ID used for folio attribution.
+   * @returns Updated order mapped to API response shape.
+   * @throws {NotFoundError} When hotel/order/reservation lookups fail.
+   * @throws {ConflictError} When the order is still `'OPEN'`.
+   * @throws {PosOrderAlreadyVoidedError} When attempting to post a voided order.
+   * @throws {PosRoomPostingNotAllowedError} When outlet policy disallows room posting.
+   */
   async postToRoom(
     organizationId: string,
     hotelId: string,
@@ -757,6 +997,22 @@ export class PosService {
     return this.repo.toApiOrder(posted);
   }
 
+  /**
+   * Voids an order and reverses related room-posting and direct-bill artifacts.
+   *
+   * The transaction marks active items void, optionally voids linked folio charges,
+   * optionally creates a direct-bill refund payment, updates order status to `'VOID'`,
+   * emits `pos.order.voided`, and reloads the final order aggregate.
+   *
+   * @param organizationId - Organization UUID used for scope validation.
+   * @param hotelId - Hotel UUID that owns the order.
+   * @param orderId - POS order UUID to void.
+   * @param input - Void reason payload.
+   * @param userId - Optional actor ID for audit attribution.
+   * @returns Voided order mapped to API response shape.
+   * @throws {NotFoundError} When the hotel/order cannot be found.
+   * @remarks Complexity: O(f + 1) where `f` is affected folio row count; dominant cost is transactional DB writes.
+   */
   async voidOrder(
     organizationId: string,
     hotelId: string,
@@ -878,6 +1134,22 @@ export class PosService {
     return this.repo.toApiOrder(order);
   }
 
+  /**
+   * Reopens a recently closed order within the configured reopen window.
+   *
+   * Rejects voided or already room-posted orders, validates elapsed minutes since
+   * close, resets payment fields, emits `pos.order.reopened`, and reloads the order.
+   *
+   * @param organizationId - Organization UUID used for scope validation.
+   * @param hotelId - Hotel UUID that owns the order.
+   * @param orderId - POS order UUID to reopen.
+   * @param _input - Reserved reopen payload (currently unused).
+   * @returns Reopened order mapped to API response shape.
+   * @throws {NotFoundError} When the hotel/order cannot be found.
+   * @throws {PosOrderAlreadyVoidedError} When the order status is `'VOID'`.
+   * @throws {PosReopenWindowExpiredError} When elapsed close time exceeds `REOPEN_WINDOW_MINUTES`.
+   * @throws {ConflictError} When order state does not satisfy reopen prerequisites.
+   */
   async reopenOrder(
     organizationId: string,
     hotelId: string,
@@ -947,6 +1219,26 @@ export class PosService {
     return this.repo.toApiOrder(order);
   }
 
+  /**
+   * Splits a settled order total across multiple room folios.
+   *
+   * Validates split total parity with the order total, resolves each destination
+   * room to an active reservation, writes one folio charge per split, marks the
+   * order as room-posted, and emits `pos.order.split`.
+   *
+   * @param organizationId - Organization UUID used for scope validation.
+   * @param hotelId - Hotel UUID that owns the order.
+   * @param orderId - POS order UUID to split.
+   * @param input - Split allocations including destination room numbers.
+   * @param userId - Optional actor ID for folio posting attribution.
+   * @returns Split summary containing created folio item identifiers.
+   * @throws {NotFoundError} When the hotel/order/reservations cannot be found.
+   * @throws {ConflictError} When order state does not permit splitting.
+   * @throws {PosOrderAlreadyVoidedError} When the order status is `'VOID'`.
+   * @throws {PosSplitValidationError} When split amounts do not equal the order total.
+   * @throws {PosCreditStopError} When a destination room guest is credit-stopped.
+   * @remarks Complexity: O(s) reservation lookups and folio writes, where `s` is `input.splits.length`.
+   */
   async splitOrder(
     organizationId: string,
     hotelId: string,
@@ -1072,6 +1364,26 @@ export class PosService {
     });
   }
 
+  /**
+   * Transfers an already room-posted order charge to another room.
+   *
+   * The transaction validates transfer eligibility, resolves destination stay,
+   * voids previous folio postings tied to the order, creates a replacement folio
+   * charge on the target reservation, updates order room linkage, and emits
+   * `pos.order.transferred`.
+   *
+   * @param organizationId - Organization UUID used for scope validation.
+   * @param hotelId - Hotel UUID that owns the order.
+   * @param orderId - POS order UUID to transfer.
+   * @param input - Transfer destination, optional amount, and reason.
+   * @param userId - Optional actor ID for folio void/create attribution.
+   * @returns Transfer summary with source/target reservation metadata.
+   * @throws {NotFoundError} When the hotel/order/target reservation cannot be found.
+   * @throws {ConflictError} When the order is not currently room-posted.
+   * @throws {PosOrderAlreadyVoidedError} When the order status is `'VOID'`.
+   * @throws {PosTransferValidationError} When transfer amount is not within `(0, order.total]`.
+   * @remarks Complexity: O(f) where `f` is count of source folio rows matched by `updateMany`.
+   */
   async transferOrder(
     organizationId: string,
     hotelId: string,
@@ -1199,6 +1511,20 @@ export class PosService {
     });
   }
 
+  /**
+   * Builds a POS operational dashboard snapshot for a single UTC business date.
+   *
+   * Fetches day-scoped orders and grouped top-item sales in parallel, then derives
+   * status counts and monetary KPIs from non-void orders before returning the top
+   * five items ranked by sold quantity.
+   *
+   * @param organizationId - Organization UUID used for scope validation.
+   * @param hotelId - Hotel UUID whose dashboard is requested.
+   * @param query - Optional target date; defaults to current day in UTC.
+   * @returns Dashboard counters, sales KPIs, and top-item performance rows.
+   * @throws {NotFoundError} When the hotel is outside the provided scope.
+   * @remarks Complexity: O(o + g log g) where `o` is order count and `g` is grouped item rows for the day.
+   */
   async getDashboard(
     organizationId: string,
     hotelId: string,
@@ -1280,6 +1606,27 @@ export class PosService {
     };
   }
 
+  /**
+   * Produces a POS sales report for a bounded date range.
+   *
+   * Loads order rows plus payment/outlet aggregates in parallel, narrows results
+   * to completed statuses, computes summary totals, and emits either outlet or
+   * day-level breakdowns based on the requested grouping mode.
+   *
+   * @param organizationId - Organization UUID used for scope validation.
+   * @param hotelId - Hotel UUID whose sales are reported.
+   * @param query - Date range, optional outlet filter, and grouping mode.
+   * @returns Sales summary with payment-method breakdown and optional outlet/day grouping.
+   * @throws {NotFoundError} When the hotel is outside the provided scope.
+   * @throws {BadRequestError} When `query.to` is earlier than `query.from`.
+   * @remarks Complexity: O(o + p + b) where `o` is matched orders, `p` is payment groups, and `b` is selected breakdown group count.
+   * @example
+   * const report = await service.getSalesReport(organizationId, hotelId, {
+   *   from: new Date('2026-01-01'),
+   *   to: new Date('2026-01-31'),
+   *   groupBy: 'DAY',
+   * });
+   */
   async getSalesReport(
     organizationId: string,
     hotelId: string,
@@ -1453,6 +1800,27 @@ export class PosService {
     return response;
   }
 
+  /**
+   * Executes the transactional core of room posting for a POS order.
+   *
+   * Applies idempotency checks, validates outlet posting permissions, resolves the
+   * destination reservation and optional credit-stop override, creates a folio
+   * charge when one does not already exist, updates order posting flags, emits
+   * `pos.order.posted_to_room`, and reloads the updated order aggregate.
+   *
+   * @param tx - Active transaction client from the calling workflow.
+   * @param organizationId - Organization UUID used for scoped lookups.
+   * @param hotelId - Hotel UUID used for scoped lookups.
+   * @param order - Order aggregate to post.
+   * @param input - Posting options with destination room and `force` override.
+   * @param actorId - User/system actor attributed on folio operations.
+   * @returns Updated order aggregate after room posting.
+   * @throws {NotFoundError} When outlet/reservation/order lookups fail.
+   * @throws {PosRoomPostingNotAllowedError} When outlet policy blocks room posting.
+   * @throws {BadRequestError} When no room number can be resolved.
+   * @throws {PosCreditStopError} When destination guest is credit-stopped and `force` is false.
+   * @remarks Complexity: O(1) application work with fixed transactional reads/writes.
+   */
   private async postToRoomInternal(
     tx: Prisma.TransactionClient,
     organizationId: string,
@@ -1577,6 +1945,15 @@ export class PosService {
     return posted;
   }
 
+  /**
+   * Calculates subtotal, tax total, and final total for resolved order items.
+   *
+   * @param items - Resolved line items containing extended prices and tax rates.
+   * @param discountTotal - Discount amount subtracted from gross totals.
+   * @param serviceCharge - Service charge amount added to gross totals.
+   * @returns Decimal totals with non-negative final `total`.
+   * @remarks Complexity: O(i) where `i` is item count across two reduction passes.
+   */
   private computeTotalsFromItems(
     items: Array<{
       quantity: number;
@@ -1602,6 +1979,23 @@ export class PosService {
     };
   }
 
+  /**
+   * Normalizes incoming item input into persistence-ready order lines.
+   *
+   * Menu-backed entries are validated for outlet ownership and lifecycle status,
+   * while custom entries must provide explicit name and unit price. Each output
+   * row includes computed line totals and tax rates for downstream aggregation.
+   *
+   * @param tx - Transaction client used for menu-item lookups.
+   * @param organizationId - Organization UUID used for scoped validation.
+   * @param hotelId - Hotel UUID used for scoped validation.
+   * @param outletId - Outlet UUID that menu items must belong to.
+   * @param items - Raw input items from create/add order workflows.
+   * @returns Normalized item rows ready for `pOSOrderItem` inserts.
+   * @throws {NotFoundError} When a referenced menu item is unavailable for the outlet.
+   * @throws {BadRequestError} When custom items are missing `itemName` or `unitPrice`.
+   * @remarks Complexity: O(i) with up to one scoped menu lookup per input item.
+   */
   private async resolveItemsForWrite(
     tx: Prisma.TransactionClient,
     organizationId: string,
@@ -1678,6 +2072,21 @@ export class PosService {
     return result;
   }
 
+  /**
+   * Recomputes and persists order totals from active (non-voided) items.
+   *
+   * Reloads the order aggregate, fetches menu tax rates for coded lines, derives
+   * subtotal/tax/total values, updates the order row, and reloads the final
+   * aggregate so callers receive the authoritative persisted state.
+   *
+   * @param tx - Transaction client used for all reads and writes.
+   * @param organizationId - Organization UUID used for scoped order lookup.
+   * @param hotelId - Hotel UUID used for scoped order lookup.
+   * @param orderId - POS order UUID to recompute.
+   * @returns Updated order aggregate with recalculated monetary totals.
+   * @throws {NotFoundError} When the order cannot be found before or after update.
+   * @remarks Complexity: O(n + m) where `n` is active item count and `m` is matched menu rows.
+   */
   private async recomputeOrderTotals(
     tx: Prisma.TransactionClient,
     organizationId: string,
@@ -1737,12 +2146,29 @@ export class PosService {
     return updated;
   }
 
+  /**
+   * Enforces that mutable item operations run only on open orders.
+   *
+   * @param order - Order aggregate to validate.
+   * @returns Nothing when the order is open.
+   * @throws {PosOrderNotOpenError} When `order.status` is not `'OPEN'`.
+   */
   private assertOrderOpen(order: POSOrderWithRelations): void {
     if (order.status !== 'OPEN') {
       throw new PosOrderNotOpenError(order.status);
     }
   }
 
+  /**
+   * Generates a unique POS order number with bounded collision retries.
+   *
+   * Builds a UTC date prefix and retries random 4-digit suffixes up to ten times;
+   * if collisions persist, falls back to a timestamp-derived suffix.
+   *
+   * @param tx - Transaction client used to check order-number uniqueness.
+   * @returns Unique order number in `POS-YYYYMMDD-XXXX` format.
+   * @remarks Complexity: O(a) uniqueness lookups where `a <= 10`.
+   */
   private async generateOrderNumber(tx: Prisma.TransactionClient): Promise<string> {
     const now = new Date();
     const prefix = `${now.getUTCFullYear()}${(now.getUTCMonth() + 1)
@@ -1766,6 +2192,16 @@ export class PosService {
     return `POS-${prefix}-${Date.now().toString().slice(-6)}`;
   }
 
+  /**
+   * Parses an `HH:mm[:ss]` string into a UTC time-only Date value.
+   *
+   * Empty inputs map to `null`. Non-empty inputs are range-validated for 24-hour
+   * clock semantics and anchored to `1970-01-01` UTC for storage consistency.
+   *
+   * @param value - Optional time text.
+   * @returns Parsed UTC time value or `null` when input is empty.
+   * @throws {BadRequestError} When the value is not a valid 24-hour time string.
+   */
   private parseTime(value: string | null | undefined): Date | null {
     if (!value) {
       return null;
@@ -1793,6 +2229,14 @@ export class PosService {
     return new Date(Date.UTC(1970, 0, 1, hours, minutes, seconds));
   }
 
+  /**
+   * Validates hotel scope and translates repository sentinel errors.
+   *
+   * @param organizationId - Organization UUID used for scope validation.
+   * @param hotelId - Hotel UUID to validate.
+   * @returns Resolves when hotel scope is valid.
+   * @throws {NotFoundError} When the hotel cannot be found in organization scope.
+   */
   private async assertHotelScope(organizationId: string, hotelId: string): Promise<void> {
     try {
       await this.repo.ensureHotelScope(organizationId, hotelId);

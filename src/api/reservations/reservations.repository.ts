@@ -5,6 +5,12 @@ import type { AssignmentType, Reservation, ReservationStatus } from './reservati
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+/**
+ * Normalizes optional user identifiers to nullable UUID values for persistence.
+ *
+ * @param value - Candidate identifier that may be empty, malformed, or non-UUID.
+ * @returns Valid UUID string when format matches; otherwise `null`.
+ */
 const asNullableUuid = (value?: string): string | null => {
   if (!value || !UUID_REGEX.test(value)) {
     return null;
@@ -21,6 +27,13 @@ export class ReservationsRepository {
   // CRUD OPERATIONS
   // ============================================================================
 
+  /**
+   * Retrieves a reservation by ID with guest, room, and optional relation includes.
+   *
+   * @param id - Reservation UUID.
+   * @param include - Optional Prisma include overrides merged into default relation includes.
+   * @returns Reservation with relations, or `null` when not found.
+   */
   async findById(id: string, include?: Prisma.ReservationInclude): Promise<Reservation | null> {
     return prisma.reservation.findUnique({
       where: { id },
@@ -38,6 +51,13 @@ export class ReservationsRepository {
     }) as Promise<Reservation | null>;
   }
 
+  /**
+   * Finds a reservation by external channel reference inside one hotel scope.
+   *
+   * @param externalRef - External booking reference from OTA/channel integrations.
+   * @param hotelId - Hotel UUID used to scope the lookup.
+   * @returns Matching reservation, or `null` when no active booking uses the reference.
+   */
   async findByExternalRef(externalRef: string, hotelId: string): Promise<Reservation | null> {
     return prisma.reservation.findFirst({
       where: {
@@ -57,6 +77,18 @@ export class ReservationsRepository {
     }) as Promise<Reservation | null>;
   }
 
+  /**
+   * Searches reservations by operational filters and returns paginated results.
+   *
+   * It builds a dynamic Prisma `where` clause for lifecycle dates, guest names, source/channel
+   * metadata, and room number constraints, then executes data and total-count queries in parallel.
+   *
+   * @param hotelId - Hotel UUID to scope the search.
+   * @param filters - Optional status, date, guest, source, and room-based filters.
+   * @param pagination - Optional page and limit values for offset pagination.
+   * @returns Matching reservations with total result count.
+   * @remarks Complexity: O(1) service-side query assembly with DB cost dominated by applied filters.
+   */
   async search(
     hotelId: string,
     filters: {
@@ -169,6 +201,13 @@ export class ReservationsRepository {
     return { reservations: reservations as unknown as Reservation[], total };
   }
 
+  /**
+   * Creates a reservation and its first reservation-room row in one transaction.
+   *
+   * @param data - Reservation entity payload for the parent reservation record.
+   * @param roomData - Initial reservation-room payload linked to the new reservation.
+   * @returns Persisted reservation reloaded with guest and room relations.
+   */
   async create(
     data: ReservationCreateInput,
     roomData: Prisma.ReservationRoomUncheckedCreateWithoutReservationInput
@@ -202,6 +241,13 @@ export class ReservationsRepository {
     });
   }
 
+  /**
+   * Updates a reservation and refreshes `modifiedAt` to track lifecycle edits.
+   *
+   * @param id - Reservation UUID.
+   * @param data - Partial reservation fields to update.
+   * @returns Updated reservation with related guest and room entities.
+   */
   async update(id: string, data: ReservationUpdateInput): Promise<Reservation> {
     return prisma.reservation.update({
       where: { id },
@@ -221,6 +267,12 @@ export class ReservationsRepository {
     }) as unknown as Promise<Reservation>;
   }
 
+  /**
+   * Soft-deletes a reservation by timestamping `deletedAt` and forcing `CANCELLED` status.
+   *
+   * @param id - Reservation UUID to soft-delete.
+   * @returns Resolves when soft-delete fields are persisted.
+   */
   async softDelete(id: string): Promise<void> {
     await prisma.reservation.update({
       where: { id },
@@ -235,6 +287,13 @@ export class ReservationsRepository {
   // STATUS MANAGEMENT
   // ============================================================================
 
+  /**
+   * Updates reservation status without modifying other lifecycle fields.
+   *
+   * @param id - Reservation UUID.
+   * @param status - Target reservation status literal.
+   * @returns Resolves when status is persisted.
+   */
   async updateStatus(id: string, status: ReservationStatus): Promise<void> {
     await prisma.reservation.update({
       where: { id },
@@ -242,6 +301,20 @@ export class ReservationsRepository {
     });
   }
 
+  /**
+   * Executes the full check-in transaction across reservation, room, assignment, and outbox tables.
+   *
+   * The workflow updates reservation and reservation-room statuses, marks the physical room as
+   * occupied, rotates active room assignments, records a check-in event row, and emits outbox
+   * events for reservation lifecycle and room occupancy subscribers.
+   *
+   * @param reservationId - Reservation UUID being checked in.
+   * @param reservationRoomId - Reservation-room UUID linked to the stay segment.
+   * @param roomId - Physical room UUID assigned at check-in.
+   * @param options - Optional check-in metadata (actor, assignment type, key details, and notes).
+   * @returns Resolves when the transaction commits.
+   * @remarks Complexity: O(1) fixed-write transaction with deterministic row updates/inserts.
+   */
   async checkIn(
     reservationId: string,
     reservationRoomId: string,
@@ -381,6 +454,22 @@ export class ReservationsRepository {
     });
   }
 
+  /**
+   * Executes the full check-out transaction across reservation, room, assignment, and outbox tables.
+   *
+   * It transitions reservation and reservation-room states to checked-out, vacates the physical room,
+   * closes active assignment rows, stores check-out settlement metadata, and emits lifecycle events.
+   *
+   * @param reservationId - Reservation UUID being checked out.
+   * @param reservationRoomId - Reservation-room UUID linked to the departing stay segment.
+   * @param roomId - Physical room UUID being vacated.
+   * @param organizationId - Organization UUID included in emitted event payloads.
+   * @param hotelId - Hotel UUID included in emitted event payloads.
+   * @param lateCheckOut - Whether departure is classified as late checkout.
+   * @param options - Optional financial, key-return, satisfaction, and actor metadata.
+   * @returns Resolves when the transaction commits.
+   * @remarks Complexity: O(1) fixed-write transaction with deterministic row updates/inserts.
+   */
   async checkOut(
     reservationId: string,
     reservationRoomId: string,
@@ -504,6 +593,15 @@ export class ReservationsRepository {
     });
   }
 
+  /**
+   * Marks a reservation as cancelled with reason, actor, and optional cancellation fee.
+   *
+   * @param id - Reservation UUID.
+   * @param reason - Human-readable cancellation reason.
+   * @param cancelledBy - Actor identifier recorded in cancellation metadata.
+   * @param fee - Optional cancellation fee amount.
+   * @returns Resolves when cancellation fields are persisted.
+   */
   async cancel(id: string, reason: string, cancelledBy: string, fee?: number): Promise<void> {
     await prisma.reservation.update({
       where: { id },
@@ -518,6 +616,14 @@ export class ReservationsRepository {
     });
   }
 
+  /**
+   * Marks a reservation as no-show and emits a no-show outbox event.
+   *
+   * @param id - Reservation UUID.
+   * @param chargeFee - Whether a no-show fee should be retained on the reservation.
+   * @param options - Optional no-show reason and explicit fee override.
+   * @returns Resolves when status updates and event writes commit.
+   */
   async markNoShow(
     id: string,
     chargeFee: boolean,
@@ -571,6 +677,19 @@ export class ReservationsRepository {
   // ROOM ASSIGNMENT
   // ============================================================================
 
+  /**
+   * Assigns or reassigns a room for one reservation-room record inside a transaction.
+   *
+   * It updates reservation-room linkage, syncs room occupancy status for checked-in guests,
+   * rotates active assignment rows, and emits an upgrade outbox event when applicable.
+   *
+   * @param reservationRoomId - Reservation-room UUID to update.
+   * @param roomId - Target room UUID for assignment.
+   * @param assignedBy - Actor identifier performing the assignment.
+   * @param options - Optional assignment metadata including type, reason, and previous room.
+   * @returns Resolves when assignment updates commit.
+   * @throws {NotFoundError} When the reservation-room record does not exist.
+   */
   async assignRoom(
     reservationRoomId: string,
     roomId: string,
@@ -681,6 +800,12 @@ export class ReservationsRepository {
     });
   }
 
+  /**
+   * Removes room assignment from a reservation-room record and resets it to reserved state.
+   *
+   * @param reservationRoomId - Reservation-room UUID to unassign.
+   * @returns Resolves when assignment fields are cleared.
+   */
   async unassignRoom(reservationRoomId: string): Promise<void> {
     await prisma.reservationRoom.update({
       where: { id: reservationRoomId },
@@ -693,6 +818,16 @@ export class ReservationsRepository {
     });
   }
 
+  /**
+   * Automatically picks the best available room for a reservation and assigns it.
+   *
+   * The selector prioritizes clean vacant rooms, then lower floors and room numbers to provide
+   * deterministic assignment. It returns `null` when no suitable room or reservation-room exists.
+   *
+   * @param reservationId - Reservation UUID requiring assignment.
+   * @param roomTypeId - Room type UUID constraint for candidate rooms.
+   * @returns Assigned room UUID, or `null` when auto-assignment cannot be completed.
+   */
   async autoAssignRoom(reservationId: string, roomTypeId: string): Promise<string | null> {
     // Find best available room
     const availableRoom = await prisma.room.findFirst({
@@ -729,6 +864,19 @@ export class ReservationsRepository {
   // AVAILABILITY CHECKS
   // ============================================================================
 
+  /**
+   * Checks room-type availability for a stay window using inventory and overlap constraints.
+   *
+   * Availability is derived from physical room count, overlapping active reservations, and any
+   * date-level stop-sell/inventory overrides. The minimum available count across the stay wins.
+   *
+   * @param hotelId - Hotel UUID where availability is evaluated.
+   * @param roomTypeId - Room type UUID being checked.
+   * @param checkIn - Arrival date (inclusive).
+   * @param checkOut - Departure date (exclusive).
+   * @returns Availability flag and remaining room count for the tightest day in range.
+   * @remarks Complexity: O(I) where `I` is inventory rows returned for the stay range.
+   */
   async checkAvailability(
     hotelId: string,
     roomTypeId: string,
@@ -783,6 +931,13 @@ export class ReservationsRepository {
   // DASHBOARD QUERIES
   // ============================================================================
 
+  /**
+   * Lists arrivals scheduled for a specific business date.
+   *
+   * @param hotelId - Hotel UUID whose arrivals are queried.
+   * @param date - Business date used for `checkInDate` matching.
+   * @returns Reservations arriving on the date with guest and room relations.
+   */
   async getTodayArrivals(hotelId: string, date: Date): Promise<Reservation[]> {
     return prisma.reservation.findMany({
       where: {
@@ -810,6 +965,13 @@ export class ReservationsRepository {
     }) as unknown as Promise<Reservation[]>;
   }
 
+  /**
+   * Lists in-house reservations scheduled to depart on a specific business date.
+   *
+   * @param hotelId - Hotel UUID whose departures are queried.
+   * @param date - Business date used for `checkOutDate` matching.
+   * @returns Checked-in reservations departing on the date.
+   */
   async getTodayDepartures(hotelId: string, date: Date): Promise<Reservation[]> {
     return prisma.reservation.findMany({
       where: {
@@ -835,6 +997,12 @@ export class ReservationsRepository {
     }) as unknown as Promise<Reservation[]>;
   }
 
+  /**
+   * Lists all currently checked-in reservations for a hotel.
+   *
+   * @param hotelId - Hotel UUID whose in-house guests are requested.
+   * @returns Active in-house reservations with guest and room relations.
+   */
   async getInHouseGuests(hotelId: string): Promise<Reservation[]> {
     return prisma.reservation.findMany({
       where: {
@@ -865,6 +1033,16 @@ export class ReservationsRepository {
   // CONFIRMATION NUMBER GENERATION
   // ============================================================================
 
+  /**
+   * Generates a reservation confirmation number with collision retries.
+   *
+   * The value format is `YYMMDD####` with a random suffix, retried up to ten times against
+   * current records. If random retries collide, it falls back to a timestamp-based suffix.
+   *
+   * @param _hotelId - Hotel UUID placeholder for potential hotel-specific prefixes.
+   * @returns Unique confirmation number string.
+   * @remarks Complexity: O(A) where `A` is retry attempts (max 10) plus one fallback path.
+   */
   async generateConfirmationNumber(_hotelId: string): Promise<string> {
     const date = new Date();
     const year = date.getFullYear().toString().slice(-2);
@@ -898,6 +1076,19 @@ export class ReservationsRepository {
   // SPLIT/MERGE
   // ============================================================================
 
+  /**
+   * Splits one reservation into original and new segments at a split date.
+   *
+   * It shortens the original reservation, creates a new reservation for the remaining nights,
+   * inserts a linked reservation-room row, and returns both records in one transaction.
+   *
+   * @param reservationId - Source reservation UUID.
+   * @param splitDate - Boundary date where the original stay ends and the new stay begins.
+   * @param newReservationData - Base data used to create the new reservation segment.
+   * @param newRoomData - Reservation-room payload for the new segment.
+   * @returns Updated original reservation and newly created split reservation.
+   * @remarks Complexity: O(1) fixed-write transaction with deterministic row operations.
+   */
   async splitReservation(
     reservationId: string,
     splitDate: Date,
@@ -967,6 +1158,13 @@ export class ReservationsRepository {
   // VALIDATION
   // ============================================================================
 
+  /**
+   * Checks whether a room currently participates in any active reservation assignment.
+   *
+   * @param roomId - Room UUID to validate.
+   * @param excludeReservationId - Optional reservation UUID to ignore during checks.
+   * @returns `true` when an active assigned/occupied reservation exists for the room.
+   */
   async hasActiveReservation(roomId: string, excludeReservationId?: string): Promise<boolean> {
     const count = await prisma.reservationRoom.count({
       where: {

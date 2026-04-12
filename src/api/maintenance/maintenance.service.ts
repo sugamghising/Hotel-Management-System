@@ -84,10 +84,33 @@ interface EscalationSweepInput {
 export class MaintenanceService {
   private maintenanceRepo: MaintenanceRepositoryType;
 
+  /**
+   * Creates a maintenance service with an overridable repository dependency.
+   *
+   * @param repository - Repository implementation used for maintenance persistence and queries.
+   */
   constructor(repository: MaintenanceRepositoryType = maintenanceRepository) {
     this.maintenanceRepo = repository;
   }
 
+  /**
+   * Creates a maintenance request with SLA deadlines, out-of-order validation, and event emission.
+   *
+   * The workflow validates room scope, computes target completion from explicit input or priority SLA,
+   * checks room out-of-order reservation conflicts, and performs transactional writes for request creation,
+   * optional room OOO state updates, and outbox events. Emergency requests are additionally logged for
+   * operational visibility after commit.
+   *
+   * @param organizationId - Organization UUID used for tenant scoping.
+   * @param hotelId - Hotel UUID used for property scoping.
+   * @param input - Request creation payload including category, priority, room/asset references, and OOO flags.
+   * @param userId - Optional actor UUID; defaults to configured system actor when omitted.
+   * @returns Created request plus warning metadata when OOO conflicts are force-overridden.
+   * @throws {BadRequestError} When `roomOutOfOrder` is true without a `roomId`.
+   * @throws {NotFoundError} When a referenced room does not exist in the scoped hotel.
+   * @throws {OOOReservationConflictError} When OOO windows overlap active reservations without force override.
+   * @remarks Complexity: O(c) conflict mapping plus transactional DB writes; dominant cost is repository conflict lookup and transaction I/O.
+   */
   async createRequest(
     organizationId: string,
     hotelId: string,
@@ -251,6 +274,14 @@ export class MaintenanceService {
     };
   }
 
+  /**
+   * Lists maintenance requests with filter and pagination metadata.
+   *
+   * @param organizationId - Organization UUID used for tenant scoping.
+   * @param hotelId - Hotel UUID used for property scoping.
+   * @param query - Filter and pagination payload for request listing.
+   * @returns Paginated request items with total-count metadata.
+   */
   async listRequests(
     organizationId: string,
     hotelId: string,
@@ -277,6 +308,15 @@ export class MaintenanceService {
     };
   }
 
+  /**
+   * Retrieves one maintenance request by identifier within organization and hotel scope.
+   *
+   * @param organizationId - Organization UUID used for tenant scoping.
+   * @param hotelId - Hotel UUID used for property scoping.
+   * @param requestId - Maintenance request UUID.
+   * @returns Requested maintenance record.
+   * @throws {NotFoundError} When no scoped request exists for the provided ID.
+   */
   async getRequestDetail(organizationId: string, hotelId: string, requestId: string) {
     const request = await this.maintenanceRepo.findRequestById(requestId, organizationId, hotelId);
 
@@ -287,6 +327,17 @@ export class MaintenanceService {
     return { request };
   }
 
+  /**
+   * Updates mutable request fields while preventing edits on closed statuses.
+   *
+   * @param organizationId - Organization UUID used for tenant scoping.
+   * @param hotelId - Hotel UUID used for property scoping.
+   * @param requestId - Maintenance request UUID to modify.
+   * @param input - Partial update payload for category, timing, location, and OOO fields.
+   * @returns Updated maintenance request.
+   * @throws {NotFoundError} When the request is not found in scope.
+   * @throws {ConflictError} When the request is already in a closing status.
+   */
   async updateRequest(
     organizationId: string,
     hotelId: string,
@@ -317,6 +368,16 @@ export class MaintenanceService {
     return { request };
   }
 
+  /**
+   * Transitions a request to `ACKNOWLEDGED` when status rules allow it.
+   *
+   * @param organizationId - Organization UUID used for tenant scoping.
+   * @param hotelId - Hotel UUID used for property scoping.
+   * @param requestId - Maintenance request UUID to acknowledge.
+   * @returns Updated request in `ACKNOWLEDGED` status.
+   * @throws {NotFoundError} When the request is not found in scope.
+   * @throws {InvalidStatusTransitionError} When transition rules reject the current status.
+   */
   async acknowledgeRequest(organizationId: string, hotelId: string, requestId: string) {
     const existing = await this.getScopedRequest(requestId, organizationId, hotelId);
     this.assertCanTransition(existing.status, 'ACKNOWLEDGED');
@@ -328,6 +389,17 @@ export class MaintenanceService {
     return { request };
   }
 
+  /**
+   * Assigns a maintenance request to a staff user and backfills acknowledgement when needed.
+   *
+   * @param organizationId - Organization UUID used for tenant scoping.
+   * @param hotelId - Hotel UUID used for property scoping.
+   * @param requestId - Maintenance request UUID to assign.
+   * @param input - Assignment payload with the target assignee UUID.
+   * @returns Updated request with assignment fields set.
+   * @throws {NotFoundError} When the request is not found in scope.
+   * @throws {ConflictError} When the request is already closed.
+   */
   async assignRequest(
     organizationId: string,
     hotelId: string,
@@ -349,6 +421,17 @@ export class MaintenanceService {
     return { request };
   }
 
+  /**
+   * Schedules a maintenance request and computes target completion when absent.
+   *
+   * @param organizationId - Organization UUID used for tenant scoping.
+   * @param hotelId - Hotel UUID used for property scoping.
+   * @param requestId - Maintenance request UUID to schedule.
+   * @param input - Scheduling payload with service date and optional estimate/target.
+   * @returns Updated request in `SCHEDULED` status.
+   * @throws {NotFoundError} When the request is not found in scope.
+   * @throws {ConflictError} When the request is already closed.
+   */
   async scheduleRequest(
     organizationId: string,
     hotelId: string,
@@ -374,6 +457,17 @@ export class MaintenanceService {
     return { request };
   }
 
+  /**
+   * Starts execution of a maintenance request from acknowledged or scheduled states.
+   *
+   * @param organizationId - Organization UUID used for tenant scoping.
+   * @param hotelId - Hotel UUID used for property scoping.
+   * @param requestId - Maintenance request UUID to start.
+   * @param userId - Optional actor UUID used as fallback assignee when unassigned.
+   * @returns Updated request in `IN_PROGRESS` status.
+   * @throws {NotFoundError} When the request is not found in scope.
+   * @throws {InvalidStatusTransitionError} When current status is not start-eligible.
+   */
   async startRequest(organizationId: string, hotelId: string, requestId: string, userId?: string) {
     const existing = await this.getScopedRequest(requestId, organizationId, hotelId);
 
@@ -397,6 +491,17 @@ export class MaintenanceService {
     return { request };
   }
 
+  /**
+   * Pauses an in-flight request and records the pause reason.
+   *
+   * @param organizationId - Organization UUID used for tenant scoping.
+   * @param hotelId - Hotel UUID used for property scoping.
+   * @param requestId - Maintenance request UUID to pause.
+   * @param input - Pause payload carrying required reason text.
+   * @returns Updated request in `PENDING_PARTS` status.
+   * @throws {NotFoundError} When the request is not found in scope.
+   * @throws {InvalidStatusTransitionError} When transition rules reject the current status.
+   */
   async pauseRequest(
     organizationId: string,
     hotelId: string,
@@ -416,6 +521,23 @@ export class MaintenanceService {
     return { request };
   }
 
+  /**
+   * Logs consumed parts for a request, updates cost totals, and resumes paused work when applicable.
+   *
+   * Runs inside a transaction that validates scope/status, consumes inventory for each part entry,
+   * appends normalized usage records, recalculates parts and total cost using Decimal arithmetic,
+   * and conditionally transitions `PENDING_PARTS` requests back to `IN_PROGRESS`.
+   *
+   * @param organizationId - Organization UUID used for tenant scoping.
+   * @param hotelId - Hotel UUID used for property scoping.
+   * @param requestId - Maintenance request UUID receiving part usage entries.
+   * @param input - Parts payload containing item IDs, quantities, and optional notes.
+   * @param userId - Optional actor UUID passed to inventory consumption audit fields.
+   * @returns Updated request with refreshed parts usage and cost totals.
+   * @throws {NotFoundError} When the request cannot be found in organization and hotel scope.
+   * @throws {ConflictError} When request status is not `IN_PROGRESS` or `PENDING_PARTS`.
+   * @remarks Complexity: O(p) inventory operations and append transforms where p is logged part count; each item may incur stock validation and write I/O.
+   */
   async logParts(
     organizationId: string,
     hotelId: string,
@@ -498,6 +620,23 @@ export class MaintenanceService {
     return { request };
   }
 
+  /**
+   * Completes a maintenance request, finalizes financials, and optionally clears room OOO state.
+   *
+   * The transaction validates scope and transition eligibility, consumes optional final parts,
+   * recalculates aggregate costs (parts, labor, vendor, total), updates completion metadata,
+   * optionally resets room out-of-order fields, and emits completion/OOO-cleared outbox events.
+   *
+   * @param organizationId - Organization UUID used for tenant scoping.
+   * @param hotelId - Hotel UUID used for property scoping.
+   * @param requestId - Maintenance request UUID to complete.
+   * @param input - Completion payload with resolution text, optional costs, and optional final parts.
+   * @param userId - Optional actor UUID used for inventory and transition auditing.
+   * @returns Updated request in `COMPLETED` status.
+   * @throws {NotFoundError} When the request does not exist in scope.
+   * @throws {InvalidStatusTransitionError} When request is not in a completable status.
+   * @remarks Complexity: O(p) for optional part consumption plus transactional DB updates/events, where p is `input.parts` length.
+   */
   async completeRequest(
     organizationId: string,
     hotelId: string,
@@ -637,6 +776,18 @@ export class MaintenanceService {
     return { request };
   }
 
+  /**
+   * Verifies a completed request and clears room maintenance status when room-linked.
+   *
+   * @param organizationId - Organization UUID used for tenant scoping.
+   * @param hotelId - Hotel UUID used for property scoping.
+   * @param requestId - Maintenance request UUID to verify.
+   * @param _input - Verification payload placeholder for API shape consistency.
+   * @param userId - Optional verifier UUID; defaults to system actor when omitted.
+   * @returns Updated request in `VERIFIED` status.
+   * @throws {NotFoundError} When the request does not exist in scope.
+   * @throws {InvalidStatusTransitionError} When transition rules reject verification.
+   */
   async verifyRequest(
     organizationId: string,
     hotelId: string,
@@ -679,6 +830,18 @@ export class MaintenanceService {
     return { request };
   }
 
+  /**
+   * Cancels an open maintenance request and clears room OOO state when currently set.
+   *
+   * @param organizationId - Organization UUID used for tenant scoping.
+   * @param hotelId - Hotel UUID used for property scoping.
+   * @param requestId - Maintenance request UUID to cancel.
+   * @param input - Cancellation payload containing required reason text.
+   * @param userId - Optional actor UUID; defaults to system actor when omitted.
+   * @returns Updated request in `CANCELLED` status.
+   * @throws {NotFoundError} When the request does not exist in scope.
+   * @throws {InvalidStatusTransitionError} When request is already completed, verified, or cancelled.
+   */
   async cancelRequest(
     organizationId: string,
     hotelId: string,
@@ -731,6 +894,20 @@ export class MaintenanceService {
     return { request };
   }
 
+  /**
+   * Escalates an open maintenance request by increasing priority and escalation level.
+   *
+   * Performs transactional priority bumping, increments escalation counters, records escalation
+   * timestamp, and emits a `maintenance.escalated` outbox event with optional operator reason.
+   *
+   * @param organizationId - Organization UUID used for tenant scoping.
+   * @param hotelId - Hotel UUID used for property scoping.
+   * @param requestId - Maintenance request UUID to escalate.
+   * @param input - Escalation payload with optional human-readable reason.
+   * @returns Updated request with escalated priority and level.
+   * @throws {NotFoundError} When the request does not exist in scope.
+   * @throws {ConflictError} When escalation is attempted on a closed request.
+   */
   async escalateRequest(
     organizationId: string,
     hotelId: string,
@@ -783,6 +960,17 @@ export class MaintenanceService {
     return { request };
   }
 
+  /**
+   * Runs SLA-overdue escalation sweep across open maintenance requests.
+   *
+   * Fetches overdue candidates up to a configurable limit, skips existing `EMERGENCY` requests,
+   * revalidates each candidate in a transaction to avoid stale transitions, applies priority bump
+   * and escalation metadata, and emits escalation outbox events for each successful escalation.
+   *
+   * @param input - Optional sweep filters for organization/hotel scope, cutoff timestamp, and batch size.
+   * @returns Sweep summary including checked, escalated, and skipped-emergency counts.
+   * @remarks Complexity: O(c) transactional checks/updates where c is overdue candidate count (bounded by `limit`).
+   */
   async runEscalationSweep(input: EscalationSweepInput = {}) {
     const at = input.at ?? new Date();
     const limit = Math.max(1, input.limit ?? 100);
@@ -880,6 +1068,23 @@ export class MaintenanceService {
     };
   }
 
+  /**
+   * Posts a folio service charge for a maintenance request and marks charge linkage fields.
+   *
+   * Validates idempotency, resolves reservation target, delegates charge posting to folio service,
+   * and within a transaction flags the request as charged while persisting folio item linkage and
+   * emitting a `maintenance.guest_charge` outbox event.
+   *
+   * @param organizationId - Organization UUID used for tenant scoping.
+   * @param hotelId - Hotel UUID used for property scoping.
+   * @param requestId - Maintenance request UUID receiving the guest charge.
+   * @param input - Charge payload containing amount, description, and optional posting metadata.
+   * @param userId - Optional actor UUID used for folio posting attribution.
+   * @returns Updated request alongside the created folio charge item.
+   * @throws {NotFoundError} When the request does not exist in scope.
+   * @throws {GuestChargeAlreadyPostedError} When charge posting was already completed for the request.
+   * @throws {BadRequestError} When no reservation ID is available for charge posting.
+   */
   async postGuestCharge(
     organizationId: string,
     hotelId: string,
@@ -957,6 +1162,19 @@ export class MaintenanceService {
     };
   }
 
+  /**
+   * Builds an operations dashboard snapshot for maintenance queue health and throughput.
+   *
+   * Computes a UTC day window, executes parallel aggregate queries for open, overdue, unassigned,
+   * emergency, and completed-today counts, groups totals by priority and status, and calculates
+   * average resolution hours from a recent completed sample.
+   *
+   * @param organizationId - Organization UUID used for tenant scoping.
+   * @param hotelId - Hotel UUID used for property scoping.
+   * @param atDate - Optional reference timestamp; defaults to current time.
+   * @returns Dashboard metrics for queue state, completion activity, and distribution breakdowns.
+   * @remarks Complexity: O(r + g) where r is sampled completed row count and g is grouped aggregate row count; query I/O dominates runtime.
+   */
   async getDashboard(organizationId: string, hotelId: string, atDate?: Date) {
     const referenceDate = atDate ?? new Date();
     const startOfDay = new Date(
@@ -1103,6 +1321,15 @@ export class MaintenanceService {
     return { dashboard };
   }
 
+  /**
+   * Creates a preventive maintenance schedule after validating optional room and asset scope.
+   *
+   * @param organizationId - Organization UUID used for tenant scoping.
+   * @param hotelId - Hotel UUID used for property scoping.
+   * @param input - Preventive schedule payload including recurrence and optional auto-assignment.
+   * @returns Created schedule with corrected `nextRunAt` when runtime recomputation differs.
+   * @throws {NotFoundError} When referenced room or asset does not exist in scope.
+   */
   async createPreventiveSchedule(
     organizationId: string,
     hotelId: string,
@@ -1153,6 +1380,14 @@ export class MaintenanceService {
     return { schedule: created };
   }
 
+  /**
+   * Lists preventive schedules with filter and pagination metadata.
+   *
+   * @param organizationId - Organization UUID used for tenant scoping.
+   * @param hotelId - Hotel UUID used for property scoping.
+   * @param query - Schedule filters and pagination controls.
+   * @returns Paginated preventive schedule rows with total-count metadata.
+   */
   async listPreventiveSchedules(
     organizationId: string,
     hotelId: string,
@@ -1179,6 +1414,15 @@ export class MaintenanceService {
     };
   }
 
+  /**
+   * Deactivates a preventive schedule by identifier.
+   *
+   * @param organizationId - Organization UUID used for tenant scoping.
+   * @param hotelId - Hotel UUID used for property scoping.
+   * @param scheduleId - Preventive schedule UUID to pause.
+   * @returns Updated preventive schedule with `isActive` set to false.
+   * @throws {NotFoundError} When no scoped schedule exists.
+   */
   async pausePreventiveSchedule(organizationId: string, hotelId: string, scheduleId: string) {
     const schedule = await this.maintenanceRepo.findPreventiveScheduleById(
       scheduleId,
@@ -1197,6 +1441,20 @@ export class MaintenanceService {
     return { schedule: updated };
   }
 
+  /**
+   * Generates maintenance requests for due preventive schedules and advances recurrence windows.
+   *
+   * Fetches schedules due at a reference timestamp, enforces single-schedule due checks, skips expired
+   * schedules by deactivating them, avoids duplicate generation for the same schedule/day, and for each
+   * generated request updates schedule `lastGeneratedAt` and `nextRunAt` while emitting outbox events.
+   *
+   * @param organizationId - Organization UUID used for tenant scoping.
+   * @param hotelId - Hotel UUID used for property scoping.
+   * @param input - Generation payload with optional date, schedule filter, and source reference.
+   * @returns Number of preventive tasks generated in this batch.
+   * @throws {ScheduleNotDueError} When a specific schedule is requested but not currently due.
+   * @remarks Complexity: O(s) schedule iterations with transactional write sets per generated schedule, where s is due schedule count.
+   */
   async generateDuePreventiveTasks(
     organizationId: string,
     hotelId: string,
@@ -1305,6 +1563,16 @@ export class MaintenanceService {
     };
   }
 
+  /**
+   * Creates an asset record after room-scope validation and tag uniqueness checks.
+   *
+   * @param organizationId - Organization UUID used for tenant scoping.
+   * @param hotelId - Hotel UUID used for property scoping.
+   * @param input - Asset creation payload containing identifying and lifecycle fields.
+   * @returns Newly created asset record.
+   * @throws {NotFoundError} When a provided room reference is not found in scope.
+   * @throws {AssetTagAlreadyExistsError} When the asset tag is already used within the scope.
+   */
   async createAsset(organizationId: string, hotelId: string, input: CreateAssetInput) {
     if (input.roomId) {
       const room = await this.maintenanceRepo.findRoomForScope(
@@ -1331,6 +1599,14 @@ export class MaintenanceService {
     return { asset };
   }
 
+  /**
+   * Lists assets with scope filters and pagination metadata.
+   *
+   * @param organizationId - Organization UUID used for tenant scoping.
+   * @param hotelId - Hotel UUID used for property scoping.
+   * @param query - Asset query filters and pagination controls.
+   * @returns Paginated asset rows with total-count metadata.
+   */
   async listAssets(organizationId: string, hotelId: string, query: ListAssetsQueryInput) {
     const page = query.page;
     const limit = query.limit;
@@ -1351,6 +1627,15 @@ export class MaintenanceService {
     };
   }
 
+  /**
+   * Retrieves one asset by identifier within organization and hotel scope.
+   *
+   * @param organizationId - Organization UUID used for tenant scoping.
+   * @param hotelId - Hotel UUID used for property scoping.
+   * @param assetId - Asset UUID to fetch.
+   * @returns Requested asset record.
+   * @throws {NotFoundError} When no scoped asset exists.
+   */
   async getAssetDetail(organizationId: string, hotelId: string, assetId: string) {
     const asset = await this.maintenanceRepo.findAssetById(assetId, organizationId, hotelId);
 
@@ -1361,6 +1646,16 @@ export class MaintenanceService {
     return { asset };
   }
 
+  /**
+   * Updates an asset after validating existence and optional room reassignment scope.
+   *
+   * @param organizationId - Organization UUID used for tenant scoping.
+   * @param hotelId - Hotel UUID used for property scoping.
+   * @param assetId - Asset UUID to update.
+   * @param input - Partial asset update payload.
+   * @returns Updated asset record.
+   * @throws {NotFoundError} When asset or provided room reference is missing in scope.
+   */
   async updateAsset(
     organizationId: string,
     hotelId: string,
@@ -1389,6 +1684,19 @@ export class MaintenanceService {
     return { asset };
   }
 
+  /**
+   * Evaluates repair burden and lifecycle signals to recommend maintain, monitor, or replace actions.
+   *
+   * Pulls completed/verified request costs for the last 12 months, computes repair frequency and total
+   * cost, estimates lifecycle utilization from install/purchase age, and derives a recommendation based
+   * on combined signal thresholds.
+   *
+   * @param organizationId - Organization UUID used for tenant scoping.
+   * @param hotelId - Hotel UUID used for property scoping.
+   * @param assetId - Asset UUID to evaluate.
+   * @returns Asset data plus evaluation signals, metrics, and recommendation outcome.
+   * @throws {NotFoundError} When the scoped asset cannot be found.
+   */
   async evaluateAsset(organizationId: string, hotelId: string, assetId: string) {
     const asset = await this.maintenanceRepo.findAssetById(assetId, organizationId, hotelId);
 
@@ -1464,6 +1772,16 @@ export class MaintenanceService {
     };
   }
 
+  /**
+   * Retrieves a request and enforces organization/hotel access boundaries.
+   *
+   * @param requestId - Maintenance request UUID to retrieve.
+   * @param organizationId - Organization UUID expected on the request.
+   * @param hotelId - Hotel UUID expected on the request.
+   * @returns Scoped request entity when found and authorized.
+   * @throws {NotFoundError} When the request does not exist.
+   * @throws {ForbiddenError} When request scope does not match organization or hotel boundaries.
+   */
   private async getScopedRequest(requestId: string, organizationId: string, hotelId: string) {
     const request = await this.maintenanceRepo.findRequestById(requestId, organizationId, hotelId);
 
@@ -1478,6 +1796,14 @@ export class MaintenanceService {
     return request;
   }
 
+  /**
+   * Validates whether a maintenance status transition is allowed by workflow rules.
+   *
+   * @param fromStatus - Current request status.
+   * @param toStatus - Desired target status.
+   * @returns Nothing. Throws when the transition is invalid.
+   * @throws {InvalidStatusTransitionError} When the transition is not listed in the allowed transition matrix.
+   */
   private assertCanTransition(fromStatus: string, toStatus: string) {
     const allowedTargets = STATUS_TRANSITIONS[fromStatus] ?? [];
 
@@ -1490,6 +1816,14 @@ export class MaintenanceService {
     }
   }
 
+  /**
+   * Calculates SLA deadline timestamp from priority-specific response windows.
+   *
+   * @param priority - Request priority string used to resolve SLA hours.
+   * @param from - Baseline timestamp from which SLA hours are added.
+   * @returns Deadline timestamp computed from configured SLA hours, defaulting unknown priorities to medium.
+   * @remarks Complexity: O(1).
+   */
   private calculateSlaDeadline(priority: string, from: Date): Date {
     const priorityKey: SlaPriority =
       priority in SLA_HOURS_BY_PRIORITY ? (priority as SlaPriority) : 'MEDIUM';
@@ -1498,6 +1832,12 @@ export class MaintenanceService {
     return new Date(from.getTime() + slaHours * 60 * 60 * 1000);
   }
 
+  /**
+   * Returns the next escalation priority tier.
+   *
+   * @param priority - Current priority value.
+   * @returns Escalated priority, capping at `EMERGENCY`.
+   */
   private bumpPriority(priority: string) {
     switch (priority) {
       case 'LOW':
@@ -1513,10 +1853,22 @@ export class MaintenanceService {
     }
   }
 
+  /**
+   * Normalizes a timestamp to a UTC date-only value at midnight.
+   *
+   * @param value - Source timestamp to normalize.
+   * @returns UTC midnight date preserving year, month, and day components.
+   */
   private asDateOnly(value: Date) {
     return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate()));
   }
 
+  /**
+   * Parses persisted JSON parts usage into validated in-memory records.
+   *
+   * @param value - Raw JSON payload stored in the request `partsUsed` field.
+   * @returns Structured part usage records containing required numeric and timestamp fields.
+   */
   private parsePartsUsed(value: unknown): PartsUsedRecord[] {
     if (!Array.isArray(value)) {
       return [];
@@ -1551,6 +1903,19 @@ export class MaintenanceService {
     return parsed;
   }
 
+  /**
+   * Computes the first future run timestamp for a preventive schedule.
+   *
+   * Applies optimized interval math for daily/weekly recurrences when possible, then falls back to
+   * iterative recurrence advancement for other frequencies while capping iterations to prevent runaway
+   * loops. If still behind current time, it advances once more from now.
+   *
+   * @param startDate - Schedule start timestamp.
+   * @param frequency - Recurrence frequency literal.
+   * @param value - Recurrence interval multiplier.
+   * @returns Next run timestamp guaranteed to be at or after current time when feasible.
+   * @remarks Complexity: O(1) for daily/weekly shortcut paths; worst case O(i) iterative advancements bounded by `MAX_ITERATIONS`.
+   */
   private computeInitialNextRun(startDate: Date, frequency: string, value: number): Date {
     const now = new Date();
 
@@ -1601,6 +1966,14 @@ export class MaintenanceService {
     return cursor;
   }
 
+  /**
+   * Advances a recurrence timestamp by one frequency interval.
+   *
+   * @param from - Baseline run timestamp.
+   * @param frequency - Recurrence frequency literal.
+   * @param value - Interval multiplier for the selected frequency.
+   * @returns Next recurrence timestamp based on UTC date arithmetic.
+   */
   private calculateNextRun(from: Date, frequency: string, value: number): Date {
     const next = new Date(from);
 

@@ -8,13 +8,34 @@ import { asyncHandler } from '../../core';
 import { type ReportsService, reportsService } from './reports.service';
 import type { GroupByPeriod } from './reports.types';
 
+/**
+ * Controller transport handlers for reports and dashboards.
+ *
+ * Module base route: /api/v1/organizations/:organizationId/hotels/:hotelId.
+ */
 export class ReportsController {
+  /**
+   * Creates a reports controller wired to a reports service implementation.
+   *
+   * @param service - Service used to execute organizationId/hotelId-scoped report reads.
+   */
   constructor(private service: ReportsService = reportsService) {}
 
   // ==========================================================================
   // OCCUPANCY REPORT
   // ==========================================================================
 
+  /**
+   * Handles get occupancy report requests for reports and dashboards.
+   *
+   * Route: GET /api/v1/organizations/:organizationId/hotels/:hotelId/reports/occupancy
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
+   */
   getOccupancyReport = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId } = req.params as {
       organizationId: string;
@@ -46,6 +67,17 @@ export class ReportsController {
   // REVENUE REPORT
   // ==========================================================================
 
+  /**
+   * Handles get revenue report requests for reports and dashboards.
+   *
+   * Route: GET /api/v1/organizations/:organizationId/hotels/:hotelId/reports/revenue
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
+   */
   getRevenueReport = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId } = req.params as {
       organizationId: string;
@@ -77,6 +109,17 @@ export class ReportsController {
   // ADR REPORT
   // ==========================================================================
 
+  /**
+   * Handles get adr report requests for reports and dashboards.
+   *
+   * Route: GET /api/v1/organizations/:organizationId/hotels/:hotelId/reports/adr
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
+   */
   getADRReport = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId } = req.params as {
       organizationId: string;
@@ -108,6 +151,17 @@ export class ReportsController {
   // REVPAR REPORT
   // ==========================================================================
 
+  /**
+   * Handles get rev par report requests for reports and dashboards.
+   *
+   * Route: GET /api/v1/organizations/:organizationId/hotels/:hotelId/reports/revpar
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
+   */
   getRevPARReport = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId } = req.params as {
       organizationId: string;
@@ -139,6 +193,17 @@ export class ReportsController {
   // FOLIO SUMMARY REPORT
   // ==========================================================================
 
+  /**
+   * Handles get folio summary requests for reports and dashboards.
+   *
+   * Route: GET /api/v1/organizations/:organizationId/hotels/:hotelId/reports/folio-summary
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
+   */
   getFolioSummary = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId } = req.params as {
       organizationId: string;
@@ -166,7 +231,18 @@ export class ReportsController {
   // ARRIVALS/DEPARTURES REPORT
   // ==========================================================================
 
-  getArrivalsDeporturesReport = asyncHandler(async (req: Request, res: Response) => {
+  /**
+   * Handles get arrivals departures report requests for reports and dashboards.
+   *
+   * Route: GET /api/v1/organizations/:organizationId/hotels/:hotelId/reports/arrivals-departures
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
+   */
+  getArrivalsDeparturesReport = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId } = req.params as {
       organizationId: string;
       hotelId: string;
@@ -177,7 +253,7 @@ export class ReportsController {
       groupBy?: GroupByPeriod;
     };
 
-    const report = await this.service.getArrivalsDeporturesReport(
+    const report = await this.service.getArrivalsDeparturesReport(
       organizationId,
       hotelId,
       new Date(dateFrom),
@@ -195,6 +271,17 @@ export class ReportsController {
   // IN-HOUSE REPORT
   // ==========================================================================
 
+  /**
+   * Handles get in house report requests for reports and dashboards.
+   *
+   * Route: GET /api/v1/organizations/:organizationId/hotels/:hotelId/reports/in-house
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
+   */
   getInHouseReport = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId } = req.params as {
       organizationId: string;
@@ -222,6 +309,17 @@ export class ReportsController {
   // NO-SHOW REPORT
   // ==========================================================================
 
+  /**
+   * Handles get no show report requests for reports and dashboards.
+   *
+   * Route: GET /api/v1/organizations/:organizationId/hotels/:hotelId/reports/no-shows
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
+   */
   getNoShowReport = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId } = req.params as {
       organizationId: string;
@@ -251,6 +349,17 @@ export class ReportsController {
   // GUEST STATISTICS REPORT
   // ==========================================================================
 
+  /**
+   * Handles get guest statistics requests for reports and dashboards.
+   *
+   * Route: GET /api/v1/organizations/:organizationId/hotels/:hotelId/reports/guest-statistics
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
+   */
   getGuestStatistics = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId } = req.params as {
       organizationId: string;
@@ -278,6 +387,17 @@ export class ReportsController {
   // SOURCE ANALYSIS REPORT
   // ==========================================================================
 
+  /**
+   * Handles get source analysis requests for reports and dashboards.
+   *
+   * Route: GET /api/v1/organizations/:organizationId/hotels/:hotelId/reports/source-analysis
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
+   */
   getSourceAnalysis = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId } = req.params as {
       organizationId: string;
@@ -305,6 +425,17 @@ export class ReportsController {
   // REPEAT GUESTS REPORT
   // ==========================================================================
 
+  /**
+   * Handles get repeat guests requests for reports and dashboards.
+   *
+   * Route: GET /api/v1/organizations/:organizationId/hotels/:hotelId/reports/repeat-guests
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
+   */
   getRepeatGuests = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId } = req.params as {
       organizationId: string;
@@ -338,6 +469,17 @@ export class ReportsController {
   // HOUSEKEEPING REPORT
   // ==========================================================================
 
+  /**
+   * Handles get housekeeping report requests for reports and dashboards.
+   *
+   * Route: GET /api/v1/organizations/:organizationId/hotels/:hotelId/reports/housekeeping
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
+   */
   getHousekeepingReport = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId } = req.params as {
       organizationId: string;
@@ -367,6 +509,17 @@ export class ReportsController {
   // MAINTENANCE REPORT
   // ==========================================================================
 
+  /**
+   * Handles get maintenance report requests for reports and dashboards.
+   *
+   * Route: GET /api/v1/organizations/:organizationId/hotels/:hotelId/reports/maintenance
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
+   */
   getMaintenanceReport = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId } = req.params as {
       organizationId: string;
@@ -394,6 +547,17 @@ export class ReportsController {
   // MANAGER DASHBOARD
   // ==========================================================================
 
+  /**
+   * Handles get manager dashboard requests for reports and dashboards.
+   *
+   * Route: GET /api/v1/organizations/:organizationId/hotels/:hotelId/dashboard/manager
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
+   */
   getManagerDashboard = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId } = req.params as {
       organizationId: string;
@@ -417,6 +581,17 @@ export class ReportsController {
   // REVENUE DASHBOARD
   // ==========================================================================
 
+  /**
+   * Handles get revenue dashboard requests for reports and dashboards.
+   *
+   * Route: GET /api/v1/organizations/:organizationId/hotels/:hotelId/dashboard/revenue
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
+   */
   getRevenueDashboard = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId } = req.params as {
       organizationId: string;
@@ -440,6 +615,17 @@ export class ReportsController {
   // OPERATIONS DASHBOARD
   // ==========================================================================
 
+  /**
+   * Handles get operations dashboard requests for reports and dashboards.
+   *
+   * Route: GET /api/v1/organizations/:organizationId/hotels/:hotelId/dashboard/operations
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
+   */
   getOperationsDashboard = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId } = req.params as {
       organizationId: string;

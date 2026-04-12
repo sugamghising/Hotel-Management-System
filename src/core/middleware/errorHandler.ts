@@ -43,8 +43,8 @@ export const errorHandler = (
       },
     };
 
-    // Include stack trace in development
-    if (config.isDevelopment) {
+    // Avoid exposing internals for operational/domain errors.
+    if (config.isDevelopment && !err.isOperational) {
       response.error.stack = err.stack;
     }
 

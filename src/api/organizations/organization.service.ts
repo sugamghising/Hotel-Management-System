@@ -26,12 +26,25 @@ import {
 export class OrganizationService {
   private organizationRepository: OrganizationRepository;
 
+  /**
+   * Creates an organization service with an optional repository override.
+   *
+   * @param organizationRepo - Repository instance used for organization persistence.
+   */
   constructor(organizationRepo: OrganizationRepository = new OrganizationRepository()) {
     this.organizationRepository = organizationRepo;
   }
 
   /**
-   * Get all organizations with pagination and filters
+   * Lists non-deleted organizations with filter and pagination support.
+   *
+   * Builds a Prisma `where` clause from search text, subscription status, and
+   * organization type, then fetches both result rows and total count in
+   * parallel so callers can render paginated responses.
+   *
+   * @param filters - Search and pagination options for organization listing.
+   * @returns A paginated organization list plus total row count.
+   * @remarks Complexity: O(n) in returned page size; performs two database queries.
    */
   async findAll(filters: OrganizationFilters): Promise<OrganizationListResult> {
     const { search, status, type, skip = 0, take = 10 } = filters;
@@ -80,7 +93,11 @@ export class OrganizationService {
   }
 
   /**
-   * Get single organization by ID
+   * Retrieves a single active organization by identifier including counts.
+   *
+   * @param id - Organization UUID.
+   * @returns Organization with hotel and user counts.
+   * @throws {NotFoundError} Thrown when the organization does not exist or is soft-deleted.
    */
   async findById(id: string): Promise<OrganizationWithCounts> {
     const org = (await this.organizationRepository.findById(id, {
@@ -100,14 +117,26 @@ export class OrganizationService {
   }
 
   /**
-   * Get organization by code
+   * Retrieves an organization by code.
+   *
+   * @param code - Unique organization code.
+   * @returns Matching organization, or `null` when the code is unknown.
    */
   async findByCode(code: string): Promise<Organization | null> {
     return this.organizationRepository.findByCode(code);
   }
 
   /**
-   * Create new organization with tier defaults
+   * Creates an organization and applies defaults from the selected subscription tier.
+   *
+   * The method first enforces code uniqueness, then merges caller-provided
+   * limits and features with tier defaults from `SUBSCRIPTION_CONFIG`. Trial
+   * organizations get an automatic 14-day end date; non-trial tiers default to
+   * no subscription end date.
+   *
+   * @param data - Organization creation payload from API validation.
+   * @returns The newly created organization entity.
+   * @throws {ConflictError} Thrown when an organization with the same code already exists.
    */
   async create(data: OrganizationCreateInput): Promise<Organization> {
     // Validate code uniqueness
@@ -159,7 +188,16 @@ export class OrganizationService {
   }
 
   /**
-   * Update organization
+   * Updates mutable organization profile fields and bumps row version.
+   *
+   * Verifies the organization exists, builds a patch object from defined input
+   * fields only, and normalizes empty-string values to `null` for nullable
+   * columns before persisting.
+   *
+   * @param id - Organization UUID to update.
+   * @param data - Partial organization update payload.
+   * @returns The updated organization.
+   * @throws {NotFoundError} Thrown when the organization cannot be found.
    */
   async update(id: string, data: OrganizationUpdateInput): Promise<Organization> {
     // Verify exists
@@ -198,7 +236,19 @@ export class OrganizationService {
   }
 
   /**
-   * Update subscription tier
+   * Changes subscription tier and recalculates organization limits.
+   *
+   * Validates the target tier, checks downgrade safety against current hotel
+   * and user usage, applies either custom limits or tier defaults, and clears
+   * trial end dates when moving away from `'TRIAL'`.
+   *
+   * @param id - Organization UUID to update.
+   * @param tier - Target subscription tier.
+   * @param customLimits - Optional explicit limits overriding tier defaults.
+   * @returns The updated organization with new subscription settings.
+   * @throws {Error} Thrown when `tier` is not a recognized subscription tier.
+   * @throws {NotFoundError} Thrown when the organization cannot be found.
+   * @throws {ConflictError} Thrown when downgrade constraints are violated.
    */
   async updateSubscription(
     id: string,
@@ -244,7 +294,15 @@ export class OrganizationService {
   }
 
   /**
-   * Soft delete organization
+   * Soft-deletes an organization after enforcing business constraints.
+   *
+   * The delete is rejected when active hotels are still associated with the
+   * organization to prevent orphaned hotel data.
+   *
+   * @param id - Organization UUID to delete.
+   * @returns A confirmation payload containing the deleted identifier.
+   * @throws {NotFoundError} Thrown when the organization cannot be found.
+   * @throws {ConflictError} Thrown when the organization still has active hotels.
    */
   async delete(id: string): Promise<{ id: string; deleted: boolean }> {
     const org = await this.findById(id);
@@ -262,7 +320,16 @@ export class OrganizationService {
   }
 
   /**
-   * Get comprehensive stats
+   * Builds a comprehensive organization stats view for dashboards.
+   *
+   * Reads organization counts and hotel summaries from the repository and maps
+   * them into API-facing `stats`, `subscription`, and `usage` structures with
+   * precomputed remaining capacity metrics.
+   *
+   * @param id - Organization UUID.
+   * @returns Aggregated organization statistics payload.
+   * @throws {NotFoundError} Thrown when the organization does not exist.
+   * @remarks Complexity: O(h) in number of returned hotels.
    */
   async getStats(id: string): Promise<OrganizationStats> {
     const org = (await this.organizationRepository.getOrganizationStats(
@@ -307,7 +374,17 @@ export class OrganizationService {
   }
 
   /**
-   * Validate resource limits before creation
+   * Validates whether creating additional resources would exceed plan limits.
+   *
+   * Uses organization counts for hotels/users and performs an additional room
+   * count query for room checks. Returns a structured response instead of
+   * throwing so callers can decide how to surface limit failures.
+   *
+   * @param orgId - Organization UUID.
+   * @param resourceType - Resource category to validate (`'hotel'`, `'user'`, or `'room'`).
+   * @param requestedCount - Number of new resources requested.
+   * @returns Validation result containing current usage, limits, and status.
+   * @throws {NotFoundError} Thrown when the organization cannot be found.
    */
   async validateLimits(
     orgId: string,
@@ -360,7 +437,14 @@ export class OrganizationService {
   }
 
   /**
-   * Check if user has feature access
+   * Checks whether an organization has access to a named feature.
+   *
+   * Enterprise organizations always return access. For other tiers the method
+   * expects `enabledFeatures` to be an array and checks for direct membership.
+   *
+   * @param orgId - Organization UUID.
+   * @param feature - Feature key to test.
+   * @returns `true` when the feature is available for the organization.
    */
   async hasFeature(orgId: string, feature: string): Promise<boolean> {
     const org = await this.organizationRepository.findById(orgId);
@@ -378,11 +462,25 @@ export class OrganizationService {
   // PRIVATE HELPERS
   // ============================================================================
 
+  /**
+   * Determines whether moving from the current tier to the next tier is a downgrade.
+   *
+   * @param current - Current subscription tier.
+   * @param next - Requested subscription tier.
+   * @returns `true` when `next` has lower rank than `current`.
+   */
   private isDowngrade(current: SubscriptionTier, next: SubscriptionTier): boolean {
     const tiers: SubscriptionTier[] = ['TRIAL', 'BASIC', 'PRO', 'ENTERPRISE'];
     return tiers.indexOf(next) < tiers.indexOf(current);
   }
 
+  /**
+   * Verifies that current usage fits within a target tier's limits.
+   *
+   * @param org - Organization with current hotel/user counts.
+   * @param nextTier - Target tier limit configuration.
+   * @returns Validation result with an explanatory message when invalid.
+   */
   private async validateDowngrade(
     org: OrganizationWithCounts,
     nextTier: (typeof SUBSCRIPTION_CONFIG)[SubscriptionTier]

@@ -20,4 +20,6 @@ const router = Router();
  */
 router.get('/', healthController.getHealth);
 
+router.get('/ready', healthController.ready);
+
 export { router as healthRoutes };

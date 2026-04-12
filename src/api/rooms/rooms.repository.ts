@@ -19,6 +19,13 @@ export class RoomsRepository {
   // ============================================================================
   // CRUD OPERATIONS
   // ============================================================================
+  /**
+   * Retrieves a room by its UUID and optionally expands related entities.
+   *
+   * @param id - Room UUID.
+   * @param include - Optional Prisma include graph for related records.
+   * @returns The room when found; otherwise `null`.
+   */
   async findById(id: string, include?: Prisma.RoomInclude): Promise<Room | null> {
     return prisma.room.findUnique({
       where: { id },
@@ -26,6 +33,13 @@ export class RoomsRepository {
     }) as Promise<Room | null>;
   }
 
+  /**
+   * Retrieves a room by hotel and room number using the canonical uppercase key.
+   *
+   * @param hotelId - Hotel UUID that scopes the uniqueness check.
+   * @param roomNumber - Human-facing room number; normalized to uppercase before lookup.
+   * @returns The matching room or `null` when no room exists for that key.
+   */
   async findByRoomNumber(hotelId: string, roomNumber: string): Promise<Room | null> {
     return prisma.room.findUnique({
       where: {
@@ -37,6 +51,19 @@ export class RoomsRepository {
     }) as Promise<Room | null>;
   }
 
+  /**
+   * Lists rooms for a hotel with optional operational filters and pagination metadata.
+   *
+   * Builds a dynamic `where` clause from status, location, room type, and free-text inputs,
+   * then executes `findMany` and `count` concurrently so list data and totals stay aligned.
+   * Search terms match room number, building, and wing case-insensitively.
+   *
+   * @param hotelId - Hotel UUID that scopes the query.
+   * @param filters - Optional room-state and location filters.
+   * @param pagination - Optional pagination configuration (`page`, `limit`).
+   * @returns Filtered room rows and the total number of matching records.
+   * @remarks Complexity: O(R) for result processing plus two DB queries (`findMany` + `count`).
+   */
   async findByHotel(
     hotelId: string,
     filters?: {
@@ -112,12 +139,25 @@ export class RoomsRepository {
     return { rooms: rooms as Room[], total };
   }
 
+  /**
+   * Creates a room row with the provided persistence payload.
+   *
+   * @param data - Prisma unchecked create input for the room.
+   * @returns The created room record.
+   */
   async create(data: RoomCreateInput): Promise<Room> {
     return prisma.room.create({
       data,
     }) as Promise<Room>;
   }
 
+  /**
+   * Updates a room by UUID using partial room fields.
+   *
+   * @param id - Room UUID.
+   * @param data - Prisma update payload containing changed columns.
+   * @returns The updated room record.
+   */
   async update(id: string, data: RoomUpdateInput): Promise<Room> {
     return prisma.room.update({
       where: { id },
@@ -125,6 +165,12 @@ export class RoomsRepository {
     }) as Promise<Room>;
   }
 
+  /**
+   * Soft-deletes a room and marks it unavailable for assignment.
+   *
+   * @param id - Room UUID.
+   * @returns Resolves when the soft-delete update is persisted.
+   */
   async softDelete(id: string): Promise<void> {
     await prisma.room.update({
       where: { id },
@@ -141,6 +187,18 @@ export class RoomsRepository {
   // STATUS MANAGEMENT
   // ============================================================================
 
+  /**
+   * Updates room status and housekeeping metadata in one write operation.
+   *
+   * When the next status is not an out-of-order state, this method clears out-of-order
+   * flags and time windows to keep operational flags consistent with occupancy status.
+   *
+   * @param id - Room UUID.
+   * @param status - Target room status literal.
+   * @param cleaningPriority - Optional housekeeping priority override.
+   * @param lastCleanedAt - Optional timestamp for latest cleaning completion.
+   * @returns The updated room record.
+   */
   async updateStatus(
     id: string,
     status: RoomStatus,
@@ -174,6 +232,16 @@ export class RoomsRepository {
     }) as Promise<Room>;
   }
 
+  /**
+   * Marks a room as out of order for a defined maintenance window.
+   *
+   * @param id - Room UUID.
+   * @param reason - Human-readable reason shown to operations teams.
+   * @param from - Start timestamp for the out-of-order window.
+   * @param until - End timestamp for the out-of-order window.
+   * @param maintenanceStatus - Optional maintenance workflow status override.
+   * @returns The updated room record in `OUT_OF_ORDER` state.
+   */
   async setOutOfOrder(
     id: string,
     reason: string,
@@ -195,6 +263,13 @@ export class RoomsRepository {
     }) as Promise<Room>;
   }
 
+  /**
+   * Clears out-of-order flags and restores a new operational status.
+   *
+   * @param id - Room UUID.
+   * @param newStatus - Post-recovery status, defaulting to `VACANT_DIRTY`.
+   * @returns The updated room record.
+   */
   async removeOutOfOrder(id: string, newStatus: RoomStatus = 'VACANT_DIRTY'): Promise<Room> {
     return prisma.room.update({
       where: { id },
@@ -209,6 +284,14 @@ export class RoomsRepository {
     }) as Promise<Room>;
   }
 
+  /**
+   * Applies the same status to multiple rooms, optionally constrained to one hotel.
+   *
+   * @param roomIds - Room UUIDs to update.
+   * @param status - Target room status literal.
+   * @param hotelId - Optional hotel UUID guard for multi-tenant safety.
+   * @returns Number of rows updated.
+   */
   async bulkUpdateStatus(roomIds: string[], status: RoomStatus, hotelId?: string): Promise<number> {
     const result = await prisma.room.updateMany({
       where: { id: { in: roomIds }, ...(hotelId ? { hotelId, deletedAt: null } : {}) },
@@ -224,6 +307,16 @@ export class RoomsRepository {
   // ============================================================================
   // GRID / FLOOR PLAN
   // ============================================================================
+  /**
+   * Returns floor-plan rows enriched with current guest and next-arrival context.
+   *
+   * Uses a raw SQL query with joins against room type and reservation tables plus a
+   * lateral subquery to compute the next future arrival date per room.
+   *
+   * @param hotelId - Hotel UUID whose room grid should be generated.
+   * @returns Flattened grid rows ordered by floor and room number.
+   * @remarks Complexity: O(R + J) in DB execution, where `R` is rooms in hotel and `J` reflects joined reservation rows.
+   */
   async getGridByHotel(hotelId: string): Promise<RoomGridRow[]> {
     return prisma.$queryRaw`
       SELECT 
@@ -268,6 +361,20 @@ export class RoomsRepository {
   // AVAILABILITY & ASSIGNMENT
   // ============================================================================
 
+  /**
+   * Checks whether a room is free for a date range and returns overlapping stays.
+   *
+   * Conflicts are detected with overlap logic (`existing.checkIn < checkOut` and
+   * `existing.checkOut > checkIn`) against reservations in `CONFIRMED` or `CHECKED_IN`
+   * status while considering only assigned/occupied reservation-room links.
+   *
+   * @param roomId - Room UUID to inspect.
+   * @param checkIn - Requested arrival timestamp.
+   * @param checkOut - Requested departure timestamp.
+   * @param excludeReservationId - Optional reservation UUID to exclude during reassignment flows.
+   * @returns Availability flag and normalized conflict details.
+   * @remarks Complexity: O(C) where `C` is the number of conflicting reservation-room rows returned by the DB.
+   */
   async checkAvailability(
     roomId: string,
     checkIn: Date,
@@ -309,6 +416,21 @@ export class RoomsRepository {
     };
   }
 
+  /**
+   * Finds sellable rooms for a stay window after excluding overlapping assignments.
+   *
+   * Starts from operationally available rooms (`VACANT_CLEAN`/`VACANT_DIRTY`, not out of
+   * order), then removes room IDs returned by a raw SQL overlap query for active
+   * reservations. This prevents double allocation during booking and assignment flows.
+   *
+   * @param hotelId - Hotel UUID used to scope inventory.
+   * @param checkIn - Requested arrival timestamp.
+   * @param checkOut - Requested departure timestamp.
+   * @param roomTypeId - Optional room type UUID filter.
+   * @param limit - Maximum number of rooms to return.
+   * @returns Candidate rooms ordered by room number.
+   * @remarks Complexity: O(O + R) where `O` is overlapping reservation rows and `R` is returned rooms.
+   */
   async findAvailableRooms(
     hotelId: string,
     checkIn: Date,
@@ -366,6 +488,12 @@ export class RoomsRepository {
   // CURRENT / NEXT RESERVATION
   // ============================================================================
 
+  /**
+   * Gets the currently checked-in reservation details for a room.
+   *
+   * @param roomId - Room UUID.
+   * @returns Active reservation-room detail or `null` when the room is not occupied.
+   */
   async getCurrentReservation(roomId: string): Promise<RoomReservationDetail | null> {
     return prisma.reservationRoom.findFirst({
       where: {
@@ -393,10 +521,17 @@ export class RoomsRepository {
     }) as Promise<RoomReservationDetail | null>;
   }
 
+  /**
+   * Gets current checked-in reservation details for a batch of rooms.
+   *
+   * @param roomIds - Room UUIDs to inspect.
+   * @returns Map keyed by room UUID for rooms that currently have a checked-in reservation.
+   * @remarks Complexity: O(R) to build the map after one DB query, where `R` is result rows.
+   */
   async getCurrentReservationsByRoomIds(
     roomIds: string[]
   ): Promise<Map<string, RoomReservationDetail>> {
-    const records = await prisma.reservationRoom.findMany({
+    const records = (await prisma.reservationRoom.findMany({
       where: {
         roomId: { in: roomIds },
         status: { in: ['ASSIGNED', 'OCCUPIED'] },
@@ -418,7 +553,7 @@ export class RoomsRepository {
           },
         },
       },
-    }) as RoomReservationDetail[];
+    })) as RoomReservationDetail[];
 
     const map = new Map<string, RoomReservationDetail>();
     for (const record of records) {
@@ -429,6 +564,13 @@ export class RoomsRepository {
     return map;
   }
 
+  /**
+   * Gets the next confirmed reservation for a room after a reference timestamp.
+   *
+   * @param roomId - Room UUID.
+   * @param afterDate - Lower bound for reservation check-in date.
+   * @returns Earliest upcoming reservation assignment or `null`.
+   */
   async getNextReservation(
     roomId: string,
     afterDate: Date = new Date()
@@ -466,6 +608,13 @@ export class RoomsRepository {
   // HISTORY & AUDIT
   // ============================================================================
 
+  /**
+   * Retrieves recent room status-related audit entries.
+   *
+   * @param roomId - Room UUID.
+   * @param limit - Maximum number of audit records to fetch.
+   * @returns Status history entries ordered from newest to oldest.
+   */
   async getStatusHistory(roomId: string, limit: number = 50): Promise<RoomStatusHistoryEntry[]> {
     // This would typically query a room_status_history table
     // For now, using audit logs as fallback
@@ -488,6 +637,12 @@ export class RoomsRepository {
     });
   }
 
+  /**
+   * Retrieves maintenance requests associated with a room.
+   *
+   * @param roomId - Room UUID.
+   * @returns Maintenance records ordered by report time descending.
+   */
   async getMaintenanceHistory(roomId: string): Promise<RoomMaintenanceRecord[]> {
     return prisma.maintenanceRequest.findMany({
       where: {
@@ -510,6 +665,13 @@ export class RoomsRepository {
   // HOUSEKEEPING INTEGRATION
   // ============================================================================
 
+  /**
+   * Lists rooms relevant to housekeeping workflows by operational state.
+   *
+   * @param hotelId - Hotel UUID.
+   * @param status - Optional filter bucket (`dirty`, `cleaning`, or `priority`).
+   * @returns Rooms with room type context and active housekeeping task preview.
+   */
   async getCleaningTasks(hotelId: string, status?: string): Promise<Room[]> {
     const where: Prisma.RoomWhereInput = {
       hotelId,
@@ -550,6 +712,12 @@ export class RoomsRepository {
   // STATS
   // ============================================================================
 
+  /**
+   * Counts rooms by status for a hotel.
+   *
+   * @param hotelId - Hotel UUID.
+   * @returns Object keyed by room status literal with count values.
+   */
   async getStatusCounts(hotelId: string): Promise<Record<string, number>> {
     const results = await prisma.room.groupBy({
       by: ['status'],
@@ -574,6 +742,13 @@ export class RoomsRepository {
   // VALIDATION
   // ============================================================================
 
+  /**
+   * Checks whether a room exists in a hotel and is not soft-deleted.
+   *
+   * @param hotelId - Hotel UUID.
+   * @param roomId - Room UUID.
+   * @returns `true` when the room is present and active; otherwise `false`.
+   */
   async existsInHotel(hotelId: string, roomId: string): Promise<boolean> {
     const count = await prisma.room.count({
       where: {
@@ -585,6 +760,12 @@ export class RoomsRepository {
     return count > 0;
   }
 
+  /**
+   * Counts active rooms for a hotel.
+   *
+   * @param hotelId - Hotel UUID.
+   * @returns Number of non-deleted rooms in the hotel.
+   */
   async countByHotel(hotelId: string): Promise<number> {
     return prisma.room.count({
       where: {
@@ -594,6 +775,12 @@ export class RoomsRepository {
     });
   }
 
+  /**
+   * Counts active rooms for a room type.
+   *
+   * @param roomTypeId - Room type UUID.
+   * @returns Number of non-deleted rooms linked to the room type.
+   */
   async countByRoomType(roomTypeId: string): Promise<number> {
     return prisma.room.count({
       where: {

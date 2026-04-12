@@ -2,29 +2,28 @@ import type { CommunicationChannel } from '../../../generated/prisma';
 import type { ProviderPayload } from '../communications.types';
 
 /**
- * Interface for communication providers.
- * Each provider implements this interface to handle sending messages via their channel.
- * Providers are stubs that can be replaced with real implementations.
+ * Defines the contract that channel providers must implement for outbound messaging.
  */
 export interface ICommunicationProvider {
   /**
-   * The communication channel this provider handles
+   * Channel handled by this provider implementation.
    */
   readonly channel: CommunicationChannel;
 
   /**
-   * Send a message via this provider
-   * @param payload The message payload
-   * @returns The external ID from the provider for tracking
-   * @throws Error if sending fails
+   * Sends a normalized payload through the underlying provider API.
+   *
+   * @param payload - Provider-ready message content and recipient metadata.
+   * @returns Provider-issued external ID used for status webhook correlation.
    */
   send(payload: ProviderPayload): Promise<string>;
 
   /**
-   * Verify a webhook signature from this provider
-   * @param signature The signature from the request header
-   * @param body The raw request body
-   * @returns true if signature is valid
+   * Verifies webhook signatures using provider-specific signing rules.
+   *
+   * @param signature - Signature header value from the provider request.
+   * @param body - Raw webhook body string used in signature computation.
+   * @returns `true` when the signature is valid.
    */
   verifyWebhookSignature?(signature: string, body: string): boolean;
 }
@@ -51,7 +50,12 @@ export interface ProviderRegistry {
 }
 
 /**
- * Get provider by channel type
+ * Returns the provider implementation registered for a communication channel.
+ *
+ * @param registry - Provider registry injected into the communications service.
+ * @param channel - Requested communication channel.
+ * @returns Channel-specific provider implementation.
+ * @throws {Error} When an unsupported channel is requested.
  */
 export function getProviderForChannel(
   registry: ProviderRegistry,

@@ -11,6 +11,13 @@ export class RatePlansRepository {
   //===============================================================
   //CRUD OPERATIONS
   //===============================================================
+  /**
+   * Retrieves a rate plan by UUID with optional relation expansion.
+   *
+   * @param id - Rate plan UUID.
+   * @param include - Optional Prisma include graph.
+   * @returns Matching rate plan or `null`.
+   */
   async findById(id: string, include?: Prisma.RatePlanInclude): Promise<RatePlan | null> {
     return prisma.ratePlan.findUnique({
       where: { id },
@@ -18,6 +25,13 @@ export class RatePlansRepository {
     }) as Promise<RatePlan | null>;
   }
 
+  /**
+   * Retrieves a rate plan by hotel and canonical uppercase code.
+   *
+   * @param hotelId - Hotel UUID that scopes the code.
+   * @param code - Rate plan code; normalized to uppercase before lookup.
+   * @returns Matching rate plan or `null`.
+   */
   async findByCode(hotelId: string, code: string): Promise<RatePlan | null> {
     return prisma.ratePlan.findUnique({
       where: {
@@ -29,6 +43,18 @@ export class RatePlansRepository {
     }) as Promise<RatePlan | null>;
   }
 
+  /**
+   * Lists rate plans for a hotel with optional commercial filters.
+   *
+   * Supports room type, active/public flags, channel membership, validity-on-date checks,
+   * and text search across name/code/description. List and total count are fetched in parallel.
+   *
+   * @param hotelId - Hotel UUID.
+   * @param filters - Optional rate plan filters.
+   * @param pagination - Optional pagination configuration.
+   * @returns Filtered rate plans and total number of matches.
+   * @remarks Complexity: O(R) for returned rows plus two DB queries (`findMany` + `count`).
+   */
   async findByHotel(
     hotelId: string,
     filters?: {
@@ -104,12 +130,25 @@ export class RatePlansRepository {
     return { ratePlans: ratePlans as unknown as RatePlan[], total };
   }
 
+  /**
+   * Creates a rate plan.
+   *
+   * @param data - Prisma unchecked create payload.
+   * @returns Newly created rate plan.
+   */
   async create(data: RatePlanCreateInput): Promise<RatePlan> {
     return prisma.ratePlan.create({
       data,
     }) as unknown as Promise<RatePlan>;
   }
 
+  /**
+   * Updates a rate plan by UUID.
+   *
+   * @param id - Rate plan UUID.
+   * @param data - Prisma update payload.
+   * @returns Updated rate plan.
+   */
   async update(id: string, data: RatePlanUpdateInput): Promise<RatePlan> {
     return prisma.ratePlan.update({
       where: { id },
@@ -117,6 +156,12 @@ export class RatePlansRepository {
     }) as unknown as Promise<RatePlan>;
   }
 
+  /**
+   * Soft-deletes a rate plan and deactivates it.
+   *
+   * @param id - Rate plan UUID.
+   * @returns Resolves when the update is persisted.
+   */
   async softDelete(id: string): Promise<void> {
     await prisma.ratePlan.update({
       where: { id },
@@ -132,6 +177,14 @@ export class RatePlansRepository {
   // RATE OVERRIDES
   // ============================================================================
 
+  /**
+   * Retrieves date-level overrides for a rate plan within an inclusive range.
+   *
+   * @param ratePlanId - Rate plan UUID.
+   * @param startDate - Inclusive start date.
+   * @param endDate - Inclusive end date.
+   * @returns Override rows ordered by date.
+   */
   async getOverrides(ratePlanId: string, startDate: Date, endDate: Date): Promise<RateOverride[]> {
     return prisma.rateOverride.findMany({
       where: {
@@ -145,6 +198,20 @@ export class RatePlansRepository {
     }) as unknown as Promise<RateOverride[]>;
   }
 
+  /**
+   * Creates or updates a single override day for a rate plan.
+   *
+   * The date key is normalized to midnight to ensure deterministic uniqueness across
+   * callers. Optional fields are only overwritten when explicitly provided.
+   *
+   * @param ratePlanId - Rate plan UUID.
+   * @param date - Business date for the override.
+   * @param rate - Override nightly rate.
+   * @param stopSell - Optional stop-sell flag, defaulting to `false`.
+   * @param minStay - Optional minimum stay override; `null` clears the value.
+   * @param reason - Optional operator note for audit context.
+   * @returns Upserted override row.
+   */
   async upsertOverride(
     ratePlanId: string,
     date: Date,
@@ -179,6 +246,13 @@ export class RatePlansRepository {
     }) as unknown as Promise<RateOverride>;
   }
 
+  /**
+   * Deletes one override day for a rate plan.
+   *
+   * @param ratePlanId - Rate plan UUID.
+   * @param date - Override business date.
+   * @returns Resolves when the override is removed.
+   */
   async deleteOverride(ratePlanId: string, date: Date): Promise<void> {
     const normalizedDate = new Date(date);
     normalizedDate.setHours(0, 0, 0, 0);
@@ -192,6 +266,18 @@ export class RatePlansRepository {
     });
   }
 
+  /**
+   * Upserts or partial-updates many override dates in one transaction.
+   *
+   * Entries with `rate` create/upsert full override rows. Entries without `rate` apply
+   * partial field updates (`stopSell`, `minStay`, `reason`) only when a row already exists.
+   * All date keys are normalized to midnight before persistence.
+   *
+   * @param ratePlanId - Rate plan UUID.
+   * @param overrides - Override mutation entries for one or more dates.
+   * @returns Number of transactional operations executed.
+   * @remarks Complexity: O(O) Prisma operations where `O` is override entry count.
+   */
   async bulkUpsertOverrides(
     ratePlanId: string,
     overrides: Array<{
@@ -263,6 +349,20 @@ export class RatePlansRepository {
   // CALCULATION & PRICING
   // ============================================================================
 
+  /**
+   * Finds active rate plans that can apply to a check-in date and distribution context.
+   *
+   * Validity windows are evaluated with inclusive bounds (`validFrom <= checkIn <= validUntil`)
+   * when present. Optional channel and public/private filters are appended when supplied.
+   *
+   * @param hotelId - Hotel UUID.
+   * @param roomTypeId - Room type UUID.
+   * @param checkIn - Arrival date used for validity evaluation.
+   * @param channelCode - Optional channel code that must exist in `channelCodes`.
+   * @param isPublic - Optional public/private visibility filter.
+   * @returns Applicable rate plans sorted by base rate ascending.
+   * @remarks Complexity: O(P) where `P` is returned plans after one filtered DB query.
+   */
   async findApplicableRatePlans(
     hotelId: string,
     roomTypeId: string,
@@ -306,6 +406,20 @@ export class RatePlansRepository {
   // CLONE
   // ============================================================================
 
+  /**
+   * Clones a rate plan into a new private draft with optional rate adjustment.
+   *
+   * The clone copies commercial restrictions and inclusions, resets distribution to private,
+   * clears validity dates, and optionally applies a percentage adjustment to `baseRate`.
+   *
+   * @param sourceId - Source rate plan UUID.
+   * @param newCode - New uppercase code for the clone.
+   * @param newName - Display name for the clone.
+   * @param targetRoomTypeId - Optional target room type UUID; defaults to source room type.
+   * @param rateAdjustment - Optional percentage adjustment applied to base rate.
+   * @returns Newly created cloned rate plan.
+   * @throws {Error} When the source rate plan does not exist.
+   */
   async clone(
     sourceId: string,
     newCode: string,
@@ -359,6 +473,14 @@ export class RatePlansRepository {
   // STATS
   // ============================================================================
 
+  /**
+   * Aggregates booking performance metrics for a rate plan.
+   *
+   * Cancelled and no-show reservations are excluded from all aggregates.
+   *
+   * @param ratePlanId - Rate plan UUID.
+   * @returns Booking count, total revenue, and average rate.
+   */
   async getBookingStats(ratePlanId: string): Promise<{
     bookingsCount: number;
     totalRevenue: number;
@@ -391,6 +513,13 @@ export class RatePlansRepository {
   // VALIDATION
   // ============================================================================
 
+  /**
+   * Checks whether a rate plan exists in a hotel and is not soft-deleted.
+   *
+   * @param hotelId - Hotel UUID.
+   * @param ratePlanId - Rate plan UUID.
+   * @returns `true` when the rate plan exists and is active.
+   */
   async existsInHotel(hotelId: string, ratePlanId: string): Promise<boolean> {
     const count = await prisma.ratePlan.count({
       where: {
@@ -402,6 +531,12 @@ export class RatePlansRepository {
     return count > 0;
   }
 
+  /**
+   * Checks whether a rate plan has active or future reservations.
+   *
+   * @param ratePlanId - Rate plan UUID.
+   * @returns `true` when reservations in `CONFIRMED`/`CHECKED_IN` status remain uncompleted.
+   */
   async hasActiveBookings(ratePlanId: string): Promise<boolean> {
     const count = await prisma.reservation.count({
       where: {

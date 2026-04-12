@@ -31,6 +31,13 @@ export class RoomsService {
   private roomTypeRepo: RoomTypesRepository;
   private hotelRepo: HotelRepository;
 
+  /**
+   * Creates a rooms service with repository dependencies.
+   *
+   * @param roomRepo - Repository used for room persistence and availability queries.
+   * @param roomTypeRepo - Repository used to validate room type ownership and metadata.
+   * @param hotelRepo - Repository used to validate hotel scope and refresh room counts.
+   */
   constructor(
     roomRepo: RoomsRepository = roomsRepository,
     roomTypeRepo: RoomTypesRepository = roomTypesRepository,
@@ -45,6 +52,23 @@ export class RoomsService {
   // CREATE
   // ============================================================================
 
+  /**
+   * Creates a room within a hotel after validating scope, uniqueness, and organization limits.
+   *
+   * Verifies hotel access, confirms the room type belongs to the same hotel, enforces unique
+   * `roomNumber`, and checks the configured organization room limit before persisting the room.
+   * After creation, it refreshes the hotel's total room count and returns the API response shape.
+   *
+   * @param organizationId - Organization UUID that owns the hotel.
+   * @param hotelId - Hotel UUID where the room is created.
+   * @param input - Room creation payload (number, type, location, and feature flags).
+   * @param _createdBy - Optional actor identifier reserved for audit integration.
+   * @returns Created room mapped to the public room response contract.
+   * @throws {NotFoundError} When the hotel or room type does not exist in the expected scope.
+   * @throws {ConflictError} When the room number already exists in the hotel.
+   * @throws {BadRequestError} When adding the room exceeds configured organization limits.
+   * @remarks Complexity: O(1) service work with a fixed number of repository queries/writes.
+   */
   async create(
     organizationId: string,
     hotelId: string,
@@ -124,6 +148,16 @@ export class RoomsService {
   // READ
   // ============================================================================
 
+  /**
+   * Retrieves one room and optionally enriches it with current and next reservations.
+   *
+   * @param id - Room UUID.
+   * @param organizationId - Organization UUID used for ownership enforcement.
+   * @param includeReservations - When `true`, includes current and upcoming reservation snippets.
+   * @returns Room details including type, status, and optional reservation context.
+   * @throws {NotFoundError} When the room does not exist or is soft-deleted.
+   * @throws {ForbiddenError} When the room belongs to a different organization.
+   */
   async findById(
     id: string,
     organizationId: string,
@@ -161,6 +195,20 @@ export class RoomsService {
     );
   }
 
+  /**
+   * Lists rooms in a hotel with filters, pagination, and occupied-guest enrichment.
+   *
+   * The method validates hotel access, fetches paginated rooms, loads active reservations for
+   * occupied rooms in one batch to avoid N+1 lookups, and maps rows into lightweight list items.
+   *
+   * @param hotelId - Hotel UUID whose rooms are queried.
+   * @param organizationId - Organization UUID used for hotel scope validation.
+   * @param filters - Optional filter set for status, room type, floor, and search terms.
+   * @param pagination - Page and limit values for result slicing.
+   * @returns Paginated room list with optional current guest names for occupied rooms.
+   * @throws {NotFoundError} When the hotel is not in the organization scope.
+   * @remarks Complexity: O(R) mapping for `R` returned rooms plus batched DB reads.
+   */
   async findByHotel(
     hotelId: string,
     organizationId: string,
@@ -214,6 +262,15 @@ export class RoomsService {
     };
   }
 
+  /**
+   * Builds a floor-based room grid and aggregate status counters for a hotel.
+   *
+   * @param hotelId - Hotel UUID whose room grid is requested.
+   * @param organizationId - Organization UUID used for access checks.
+   * @returns Floor-grouped rooms and summary counts for operational statuses.
+   * @throws {NotFoundError} When the hotel is not found in organization scope.
+   * @remarks Complexity: O(G log G) where `G` is grid row count due grouping and sorting.
+   */
   async getGrid(hotelId: string, organizationId: string): Promise<RoomGridResponse> {
     await this.verifyHotelAccess(organizationId, hotelId);
 
@@ -277,6 +334,19 @@ export class RoomsService {
   // UPDATE
   // ============================================================================
 
+  /**
+   * Updates mutable room attributes while enforcing ownership and assignment rules.
+   *
+   * @param id - Room UUID.
+   * @param organizationId - Organization UUID used for authorization.
+   * @param input - Partial room fields to update.
+   * @param _updatedBy - Optional actor identifier reserved for future audit trails.
+   * @returns Updated room projected to the API response format.
+   * @throws {NotFoundError} When the room or a newly assigned room type is missing.
+   * @throws {ForbiddenError} When the room is outside the organization scope.
+   * @throws {ConflictError} When updating to a room number that already exists in the hotel.
+   * @throws {BadRequestError} When changing room type while an active reservation exists.
+   */
   async update(
     id: string,
     organizationId: string,
@@ -333,6 +403,18 @@ export class RoomsService {
   // STATUS MANAGEMENT
   // ============================================================================
 
+  /**
+   * Changes a room operational status after validating transition rules.
+   *
+   * @param id - Room UUID.
+   * @param organizationId - Organization UUID used for ownership checks.
+   * @param input - Target status and optional cleaning priority.
+   * @param _updatedBy - Optional actor identifier reserved for audit integration.
+   * @returns Updated room response with refreshed status fields.
+   * @throws {NotFoundError} When the room does not exist.
+   * @throws {ForbiddenError} When the room belongs to another organization.
+   * @throws {BadRequestError} When the transition from current to next status is invalid.
+   */
   async updateStatus(
     id: string,
     organizationId: string,
@@ -377,6 +459,21 @@ export class RoomsService {
     return this.mapToResponse(updated, statusRoomTypeInfo);
   }
 
+  /**
+   * Marks a room as out of order after occupancy and arrival safety checks.
+   *
+   * The method blocks OOO transitions when a guest is currently checked in or when a reservation
+   * arrives within 24 hours, then stores OOO dates/reason and maintenance scheduling state.
+   *
+   * @param id - Room UUID.
+   * @param organizationId - Organization UUID used for access checks.
+   * @param input - Out-of-order window, reason, and maintenance requirement flags.
+   * @param _setBy - Optional actor identifier reserved for maintenance/audit integration.
+   * @returns Updated room response reflecting OOO details.
+   * @throws {NotFoundError} When the room does not exist.
+   * @throws {ForbiddenError} When the room is outside organization scope.
+   * @throws {BadRequestError} When the room is occupied or has an imminent arrival.
+   */
   async setOutOfOrder(
     id: string,
     organizationId: string,
@@ -443,6 +540,18 @@ export class RoomsService {
     return this.mapToResponse(updated, oooRoomTypeInfo);
   }
 
+  /**
+   * Clears out-of-order state and resets the room to a dirty vacant status.
+   *
+   * @param id - Room UUID.
+   * @param organizationId - Organization UUID used for authorization.
+   * @param reason - Optional operator note explaining why OOO was removed.
+   * @param _removedBy - Optional actor identifier reserved for audit integration.
+   * @returns Updated room response after OOO flags are removed.
+   * @throws {NotFoundError} When the room does not exist.
+   * @throws {ForbiddenError} When the room is outside organization scope.
+   * @throws {BadRequestError} When the room is not currently out of order.
+   */
   async removeOutOfOrder(
     id: string,
     organizationId: string,
@@ -475,6 +584,16 @@ export class RoomsService {
     return this.mapToResponse(updated, removeOooTypeInfo);
   }
 
+  /**
+   * Updates status for multiple rooms in one hotel in a single repository operation.
+   *
+   * @param organizationId - Organization UUID used for hotel scope validation.
+   * @param hotelId - Hotel UUID containing the target rooms.
+   * @param input - Room IDs and the status to apply.
+   * @param _updatedBy - Optional actor identifier reserved for audit integration.
+   * @returns Number of rooms updated.
+   * @throws {NotFoundError} When the hotel is missing or one or more room IDs are not in scope.
+   */
   async bulkUpdateStatus(
     organizationId: string,
     hotelId: string,
@@ -502,6 +621,21 @@ export class RoomsService {
   // AVAILABILITY & ASSIGNMENT
   // ============================================================================
 
+  /**
+   * Checks whether a specific room is sellable for a stay window.
+   *
+   * Returns a synthetic conflict when the room is out of order; otherwise delegates to repository
+   * overlap checks against active reservations.
+   *
+   * @param roomId - Room UUID to evaluate.
+   * @param organizationId - Organization UUID used for ownership enforcement.
+   * @param checkIn - Requested arrival date.
+   * @param checkOut - Requested departure date.
+   * @param excludeReservationId - Optional reservation UUID to ignore during overlap checks.
+   * @returns Availability flag with a list of blocking conflicts.
+   * @throws {NotFoundError} When the room does not exist.
+   * @throws {ForbiddenError} When the room belongs to another organization.
+   */
   async checkAvailability(
     roomId: string,
     organizationId: string,
@@ -536,6 +670,18 @@ export class RoomsService {
     return this.roomRepo.checkAvailability(roomId, checkIn, checkOut, excludeReservationId);
   }
 
+  /**
+   * Finds available rooms for a stay window and maps them to assignment-friendly items.
+   *
+   * @param hotelId - Hotel UUID where availability is searched.
+   * @param organizationId - Organization UUID used for hotel access checks.
+   * @param checkIn - Requested arrival date.
+   * @param checkOut - Requested departure date.
+   * @param roomTypeId - Optional room type UUID filter.
+   * @param limit - Maximum number of rooms returned.
+   * @returns Candidate rooms with room type and feature metadata.
+   * @throws {NotFoundError} When the hotel is not found in organization scope.
+   */
   async findAvailable(
     hotelId: string,
     organizationId: string,
@@ -571,6 +717,17 @@ export class RoomsService {
   // HISTORY
   // ============================================================================
 
+  /**
+   * Returns status-change history entries for a room.
+   *
+   * @param roomId - Room UUID.
+   * @param organizationId - Organization UUID used for ownership checks.
+   * @param limit - Maximum number of recent history entries to return.
+   * @returns Room history entries with normalized before/after status and actor fields.
+   * @throws {NotFoundError} When the room does not exist.
+   * @throws {ForbiddenError} When the room belongs to another organization.
+   * @remarks Complexity: O(H) where `H` is number of history rows returned.
+   */
   async getHistory(
     roomId: string,
     organizationId: string,
@@ -607,6 +764,15 @@ export class RoomsService {
     });
   }
 
+  /**
+   * Retrieves maintenance records associated with a room.
+   *
+   * @param roomId - Room UUID.
+   * @param organizationId - Organization UUID used for ownership checks.
+   * @returns Maintenance timeline records for the room.
+   * @throws {NotFoundError} When the room does not exist.
+   * @throws {ForbiddenError} When the room belongs to another organization.
+   */
   async getMaintenanceHistory(
     roomId: string,
     organizationId: string
@@ -628,6 +794,15 @@ export class RoomsService {
   // HOUSEKEEPING
   // ============================================================================
 
+  /**
+   * Lists housekeeping tasks for rooms in a hotel, optionally filtered by cleanliness state.
+   *
+   * @param hotelId - Hotel UUID for housekeeping scope.
+   * @param organizationId - Organization UUID used for hotel access checks.
+   * @param status - Optional status filter (for example, dirty-only task queues).
+   * @returns Cleaning task items with room, type, priority, and current task metadata.
+   * @throws {NotFoundError} When the hotel is not in organization scope.
+   */
   async getCleaningTasks(
     hotelId: string,
     organizationId: string,
@@ -659,6 +834,17 @@ export class RoomsService {
   // DELETE
   // ============================================================================
 
+  /**
+   * Soft-deletes a room after confirming it has no current or future reservations.
+   *
+   * @param id - Room UUID.
+   * @param organizationId - Organization UUID used for ownership checks.
+   * @param deletedBy - Optional actor identifier for audit logs.
+   * @returns Resolves when the room is soft-deleted and hotel counts are refreshed.
+   * @throws {NotFoundError} When the room does not exist.
+   * @throws {ForbiddenError} When the room belongs to another organization.
+   * @throws {BadRequestError} When the room has current or upcoming reservations.
+   */
   async delete(id: string, organizationId: string, deletedBy?: string): Promise<void> {
     const room = await this.roomRepo.findById(id);
 
@@ -698,6 +884,14 @@ export class RoomsService {
   // PRIVATE HELPERS
   // ============================================================================
 
+  /**
+   * Verifies that a hotel belongs to the organization scope.
+   *
+   * @param organizationId - Organization UUID.
+   * @param hotelId - Hotel UUID.
+   * @returns Resolves when the hotel exists in scope.
+   * @throws {NotFoundError} When the hotel is not found in the organization.
+   */
   private async verifyHotelAccess(organizationId: string, hotelId: string): Promise<void> {
     const exists = await this.hotelRepo.existsInOrganization(organizationId, hotelId);
     if (!exists) {
@@ -705,6 +899,15 @@ export class RoomsService {
     }
   }
 
+  /**
+   * Evaluates organization-level room limits configured via environment variables.
+   *
+   * Reads `ORG_MAX_ROOMS` or `ORGANIZATION_MAX_ROOMS`; if unset or invalid, no limit is enforced.
+   *
+   * @param _organizationId - Organization UUID placeholder for future per-org limit logic.
+   * @param _proposedCount - Proposed total room count after the pending change.
+   * @returns Validation result with an optional rejection message.
+   */
   private async checkOrgLimits(
     _organizationId: string,
     _proposedCount: number
@@ -726,6 +929,14 @@ export class RoomsService {
     return { valid: true };
   }
 
+  /**
+   * Validates allowed transitions between room operational statuses.
+   *
+   * @param current - Current status value.
+   * @param next - Requested status value.
+   * @returns Resolves when the transition is allowed.
+   * @throws {BadRequestError} When the status change violates the transition matrix.
+   */
   private validateStatusTransition(current: string, next: string): void {
     // Define valid transitions
     const validTransitions: Record<string, string[]> = {
@@ -746,6 +957,12 @@ export class RoomsService {
     }
   }
 
+  /**
+   * Extracts room type metadata from a room payload, falling back to defaults when missing.
+   *
+   * @param room - Room entity that may or may not include joined `roomType` details.
+   * @returns Normalized room type info used by response mappers.
+   */
   private extractRoomTypeInfo(room: Room | null): RoomTypeInfo {
     if (!room) {
       return { id: '', code: 'UNKNOWN', name: 'Unknown', baseOccupancy: 2, maxOccupancy: 2 };
@@ -762,6 +979,15 @@ export class RoomsService {
     );
   }
 
+  /**
+   * Maps internal room entities and optional reservation context to API response shape.
+   *
+   * @param room - Persisted room entity.
+   * @param roomType - Optional normalized room type details.
+   * @param currentReservation - Optional active reservation for currently occupied context.
+   * @param nextReservation - Optional upcoming reservation details.
+   * @returns Room response object grouped into identification, status, features, and financial data.
+   */
   private mapToResponse(
     room: Room,
     roomType?: RoomTypeInfo,

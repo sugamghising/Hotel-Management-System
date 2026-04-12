@@ -13,9 +13,22 @@ import type {
   UpdateRatePlanInput,
 } from './ratePlans.types';
 
+/**
+ * Controller transport handlers for rate plan management.
+ *
+ * Module base route: /api/v1/organizations/:organizationId/hotels/:hotelId/rate-plans.
+ */
 export class RatePlansController {
   /**
-   * POST /organizations/:organizationId/hotels/:hotelId/rate-plans
+   * Handles create requests for rate plan management.
+   *
+   * Route: POST /api/v1/organizations/:organizationId/hotels/:hotelId/rate-plans
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   create = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId } = req.params as { organizationId: string; hotelId: string };
@@ -30,7 +43,15 @@ export class RatePlansController {
   });
 
   /**
-   * GET /organizations/:organizationId/hotels/:hotelId/rate-plans
+   * Handles list requests for rate plan management.
+   *
+   * Route: GET /api/v1/organizations/:organizationId/hotels/:hotelId/rate-plans
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   list = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId } = req.params as { organizationId: string; hotelId: string };
@@ -54,7 +75,15 @@ export class RatePlansController {
   });
 
   /**
-   * GET /organizations/:organizationId/hotels/:hotelId/rate-plans/:ratePlanId
+   * Handles get by id requests for rate plan management.
+   *
+   * Route: GET /api/v1/organizations/:organizationId/hotels/:hotelId/rate-plans/:ratePlanId
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   getById = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, ratePlanId } = req.params as {
@@ -69,7 +98,15 @@ export class RatePlansController {
   });
 
   /**
-   * PATCH /organizations/:organizationId/hotels/:hotelId/rate-plans/:ratePlanId
+   * Handles update requests for rate plan management.
+   *
+   * Route: PATCH /api/v1/organizations/:organizationId/hotels/:hotelId/rate-plans/:ratePlanId
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   update = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, ratePlanId } = req.params as {
@@ -89,7 +126,15 @@ export class RatePlansController {
   });
 
   /**
-   * DELETE /organizations/:organizationId/hotels/:hotelId/rate-plans/:ratePlanId
+   * Handles delete requests for rate plan management.
+   *
+   * Route: DELETE /api/v1/organizations/:organizationId/hotels/:hotelId/rate-plans/:ratePlanId
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   delete = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, ratePlanId } = req.params as {
@@ -106,7 +151,15 @@ export class RatePlansController {
   });
 
   /**
-   * POST /organizations/:organizationId/hotels/:hotelId/rate-plans/:ratePlanId/clone
+   * Handles clone requests for rate plan management.
+   *
+   * Route: POST /api/v1/organizations/:organizationId/hotels/:hotelId/rate-plans/:ratePlanId/clone
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   clone = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, ratePlanId } = req.params as {
@@ -124,7 +177,15 @@ export class RatePlansController {
   });
 
   /**
-   * GET /organizations/:organizationId/hotels/:hotelId/rate-plans/:ratePlanId/calendar
+   * Handles get calendar requests for rate plan management.
+   *
+   * Route: GET /api/v1/organizations/:organizationId/hotels/:hotelId/rate-plans/:ratePlanId/calendar
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   getCalendar = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, ratePlanId } = req.params as {
@@ -144,7 +205,15 @@ export class RatePlansController {
   });
 
   /**
-   * PUT /organizations/:organizationId/hotels/:hotelId/rate-plans/:ratePlanId/overrides
+   * Handles update override requests for rate plan management.
+   *
+   * Route: PUT /api/v1/organizations/:organizationId/hotels/:hotelId/rate-plans/:ratePlanId/overrides
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   updateOverride = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, ratePlanId } = req.params as {
@@ -159,7 +228,15 @@ export class RatePlansController {
   });
 
   /**
-   * POST /organizations/:organizationId/hotels/:hotelId/rate-plans/:ratePlanId/overrides/bulk
+   * Handles bulk update overrides requests for rate plan management.
+   *
+   * Route: POST /api/v1/organizations/:organizationId/hotels/:hotelId/rate-plans/:ratePlanId/overrides/bulk
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   bulkUpdateOverrides = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, ratePlanId } = req.params as {
@@ -174,7 +251,15 @@ export class RatePlansController {
   });
 
   /**
-   * DELETE /organizations/:organizationId/hotels/:hotelId/rate-plans/:ratePlanId/overrides
+   * Handles delete override requests for rate plan management.
+   *
+   * Route: DELETE /api/v1/organizations/:organizationId/hotels/:hotelId/rate-plans/:ratePlanId/overrides
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   deleteOverride = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, ratePlanId } = req.params as {
@@ -192,8 +277,15 @@ export class RatePlansController {
   });
 
   /**
-   * POST /organizations/:organizationId/hotels/:hotelId/rate-plans/calculate
-   * Public endpoint for booking engine
+   * Handles calculate requests for rate plan management.
+   *
+   * Route: POST /api/v1/organizations/:organizationId/hotels/:hotelId/rate-plans/calculate
+   *
+   * Converts query string, route params, and body values to typed arguments and forwards to the service aggregation/operation flow.
+   * This controller method is a transport wrapper only (no direct DB reads or logging).
+   *
+   * @param req - Express request with route scope and validated filters/payload.
+   * @param res - Express response used by `handleServiceResponse`.
    */
   calculate = asyncHandler(async (req: Request, res: Response) => {
     const { organizationId, hotelId } = req.params as { organizationId: string; hotelId: string };

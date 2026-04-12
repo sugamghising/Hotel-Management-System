@@ -29,6 +29,13 @@ export class RatePlansService {
   private roomTypeRepo: RoomTypesRepository;
   private hotelRepo: HotelRepository;
 
+  /**
+   * Creates a rate plan service with repository dependencies.
+   *
+   * @param ratePlansRepo - Repository used for rate plan persistence and override lookups.
+   * @param roomTypeRepo - Repository used to validate room type scope.
+   * @param hotelRepo - Repository used to validate hotel ownership boundaries.
+   */
   constructor(
     ratePlansRepo: RatePlansRepository = ratePlansRepository,
     roomTypeRepo: RoomTypesRepository = roomTypesRepository,
@@ -43,6 +50,17 @@ export class RatePlansService {
   // CREATE
   // ============================================================================
 
+  /**
+   * Creates a rate plan after validating hotel access, room type scope, code uniqueness, and rules.
+   *
+   * @param organizationId - Organization UUID that owns the hotel.
+   * @param hotelId - Hotel UUID where the plan is created.
+   * @param input - Commercial, distribution, and pricing configuration for the new rate plan.
+   * @param _createdBy - Optional actor identifier reserved for audit integration.
+   * @returns Created rate plan mapped to API response format.
+   * @throws {NotFoundError} When the hotel or room type is missing in the expected scope.
+   * @throws {ConflictError} When the rate plan code already exists for the hotel.
+   */
   async create(
     organizationId: string,
     hotelId: string,
@@ -116,6 +134,16 @@ export class RatePlansService {
   // READ
   // ============================================================================
 
+  /**
+   * Retrieves one rate plan by ID and optionally adds booking performance metrics.
+   *
+   * @param id - Rate plan UUID.
+   * @param organizationId - Organization UUID used for ownership checks.
+   * @param includeStats - When `true`, includes booking count and revenue aggregates.
+   * @returns Rate plan details mapped to the response contract.
+   * @throws {NotFoundError} When the rate plan does not exist or is soft-deleted.
+   * @throws {ForbiddenError} When the rate plan belongs to another organization.
+   */
   async findById(
     id: string,
     organizationId: string,
@@ -141,6 +169,16 @@ export class RatePlansService {
     return this.mapToResponse(ratePlan, stats);
   }
 
+  /**
+   * Lists hotel rate plans with optional filters and pagination.
+   *
+   * @param hotelId - Hotel UUID whose rate plans are queried.
+   * @param organizationId - Organization UUID used for hotel access checks.
+   * @param filters - Optional filter criteria (room type, activity, channel, search).
+   * @param pagination - Page and limit values for result slicing.
+   * @returns Paginated rate plan summaries.
+   * @throws {NotFoundError} When the hotel is not found in organization scope.
+   */
   async findByHotel(
     hotelId: string,
     organizationId: string,
@@ -182,6 +220,21 @@ export class RatePlansService {
   // UPDATE
   // ============================================================================
 
+  /**
+   * Updates a rate plan and emits an outbox event for downstream pricing consumers.
+   *
+   * Validates organization ownership, optional dynamic pricing rules, and distribution-channel
+   * conflicts before persisting updates. Pricing rules support explicit `null` to clear rules.
+   *
+   * @param id - Rate plan UUID.
+   * @param organizationId - Organization UUID used for authorization.
+   * @param input - Partial rate plan fields to modify.
+   * @param _updatedBy - Optional actor identifier reserved for audit integration.
+   * @returns Updated rate plan mapped to API response format.
+   * @throws {NotFoundError} When the rate plan does not exist.
+   * @throws {ForbiddenError} When the rate plan belongs to another organization.
+   * @throws {BadRequestError} When requested channel codes conflict with other public plans.
+   */
   async update(
     id: string,
     organizationId: string,
@@ -251,6 +304,17 @@ export class RatePlansService {
   // DELETE
   // ============================================================================
 
+  /**
+   * Soft-deletes a rate plan after ensuring it has no active or future bookings.
+   *
+   * @param id - Rate plan UUID.
+   * @param organizationId - Organization UUID used for ownership validation.
+   * @param deletedBy - Optional actor identifier for audit logs.
+   * @returns Resolves when soft-delete is persisted.
+   * @throws {NotFoundError} When the rate plan does not exist.
+   * @throws {ForbiddenError} When the rate plan belongs to another organization.
+   * @throws {BadRequestError} When active/future reservations still reference the plan.
+   */
   async delete(id: string, organizationId: string, deletedBy?: string): Promise<void> {
     const ratePlan = await this.ratePlanRepo.findById(id);
 
@@ -280,6 +344,21 @@ export class RatePlansService {
   // RATE OVERRIDES
   // ============================================================================
 
+  /**
+   * Builds a date-by-date pricing calendar for a rate plan.
+   *
+   * For each date in the inclusive range, the calendar includes base rate, override value,
+   * effective rate, stop-sell/min-stay data, and whether the date is inside validity bounds.
+   *
+   * @param ratePlanId - Rate plan UUID.
+   * @param organizationId - Organization UUID used for ownership checks.
+   * @param startDate - Inclusive calendar start date.
+   * @param endDate - Inclusive calendar end date.
+   * @returns Calendar payload scoped to one rate plan and room type.
+   * @throws {NotFoundError} When the rate plan does not exist.
+   * @throws {ForbiddenError} When the rate plan belongs to another organization.
+   * @remarks Complexity: O(D * O) where `D` is date count and `O` is override count searched per date.
+   */
   async getCalendar(
     ratePlanId: string,
     organizationId: string,
@@ -335,6 +414,16 @@ export class RatePlansService {
     };
   }
 
+  /**
+   * Creates or updates one date-level override for a rate plan and emits update events.
+   *
+   * @param ratePlanId - Rate plan UUID.
+   * @param organizationId - Organization UUID used for ownership checks.
+   * @param input - Override date, rate, and optional restriction fields.
+   * @returns Persisted override row.
+   * @throws {NotFoundError} When the rate plan does not exist.
+   * @throws {ForbiddenError} When the rate plan belongs to another organization.
+   */
   async updateOverride(
     ratePlanId: string,
     organizationId: string,
@@ -379,6 +468,20 @@ export class RatePlansService {
     return override;
   }
 
+  /**
+   * Applies override values across a date range, optionally filtered by weekdays.
+   *
+   * Generates concrete dates, projects partial override fields, persists them in bulk, and emits
+   * one outbox event describing the affected range.
+   *
+   * @param ratePlanId - Rate plan UUID.
+   * @param organizationId - Organization UUID used for ownership checks.
+   * @param input - Date range, optional weekday filter, and override values to apply.
+   * @returns Number of override dates updated.
+   * @throws {NotFoundError} When the rate plan does not exist.
+   * @throws {ForbiddenError} When the rate plan belongs to another organization.
+   * @remarks Complexity: O(D) where `D` is days iterated in the requested range.
+   */
   async bulkUpdateOverrides(
     ratePlanId: string,
     organizationId: string,
@@ -441,6 +544,16 @@ export class RatePlansService {
     return { updatedCount };
   }
 
+  /**
+   * Removes one override day from a rate plan and emits a pricing update event.
+   *
+   * @param ratePlanId - Rate plan UUID.
+   * @param organizationId - Organization UUID used for ownership checks.
+   * @param date - Business date whose override should be removed.
+   * @returns Resolves when deletion and outbox event write complete.
+   * @throws {NotFoundError} When the rate plan does not exist.
+   * @throws {ForbiddenError} When the rate plan belongs to another organization.
+   */
   async deleteOverride(ratePlanId: string, organizationId: string, date: Date): Promise<void> {
     const ratePlan = await this.ratePlanRepo.findById(ratePlanId);
 
@@ -468,6 +581,27 @@ export class RatePlansService {
   // RATE CALCULATION (BOOKING ENGINE)
   // ============================================================================
 
+  /**
+   * Calculates sellable rate plans and total prices for a stay request.
+   *
+   * The calculator validates room type scope, finds applicable active plans, enforces advance/stay
+   * restrictions, applies date overrides and dynamic pricing rules per night, then computes
+   * subtotal, tax placeholder, and final totals before sorting by cheapest total.
+   *
+   * @param hotelId - Hotel UUID where pricing is requested.
+   * @param organizationId - Organization UUID used for hotel access validation.
+   * @param input - Stay dates, room type, and optional distribution context.
+   * @returns Calculated rate plan options and best available total.
+   * @throws {NotFoundError} When the hotel or room type is missing in scope.
+   * @remarks Complexity: O(P * N * R) where `P` is applicable plans, `N` is nights, and `R` is active rules.
+   * @example
+   * const quote = await service.calculateRates(hotelId, organizationId, {
+   *   roomTypeId,
+   *   checkIn: new Date('2026-08-10'),
+   *   checkOut: new Date('2026-08-13'),
+   *   channelCode: 'DIRECT_WEB',
+   * });
+   */
   async calculateRates(
     hotelId: string,
     organizationId: string,
@@ -607,6 +741,19 @@ export class RatePlansService {
   // CLONE
   // ============================================================================
 
+  /**
+   * Clones an existing rate plan with a new code/name and optional room type/rate adjustments.
+   *
+   * @param id - Source rate plan UUID.
+   * @param organizationId - Organization UUID used for ownership validation.
+   * @param input - Clone options including new code/name and optional adjustments.
+   * @param _createdBy - Optional actor identifier reserved for audit integration.
+   * @returns Newly created cloned rate plan mapped to response format.
+   * @throws {NotFoundError} When the source plan or target room type is missing.
+   * @throws {ForbiddenError} When the source plan belongs to another organization.
+   * @throws {BadRequestError} When target room type is in a different hotel.
+   * @throws {ConflictError} When the clone code already exists.
+   */
   async clone(
     id: string,
     organizationId: string,
@@ -660,6 +807,12 @@ export class RatePlansService {
   // PRIVATE HELPERS
   // ============================================================================
 
+  /**
+   * Writes a `rate_plan.updated` outbox event and suppresses persistence failures.
+   *
+   * @param payload - Event payload fields describing affected organization, hotel, plan, and date scope.
+   * @returns Resolves when the outbox write attempt completes.
+   */
   private async emitRatePlanUpdatedEvent(payload: {
     organizationId: string;
     hotelId: string;
@@ -693,6 +846,14 @@ export class RatePlansService {
     }
   }
 
+  /**
+   * Verifies that a hotel exists within the provided organization scope.
+   *
+   * @param organizationId - Organization UUID.
+   * @param hotelId - Hotel UUID.
+   * @returns Resolves when scope validation succeeds.
+   * @throws {NotFoundError} When the hotel is not found in the organization.
+   */
   private async verifyHotelAccess(organizationId: string, hotelId: string): Promise<void> {
     const exists = await this.hotelRepo.existsInOrganization(organizationId, hotelId);
     if (!exists) {
@@ -700,6 +861,15 @@ export class RatePlansService {
     }
   }
 
+  /**
+   * Finds public active rate plans in the same room type that conflict on channel codes.
+   *
+   * @param hotelId - Hotel UUID used to scope the search.
+   * @param roomTypeId - Room type UUID that must match candidate plans.
+   * @param excludeRatePlanId - Rate plan UUID to exclude from conflict checks.
+   * @param channelCodes - Channel codes requested by the candidate plan.
+   * @returns Conflicting rate plan IDs and codes.
+   */
   private async findChannelConflicts(
     hotelId: string,
     roomTypeId: string,
@@ -721,6 +891,12 @@ export class RatePlansService {
       .map((rp) => ({ id: rp.id, code: rp.code }));
   }
 
+  /**
+   * Performs lightweight validation and diagnostics for dynamic pricing rule sets.
+   *
+   * @param rules - Pricing rules attached to a rate plan.
+   * @returns Resolves when validation checks complete.
+   */
   private validatePricingRules(rules: PricingRule[]): void {
     // Validate rule conditions don't conflict excessively
     const hasEarlyBird = rules.some((r) => r.type === 'EARLY_BIRD');
@@ -739,6 +915,14 @@ export class RatePlansService {
     }
   }
 
+  /**
+   * Checks whether a business date falls within optional validity bounds.
+   *
+   * @param date - Date being evaluated.
+   * @param validFrom - Inclusive lower bound; `null` means no lower limit.
+   * @param validUntil - Inclusive upper bound; `null` means no upper limit.
+   * @returns `true` when the date is inside the validity window.
+   */
   private isDateInValidityPeriod(
     date: Date,
     validFrom: Date | null,
@@ -749,6 +933,16 @@ export class RatePlansService {
     return true;
   }
 
+  /**
+   * Evaluates whether a dynamic pricing rule applies to the current pricing context.
+   *
+   * @param rule - Pricing rule definition.
+   * @param date - Stay date being priced.
+   * @param daysInAdvance - Days between booking moment and check-in.
+   * @param lengthOfStay - Total nights in the requested stay.
+   * @param occupancyPercent - Current occupancy percentage context.
+   * @returns `true` when the rule condition is satisfied.
+   */
   private ruleApplies(
     rule: PricingRule,
     date: Date,
@@ -782,6 +976,13 @@ export class RatePlansService {
     }
   }
 
+  /**
+   * Converts a pricing-rule adjustment descriptor into a monetary delta for one night.
+   *
+   * @param baseRate - Current nightly base rate before this rule is applied.
+   * @param adjustment - Adjustment descriptor (percentage or fixed amount with operation).
+   * @returns Positive or negative amount to add to the current nightly rate.
+   */
   private calculateAdjustment(baseRate: number, adjustment: PricingRule['adjustment']): number {
     switch (adjustment.type) {
       case 'PERCENTAGE': {
@@ -800,6 +1001,12 @@ export class RatePlansService {
     }
   }
 
+  /**
+   * Builds a human-readable description for a pricing rule.
+   *
+   * @param rule - Pricing rule to describe.
+   * @returns Display label used in nightly adjustment breakdowns.
+   */
   private describeRule(rule: PricingRule): string {
     const desc: Record<string, string> = {
       EARLY_BIRD: `Early bird (${rule.condition.daysInAdvance}+ days)`,
@@ -811,6 +1018,13 @@ export class RatePlansService {
     return desc[rule.type] || rule.type;
   }
 
+  /**
+   * Maps a rate plan entity to the API response contract with validity and dynamic-pricing sections.
+   *
+   * @param ratePlan - Persisted rate plan entity.
+   * @param stats - Optional booking aggregate metrics.
+   * @returns Rate plan response with grouped pricing, restrictions, distribution, and inclusions.
+   */
   private mapToResponse(ratePlan: RatePlan, stats?: RatePlanResponse['stats']): RatePlanResponse {
     const now = new Date();
     const isCurrentlyValid = this.isDateInValidityPeriod(

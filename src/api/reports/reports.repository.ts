@@ -19,7 +19,10 @@ const Decimal = Prisma.Decimal;
 // ============================================================================
 
 /**
- * Get the SQL date truncation expression based on groupBy period
+ * Resolves the SQL date-expression fragment used for report grouping.
+ *
+ * @param groupBy - Requested report period (`'DAY'`, `'WEEK'`, or `'MONTH'`).
+ * @returns SQL expression string used inside raw-query `SELECT/GROUP BY` clauses.
  */
 function getDateTruncExpression(groupBy: GroupByPeriod): string {
   switch (groupBy) {
@@ -33,7 +36,11 @@ function getDateTruncExpression(groupBy: GroupByPeriod): string {
 }
 
 /**
- * Safe division that returns 0 when divisor is 0
+ * Divides decimals while guarding against divide-by-zero outcomes.
+ *
+ * @param numerator - Decimal numerator value.
+ * @param divisor - Decimal or numeric denominator value.
+ * @returns `numerator / divisor`, or `0` when the divisor is zero.
  */
 function safeDivide(numerator: Decimal, divisor: Decimal | number): Decimal {
   const divisorDecimal = typeof divisor === 'number' ? new Decimal(divisor) : divisor;
@@ -52,6 +59,17 @@ export class ReportsRepository {
   // OCCUPANCY REPORT
   // ==========================================================================
 
+  /**
+   * Aggregates occupancy metrics across a date range with optional room-type scoping.
+   *
+   * Builds a generated date series, joins reservations and room inventory, then
+   * rolls daily results into requested period buckets (`DAY`, `WEEK`, `MONTH`)
+   * including arrivals, departures, and out-of-order room impact.
+   *
+   * @param filters - Hotel/date filters with optional grouping and room type.
+   * @returns Occupancy rows containing room counts, rate, arrivals, and departures.
+   * @remarks Complexity: O(d + r) in database execution where `d` is day count in range and `r` is joined reservation-room rows.
+   */
   async getOccupancyReport(filters: BaseReportFilters) {
     const { hotelId, dateFrom, dateTo, groupBy = 'DAY', roomTypeId } = filters;
     const dateExpr = getDateTruncExpression(groupBy);
@@ -147,6 +165,17 @@ export class ReportsRepository {
   // REVENUE REPORT
   // ==========================================================================
 
+  /**
+   * Produces departmental revenue aggregates and captured-payment totals.
+   *
+   * Uses CTEs to aggregate folio revenue categories and payment captures, then
+   * full-joins both streams by date bucket so periods with only one source are
+   * still represented in the result set.
+   *
+   * @param filters - Hotel/date filters with optional period grouping.
+   * @returns Revenue rows with room/F&B/spa/laundry/other components and totals.
+   * @remarks Complexity: O(f + p) in database scans where `f` is matching folio items and `p` is matching payments.
+   */
   async getRevenueReport(filters: BaseReportFilters) {
     const { hotelId, dateFrom, dateTo, groupBy = 'DAY' } = filters;
     const dateExpr = getDateTruncExpression(groupBy);
@@ -232,6 +261,16 @@ export class ReportsRepository {
   // ADR REPORT
   // ==========================================================================
 
+  /**
+   * Calculates ADR (average daily rate) trends for sold rooms.
+   *
+   * Aggregates room-charge revenue and sold-room counts per period, computes ADR,
+   * and when grouped by day also calculates a 7-day rolling ADR average.
+   *
+   * @param filters - Hotel/date filters with optional grouping period.
+   * @returns ADR rows including optional 7-day rolling average for daily mode.
+   * @remarks Complexity: O(n) post-query mapping where `n` is grouped period row count.
+   */
   async getADRReport(filters: BaseReportFilters) {
     const { hotelId, dateFrom, dateTo, groupBy = 'DAY' } = filters;
     const dateExpr = getDateTruncExpression(groupBy);
@@ -297,6 +336,16 @@ export class ReportsRepository {
   // REVPAR REPORT
   // ==========================================================================
 
+  /**
+   * Computes RevPAR, ADR, and occupancy using revenue plus room availability.
+   *
+   * Combines room-charge revenue, sold-room counts, and available room inventory
+   * (optionally scoped by room type) to derive RevPAR and related KPIs per period.
+   *
+   * @param filters - Hotel/date filters, grouping period, and optional room type.
+   * @returns RevPAR rows with room revenue, availability, ADR, and occupancy rate.
+   * @remarks Complexity: O(d + r) in database execution where `d` is grouped dates and `r` is joined folio/reservation rows.
+   */
   async getRevPARReport(filters: BaseReportFilters) {
     const { hotelId, dateFrom, dateTo, groupBy = 'DAY', roomTypeId } = filters;
     const dateExpr = getDateTruncExpression(groupBy);
@@ -379,6 +428,16 @@ export class ReportsRepository {
   // FOLIO SUMMARY REPORT
   // ==========================================================================
 
+  /**
+   * Summarizes non-payment folio activity across three accounting dimensions.
+   *
+   * Executes department, revenue-code, and item-type aggregates in parallel and
+   * returns Decimal-safe totals plus transaction counts for each breakdown.
+   *
+   * @param filters - Hotel/date filters defining the business-date window.
+   * @returns Grouped folio summaries by department, revenue code, and item type.
+   * @remarks Complexity: O(gd + gr + gi) where each term is grouped row count from the three aggregate queries.
+   */
   async getFolioSummary(filters: BaseReportFilters) {
     const { hotelId, dateFrom, dateTo } = filters;
 
@@ -479,7 +538,17 @@ export class ReportsRepository {
   // ARRIVALS/DEPARTURES REPORT
   // ==========================================================================
 
-  async getArrivalsDeporturesReport(filters: BaseReportFilters) {
+  /**
+   * Aggregates arrivals/departures movement metrics across a date range.
+   *
+   * Generates a daily series, computes arrivals, departures, no-shows, walk-ins,
+   * and stayovers per day, then rolls those values into the requested period.
+   *
+   * @param filters - Hotel/date filters with optional period grouping.
+   * @returns Movement rows for arrivals, departures, no-shows, walk-ins, and stayovers.
+   * @remarks Complexity: O(d + r) in database execution where `d` is date-series length and `r` is joined reservation rows.
+   */
+  async getArrivalsDeparturesReport(filters: BaseReportFilters) {
     const { hotelId, dateFrom, dateTo, groupBy = 'DAY' } = filters;
     const dateExpr = groupBy === 'DAY' ? 'date' : `DATE_TRUNC('${groupBy.toLowerCase()}', date)`;
 
@@ -556,6 +625,16 @@ export class ReportsRepository {
   // IN-HOUSE REPORT
   // ==========================================================================
 
+  /**
+   * Lists in-house guest stays for an operational snapshot date.
+   *
+   * Joins reservations, guests, room assignments, room types, and rate plans to
+   * return currently in-house guests with stay and balance context.
+   *
+   * @param filters - Hotel/date filters with optional room-type scoping.
+   * @returns In-house guest rows with room, stay, and profile attributes.
+   * @remarks Complexity: O(n) where `n` is in-house reservation row count returned by the query.
+   */
   async getInHouseGuests(filters: DashboardFilters & { roomTypeId?: string | undefined }) {
     const { hotelId, date, roomTypeId } = filters;
 
@@ -619,6 +698,17 @@ export class ReportsRepository {
   // NO-SHOW REPORT
   // ==========================================================================
 
+  /**
+   * Produces no-show detail and distribution analytics for a date window.
+   *
+   * Runs five aggregate/detail queries in parallel (rows, source mix, room-type
+   * mix, day-of-week distribution, and summary totals) and combines them into one
+   * structured no-show analytics payload.
+   *
+   * @param filters - Hotel/date filters bounding check-in dates.
+   * @returns No-show detail rows, breakdowns, and summary KPIs.
+   * @remarks Complexity: O(r + s + t + w) where terms are result sizes of detail, source, room-type, and weekday aggregates.
+   */
   async getNoShowReport(filters: BaseReportFilters) {
     const { hotelId, dateFrom, dateTo } = filters;
 
@@ -766,6 +856,16 @@ export class ReportsRepository {
   // GUEST STATISTICS REPORT
   // ==========================================================================
 
+  /**
+   * Aggregates guest-behavior statistics for completed and in-house stays.
+   *
+   * Executes parallel queries for new/repeat totals, VIP mix, nationality mix,
+   * and guest-type mix, then maps SQL aggregates into dashboard-friendly shapes.
+   *
+   * @param filters - Hotel/date filters for stay-based analytics.
+   * @returns Guest statistics including volume, profile breakdowns, and stay KPIs.
+   * @remarks Complexity: O(g + v + n + t) where terms are grouped row counts from each aggregate query.
+   */
   async getGuestStatistics(filters: BaseReportFilters) {
     const { hotelId, dateFrom, dateTo } = filters;
 
@@ -878,6 +978,16 @@ export class ReportsRepository {
   // SOURCE ANALYSIS REPORT
   // ==========================================================================
 
+  /**
+   * Analyzes reservation and revenue contribution by booking source/channel.
+   *
+   * Aggregates source-level reservation metrics plus a direct-vs-OTA channel split,
+   * then derives ADR, no-show rate, cancellation rate, and revenue percentage share.
+   *
+   * @param filters - Hotel/date filters for reservation-source analysis.
+   * @returns Source-level analytics rows and channel distribution summary.
+   * @remarks Complexity: O(s + c) where `s` is source-group row count and `c` is channel-group row count.
+   */
   async getSourceAnalysis(filters: BaseReportFilters) {
     const { hotelId, dateFrom, dateTo } = filters;
 
@@ -973,6 +1083,16 @@ export class ReportsRepository {
   // REPEAT GUESTS REPORT
   // ==========================================================================
 
+  /**
+   * Returns paginated repeat-guest performance ranked by stay revenue.
+   *
+   * Applies minimum-stay qualification, returns paged guest aggregates, and runs
+   * a companion distinct-count query to produce pagination metadata.
+   *
+   * @param filters - Repeat-guest criteria including page/limit and minimum stays.
+   * @returns Paged repeat-guest rows with total-count pagination metadata.
+   * @remarks Complexity: O(p) mapping for page size `p` plus one aggregate count query.
+   */
   async getRepeatGuests(filters: RepeatGuestsFilters) {
     const { hotelId, dateFrom, dateTo, page, limit, minStays = 2 } = filters;
     const offset = (page - 1) * limit;
@@ -1055,6 +1175,16 @@ export class ReportsRepository {
   // HOUSEKEEPING REPORT
   // ==========================================================================
 
+  /**
+   * Aggregates housekeeping throughput and staff productivity metrics.
+   *
+   * Runs period-based task summary and staff productivity queries in parallel, then
+   * maps operational KPIs such as completion pace and inspection scores.
+   *
+   * @param filters - Hotel/date filters with optional period grouping.
+   * @returns Housekeeping KPI rows and staff productivity breakdown.
+   * @remarks Complexity: O(h + s) where `h` is grouped housekeeping period rows and `s` is grouped staff rows.
+   */
   async getHousekeepingReport(filters: BaseReportFilters) {
     const { hotelId, dateFrom, dateTo, groupBy = 'DAY' } = filters;
     const dateExpr =
@@ -1145,6 +1275,16 @@ export class ReportsRepository {
   // MAINTENANCE REPORT
   // ==========================================================================
 
+  /**
+   * Produces maintenance demand, cost, and SLA impact analytics.
+   *
+   * Executes five parallel aggregates for request counts, priority mix, category
+   * costs, cost totals, and SLA/out-of-order impact indicators.
+   *
+   * @param filters - Hotel/date filters for maintenance reporting.
+   * @returns Maintenance KPI payload including counts, cost analytics, and OOO impact.
+   * @remarks Complexity: O(p + c) post-query mapping where `p` is priority groups and `c` is category groups.
+   */
   async getMaintenanceReport(filters: BaseReportFilters) {
     const { hotelId, dateFrom, dateTo } = filters;
 
@@ -1286,6 +1426,17 @@ export class ReportsRepository {
   // MANAGER DASHBOARD
   // ==========================================================================
 
+  /**
+   * Builds the manager dashboard combining occupancy, revenue, and alert signals.
+   *
+   * Derives MTD/YTD comparison windows, executes operational and revenue queries in
+   * parallel, and composes occupancy, room-status, pending-actions, and alert data
+   * into one management-facing dashboard payload.
+   *
+   * @param filters - Hotel/date context for dashboard generation.
+   * @returns Manager dashboard snapshot for the requested date.
+   * @remarks Complexity: O(a + h + q) where terms reflect returned alert rows, revenue-by-hour points, and fixed aggregate query outputs.
+   */
   async getManagerDashboard(filters: DashboardFilters) {
     const { hotelId, date = new Date() } = filters;
 
@@ -1436,6 +1587,16 @@ export class ReportsRepository {
   // REVENUE DASHBOARD
   // ==========================================================================
 
+  /**
+   * Builds the revenue dashboard with today/MTD/YTD comparisons.
+   *
+   * Calculates comparison windows and executes period totals, KPI metrics, trend,
+   * top-rate-plan, and source-breakdown helpers in parallel.
+   *
+   * @param filters - Hotel/date context for dashboard generation.
+   * @returns Revenue dashboard sections for period totals, KPI rates, trends, and mix.
+   * @remarks Complexity: O(t + r + s) where `t` is trend row count, `r` is top-rate-plan rows, and `s` is source rows.
+   */
   async getRevenueDashboard(filters: DashboardFilters) {
     const { hotelId, date = new Date() } = filters;
 
@@ -1494,6 +1655,16 @@ export class ReportsRepository {
   // OPERATIONS DASHBOARD
   // ==========================================================================
 
+  /**
+   * Builds the operations dashboard spanning housekeeping, maintenance, inventory, and POS.
+   *
+   * Executes fixed aggregate SQL queries in parallel for each operational domain
+   * and combines those results with active staff session counts.
+   *
+   * @param filters - Hotel/date context for dashboard generation.
+   * @returns Operations dashboard with domain-specific operational KPIs.
+   * @remarks Complexity: O(1) application-side work with a fixed query set; runtime is dominated by underlying aggregate scans.
+   */
   async getOperationsDashboard(filters: DashboardFilters) {
     const { hotelId, date = new Date() } = filters;
 
@@ -1640,6 +1811,15 @@ export class ReportsRepository {
   // HELPER METHODS FOR DASHBOARDS
   // ==========================================================================
 
+  /**
+   * Computes non-payment folio revenue for a date-bounded period.
+   *
+   * @param hotelId - Hotel UUID whose folio revenue is aggregated.
+   * @param dateFrom - Inclusive period start date.
+   * @param dateTo - Inclusive period end date.
+   * @returns Decimal total for non-voided non-payment folio items.
+   * @remarks Complexity: O(f) in matching folio-item rows scanned by the aggregate query.
+   */
   private async getRevenueForPeriod(
     hotelId: string,
     dateFrom: Date,
@@ -1657,6 +1837,14 @@ export class ReportsRepository {
     return new Decimal(result[0]?.total ?? 0);
   }
 
+  /**
+   * Aggregates actionable operational counts for manager dashboard cards.
+   *
+   * @param hotelId - Hotel UUID used for all sub-queries.
+   * @param date - Business date used for check-in/check-out scoped counts.
+   * @returns Pending-action counters for arrivals, departures, folios, inventory, and maintenance.
+   * @remarks Complexity: O(1) application work with fixed scalar subqueries.
+   */
   private async getPendingActions(hotelId: string, date: Date) {
     const result = await prisma.$queryRaw<
       Array<{
@@ -1696,6 +1884,17 @@ export class ReportsRepository {
     };
   }
 
+  /**
+   * Derives alert entities from maintenance, inventory, folio, and arrival signals.
+   *
+   * Executes targeted counts and emits typed alert rows only when thresholds are
+   * non-zero, preserving lightweight dashboard payloads.
+   *
+   * @param hotelId - Hotel UUID used for alert-source queries.
+   * @param date - Business date used for pending-arrival checks.
+   * @returns Alert rows ordered by detection sequence.
+   * @remarks Complexity: O(1) application work with four independent count queries.
+   */
   private async getAlerts(hotelId: string, date: Date) {
     const alerts: Array<{
       type: 'WARNING' | 'CRITICAL' | 'INFO';
@@ -1779,6 +1978,15 @@ export class ReportsRepository {
     return alerts;
   }
 
+  /**
+   * Computes period revenue composition and captured-payment totals.
+   *
+   * @param hotelId - Hotel UUID whose revenue composition is requested.
+   * @param dateFrom - Inclusive period start date.
+   * @param dateTo - Inclusive period end date.
+   * @returns Revenue component totals (`room`, `fnb`, `spa`, `other`) and payment receipts.
+   * @remarks Complexity: O(f + p) where `f` is matching folio rows and `p` is matching payment rows.
+   */
   private async getRevenuePeriodData(hotelId: string, dateFrom: Date, dateTo: Date) {
     const result = await prisma.$queryRaw<
       Array<{
@@ -1824,6 +2032,18 @@ export class ReportsRepository {
     };
   }
 
+  /**
+   * Calculates KPI rates (ADR, RevPAR, occupancy) for a period.
+   *
+   * Uses room-charge revenue and sold-room counts plus scaled room inventory days
+   * to derive KPI denominators over multi-day windows.
+   *
+   * @param hotelId - Hotel UUID whose KPI metrics are requested.
+   * @param dateFrom - Inclusive period start date.
+   * @param dateTo - Inclusive period end date.
+   * @returns KPI decimals for ADR, RevPAR, and occupancy rate.
+   * @remarks Complexity: O(f + r) in DB execution where `f` is relevant folio rows and `r` is room inventory rows.
+   */
   private async getKPIData(hotelId: string, dateFrom: Date, dateTo: Date) {
     const result = await prisma.$queryRaw<
       Array<{
@@ -1874,6 +2094,18 @@ export class ReportsRepository {
     };
   }
 
+  /**
+   * Builds daily revenue-trend points with occupancy rate context.
+   *
+   * Aggregates daily folio revenue and daily sold-room counts in CTEs, full-joins
+   * both series, then computes occupancy rate per day.
+   *
+   * @param hotelId - Hotel UUID whose trend is requested.
+   * @param dateFrom - Inclusive trend start date.
+   * @param dateTo - Inclusive trend end date.
+   * @returns Daily revenue points enriched with occupancy percentage.
+   * @remarks Complexity: O(d + f + r) where `d` is day buckets and `f`/`r` are matching folio/reservation rows.
+   */
   private async getRevenueTrend(hotelId: string, dateFrom: Date, dateTo: Date) {
     const rows = await prisma.$queryRaw<
       Array<{
@@ -1924,6 +2156,15 @@ export class ReportsRepository {
     }));
   }
 
+  /**
+   * Returns top-performing rate plans ranked by realized reservation revenue.
+   *
+   * @param hotelId - Hotel UUID whose rate-plan performance is requested.
+   * @param dateFrom - Inclusive period start date.
+   * @param dateTo - Inclusive period end date.
+   * @returns Up to five rate plans with reservation counts and revenue totals.
+   * @remarks Complexity: O(g) where `g` is grouped rate-plan rows before the top-5 limit.
+   */
   private async getTopRatePlans(hotelId: string, dateFrom: Date, dateTo: Date) {
     const rows = await prisma.$queryRaw<
       Array<{
@@ -1961,6 +2202,15 @@ export class ReportsRepository {
     }));
   }
 
+  /**
+   * Computes revenue contribution percentages by reservation source.
+   *
+   * @param hotelId - Hotel UUID whose source mix is requested.
+   * @param dateFrom - Inclusive period start date.
+   * @param dateTo - Inclusive period end date.
+   * @returns Source rows with reservation counts, revenue totals, and share percentage.
+   * @remarks Complexity: O(s) where `s` is grouped source row count.
+   */
   private async getSourceBreakdownForDashboard(hotelId: string, dateFrom: Date, dateTo: Date) {
     const rows = await prisma.$queryRaw<
       Array<{

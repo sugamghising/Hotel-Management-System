@@ -37,6 +37,12 @@ export class AuthService {
   private authRepo: AuthRepository;
   private orgService: OrganizationService;
 
+  /**
+   * Creates an authentication service with repository and organization dependencies.
+   *
+   * @param authRepo - Repository used for user and token persistence.
+   * @param orgService - Service used for organization validation and limits.
+   */
   constructor(
     authRepo: AuthRepository = authRepository,
     orgService: OrganizationService = organizationService
@@ -45,6 +51,22 @@ export class AuthService {
     this.orgService = orgService;
   }
 
+  /**
+   * Authenticates a user and returns either MFA challenge metadata or active tokens.
+   *
+   * The flow validates organization access, loads the user by normalized email,
+   * enforces account state and lockout checks, verifies password, optionally
+   * verifies TOTP MFA, then issues access/refresh tokens and records successful
+   * login metadata.
+   *
+   * @param input - Login payload including organization code, credentials, and optional MFA data.
+   * @param ipAddress - Optional client IP for session tracking.
+   * @param userAgent - Optional client user-agent string for refresh-token metadata.
+   * @returns Logged-in user with token pair, or MFA challenge fields when MFA code is still required.
+   * @throws {UnauthorizedError} Thrown for invalid organization, credentials, token format, or MFA code.
+   * @throws {ForbiddenError} Thrown for inactive organization subscription or blocked account states.
+   * @throws {InternalServerError} Thrown when MFA is enabled but required secret is missing.
+   */
   async login(input: LoginInput, ipAddress?: string, userAgent?: string) {
     //Find Organizations
     const org = await this.orgService.findByCode(input.organizationCode);
@@ -152,6 +174,18 @@ export class AuthService {
     };
   }
 
+  /**
+   * Registers a new user under an existing organization.
+   *
+   * Validates organization existence, checks user-limit capacity, enforces
+   * organization-scoped email uniqueness, hashes the provided password, and
+   * persists a new user in `'PENDING_VERIFICATION'` state.
+   *
+   * @param input - Registration payload.
+   * @returns Newly created user entity.
+   * @throws {ForbiddenError} Thrown when organization user limits are exceeded.
+   * @throws {ConflictError} Thrown when email already exists in the organization.
+   */
   async register(input: RegisterInput): Promise<User> {
     //Validate organization existence
     const org = await this.orgService.findById(input.organizationId);
@@ -209,6 +243,19 @@ export class AuthService {
   // ============================================================================
   // TOKEN MANAGEMENT
   // ============================================================================
+  /**
+   * Rotates a refresh token and returns a new access/refresh token pair.
+   *
+   * The method parses the composite refresh token, validates the JWT segment,
+   * verifies token type, checks persisted token hash state, optionally enforces
+   * device-fingerprint binding, reloads user and organization context, issues a
+   * fresh token pair, and revokes the previously used token record.
+   *
+   * @param refreshToken - Composite token in `<refresh-jwt>.<opaque-secret>` format.
+   * @param deviceFingerprint - Optional fingerprint to enforce token-device binding.
+   * @returns Newly issued access and refresh tokens.
+   * @throws {UnauthorizedError} Thrown for malformed, invalid, missing, expired, or mismatched refresh tokens.
+   */
   async refreshToken(refreshToken: string, deviceFingerprint?: string): Promise<TokenPair> {
     //split composite token
     const [jwtPart, opaquePart] = refreshToken.split('.');
@@ -277,6 +324,12 @@ export class AuthService {
     return tokens;
   }
 
+  /**
+   * Revokes a refresh token when it can be resolved from the provided composite token.
+   *
+   * @param refreshToken - Composite token in `<refresh-jwt>.<opaque-secret>` format.
+   * @returns Resolves after best-effort revocation; no error is thrown for unknown tokens.
+   */
   async logout(refreshToken: string): Promise<void> {
     const [, opaquePart] = refreshToken.split('.');
     if (!opaquePart) return;
@@ -289,6 +342,13 @@ export class AuthService {
     }
   }
 
+  /**
+   * Revokes all refresh tokens for a user, optionally preserving one current token.
+   *
+   * @param userId - User UUID whose sessions should be invalidated.
+   * @param exceptCurrentToken - Optional composite token to exclude from revocation.
+   * @returns Resolves when revocation completes.
+   */
   async logoutAll(userId: string, exceptCurrentToken?: string): Promise<void> {
     let exceptId: string | undefined;
 
@@ -308,6 +368,15 @@ export class AuthService {
   // PASSWORD MANAGEMENT
   // ============================================================================
 
+  /**
+   * Changes a user's password after validating the current password.
+   *
+   * @param userId - User UUID requesting password change.
+   * @param input - Current and new password payload.
+   * @returns Resolves when password update completes.
+   * @throws {NotFoundError} Thrown when the user cannot be found.
+   * @throws {UnauthorizedError} Thrown when the current password is incorrect.
+   */
   async changePassword(userId: string, input: ChangePasswordInput): Promise<void> {
     const user = await this.authRepo.findUserById(userId);
 
@@ -329,6 +398,16 @@ export class AuthService {
     // await this.authRepo.revokeAllUserTokens(userId);
   }
 
+  /**
+   * Creates and stores a password-reset token for a known organization/email pair.
+   *
+   * The method intentionally returns without error for unknown organizations or
+   * users to avoid account-enumeration leaks.
+   *
+   * @param email - Email address requesting reset.
+   * @param organizationCode - Organization code that scopes the user lookup.
+   * @returns Resolves after best-effort reset-token creation.
+   */
   async forgotPassword(email: string, organizationCode: string): Promise<void> {
     const org = await this.orgService.findByCode(organizationCode);
     if (!org) {
@@ -353,6 +432,17 @@ export class AuthService {
     logger.info(`Password reset requested: ${user.email}`, { userId: user.id });
   }
 
+  /**
+   * Resets a user's password using a valid password-reset token.
+   *
+   * Hashes the incoming token for lookup, verifies token validity/expiry,
+   * updates password hash, and revokes all active refresh tokens to terminate
+   * existing sessions.
+   *
+   * @param input - Reset token and replacement password payload.
+   * @returns Resolves when password reset completes.
+   * @throws {NotFoundError} Thrown when the reset token is invalid or expired.
+   */
   async resetPassword(input: PasswordResetInput): Promise<void> {
     const tokenHash = hashToken(input.token);
 
@@ -375,6 +465,18 @@ export class AuthService {
   // MFA
   // ============================================================================
 
+  /**
+   * Generates MFA setup materials for a user without enabling MFA yet.
+   *
+   * Produces a TOTP secret, QR code data URL, and backup codes. Persistence is
+   * deferred until `verifyAndEnableMfa` confirms a valid MFA code.
+   *
+   * @param userId - User UUID.
+   * @returns MFA setup payload containing secret, QR code URL, and backup codes.
+   * @throws {NotFoundError} Thrown when the user is missing.
+   * @throws {ConflictError} Thrown when MFA is already enabled.
+   * @throws {InternalServerError} Thrown when secret generation fails.
+   */
   async setupMfa(userId: string): Promise<MfaSetupResult> {
     const user = await this.authRepo.findUserById(userId);
     if (!user) {
@@ -410,6 +512,15 @@ export class AuthService {
     };
   }
 
+  /**
+   * Verifies a TOTP code and permanently enables MFA for the user.
+   *
+   * @param userId - User UUID.
+   * @param code - Current TOTP code from the authenticator app.
+   * @param secret - Base32 MFA secret generated during setup.
+   * @returns Resolves when MFA is enabled and backup codes are stored.
+   * @throws {UnauthorizedError} Thrown when the provided TOTP code is invalid.
+   */
   async verifyAndEnableMfa(userId: string, code: string, secret: string): Promise<void> {
     const verified = speakeasy.totp.verify({
       secret,
@@ -428,6 +539,15 @@ export class AuthService {
     await this.authRepo.enableMfa(userId, secret, backupCodes);
   }
 
+  /**
+   * Disables MFA after password re-verification.
+   *
+   * @param userId - User UUID.
+   * @param password - User password used to authorize MFA disable action.
+   * @returns Resolves when MFA credentials are cleared.
+   * @throws {NotFoundError} Thrown when the user cannot be found.
+   * @throws {UnauthorizedError} Thrown when password verification fails.
+   */
   async disableMfa(userId: string, password: string): Promise<void> {
     const user = await this.authRepo.findUserById(userId);
     if (!user) {
@@ -448,6 +568,13 @@ export class AuthService {
   // CURRENT USER
   // ============================================================================
 
+  /**
+   * Returns the authenticated user's detailed profile with role context.
+   *
+   * @param userId - User UUID.
+   * @returns Detailed user payload for current-session endpoints.
+   * @throws {NotFoundError} Thrown when the user cannot be found.
+   */
   async getCurrentUser(userId: string): Promise<DetailedUser> {
     const user = await this.authRepo.findUserWithRoles(userId);
     if (!user) {
@@ -462,6 +589,12 @@ export class AuthService {
   // PRIVATE HELPERS
   // ============================================================================
 
+  /**
+   * Increments failed-login attempts and applies temporary lockout after threshold.
+   *
+   * @param user - User entity containing current failed-attempt counters.
+   * @returns Resolves when lockout state is persisted.
+   */
   private async handleFailedLogin(user: User): Promise<void> {
     const attempts = user.failedLoginAttempts + 1;
     const lockedUntil =
@@ -472,6 +605,13 @@ export class AuthService {
     await this.authRepo.updateLoginAttempts(user.id, attempts, lockedUntil);
   }
 
+  /**
+   * Creates a short-lived JWT used to continue MFA challenge flow.
+   *
+   * @param userId - User UUID.
+   * @param orgId - Organization UUID to embed in MFA context.
+   * @returns Signed JWT valid for five minutes.
+   */
   private generateMfaTempToken(userId: string, orgId: string): string {
     const payload: MfaTempPayload = {
       sub: userId,
@@ -485,6 +625,12 @@ export class AuthService {
     return jwt.sign(payload, config.jwt.accessSecret);
   }
 
+  /**
+   * Maps an internal user entity to the public login response shape.
+   *
+   * @param user - Internal user entity.
+   * @returns Public user projection safe for authentication responses.
+   */
   private mapToPublicUser(user: User) {
     return {
       id: user.id,
@@ -496,6 +642,24 @@ export class AuthService {
     };
   }
 
+  /**
+   * Generates and persists an access/refresh token pair for a user session.
+   *
+   * Creates a session identifier, fetches effective permissions, signs a
+   * short-lived access token, creates and stores a hashed opaque refresh secret,
+   * signs refresh JWT metadata, and returns the composite refresh token value.
+   *
+   * @param user - Authenticated user.
+   * @param orgId - Organization UUID to embed in token claims.
+   * @param orgCode - Organization code included in access token claims.
+   * @param orgTier - Organization tier included in access token claims.
+   * @param ipAddress - Optional client IP persisted with refresh token metadata.
+   * @param userAgent - Optional client user-agent persisted with refresh token metadata.
+   * @param deviceFingerprint - Optional device fingerprint for theft detection.
+   * @param deviceName - Optional human-readable device label.
+   * @returns Access token, composite refresh token, and access expiry seconds.
+   * @remarks Complexity: O(p) in permission count, with one permission read and one token write.
+   */
   private async generateTokenPair(
     user: User,
     orgId: string,
@@ -583,6 +747,12 @@ export class AuthService {
     };
   }
 
+  /**
+   * Maps a user-with-roles entity into the detailed current-user response.
+   *
+   * @param user - User entity including role and hotel assignments.
+   * @returns Detailed user DTO used by profile endpoints.
+   */
   private mapToDetailedUser(user: UserWithRoles): DetailedUser {
     return {
       id: user.id,

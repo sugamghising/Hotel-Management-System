@@ -42,6 +42,16 @@ export class ReservationsService {
   private ratePlanRepo: RatePlansRepository;
   private roomTypeRepo: RoomTypesRepository;
   private roomRepo: RoomsRepository;
+
+  /**
+   * Creates a reservations service with repository dependencies.
+   *
+   * @param reservationsRepo - Repository handling reservation lifecycle persistence.
+   * @param hotelRepo - Repository used to validate hotel ownership boundaries.
+   * @param ratePlanRepo - Repository used for rate plan and override lookups.
+   * @param roomTypeRepo - Repository used to validate room type scope.
+   * @param roomRepo - Repository used for room availability and assignment checks.
+   */
   constructor(
     reservationsRepo: ReservationsRepository = reservationsRepository,
     hotelRepo: HotelRepository = hotelRepository,
@@ -60,6 +70,24 @@ export class ReservationsService {
   // CREATE RESERVATION
   // ============================================================================
 
+  /**
+   * Creates a reservation after validating guest, room type, availability, and pricing.
+   *
+   * It enforces external-reference uniqueness, validates stay length bounds, optionally validates
+   * a requested room, calculates nightly financials, generates confirmation, and persists the
+   * reservation plus its reservation-room row.
+   *
+   * @param organizationId - Organization UUID that owns the hotel.
+   * @param hotelId - Hotel UUID where the reservation is created.
+   * @param input - Reservation payload including guest, stay, and distribution fields.
+   * @param createdBy - Optional actor identifier stored in booking metadata.
+   * @returns Created reservation mapped to API response format.
+   * @throws {NotFoundError} When guest, room type, rate plan, or requested room is missing.
+   * @throws {DuplicateChannelBookingError} When `externalRef` already exists for the hotel.
+   * @throws {BadRequestError} When stay length or requested room-type constraints are invalid.
+   * @throws {ConflictError} When inventory or room availability checks fail.
+   * @remarks Complexity: O(N) where `N` is stay nights for rate breakdown construction.
+   */
   async create(
     organizationId: string,
     hotelId: string,
@@ -228,6 +256,17 @@ export class ReservationsService {
   // WALK-IN
   // ============================================================================
 
+  /**
+   * Creates and immediately checks in a same-day walk-in reservation.
+   *
+   * @param organizationId - Organization UUID that owns the hotel.
+   * @param hotelId - Hotel UUID where the walk-in is processed.
+   * @param input - Walk-in payload containing room and stay details.
+   * @param createdBy - Optional actor identifier for booking and check-in metadata.
+   * @returns Checked-in reservation response.
+   * @throws {NotFoundError} When the requested room does not exist in the hotel.
+   * @throws {ConflictError} When the room is not available for immediate check-in.
+   */
   async createWalkIn(
     organizationId: string,
     hotelId: string,
@@ -280,6 +319,16 @@ export class ReservationsService {
   // READ
   // ============================================================================
 
+  /**
+   * Retrieves one reservation by ID with organization and optional hotel scoping.
+   *
+   * @param id - Reservation UUID.
+   * @param organizationId - Organization UUID used for ownership checks.
+   * @param hotelId - Optional hotel UUID to enforce hotel-level scope.
+   * @returns Reservation mapped to API response format.
+   * @throws {NotFoundError} When reservation is missing, deleted, or outside hotel scope.
+   * @throws {ForbiddenError} When reservation belongs to another organization.
+   */
   async findById(
     id: string,
     organizationId: string,
@@ -302,6 +351,15 @@ export class ReservationsService {
     return this.mapToResponse(reservation);
   }
 
+  /**
+   * Retrieves a reservation by confirmation number.
+   *
+   * @param confirmationNumber - Reservation confirmation number.
+   * @param organizationId - Optional organization UUID used for ownership checks.
+   * @returns Reservation mapped to API response format.
+   * @throws {NotFoundError} When no reservation matches or record is soft-deleted.
+   * @throws {ForbiddenError} When reservation belongs to another organization.
+   */
   async findByConfirmationNumber(
     confirmationNumber: string,
     organizationId?: string
@@ -322,6 +380,15 @@ export class ReservationsService {
     return this.mapToResponse(reservation as unknown as ReservationWithRelations);
   }
 
+  /**
+   * Finds the currently checked-in reservation assigned to a room number.
+   *
+   * @param organizationId - Organization UUID used for authorization.
+   * @param hotelId - Hotel UUID where room lookup is performed.
+   * @param roomNumber - Human-readable room number to resolve.
+   * @returns Checked-in reservation mapped to API response format.
+   * @throws {NotFoundError} When hotel is inaccessible or no active stay matches the room.
+   */
   async findByRoomNumber(
     organizationId: string,
     hotelId: string,
@@ -364,6 +431,16 @@ export class ReservationsService {
     return this.mapToResponse(reservation as unknown as ReservationWithRelations);
   }
 
+  /**
+   * Searches reservations for one hotel and returns paginated list output.
+   *
+   * @param hotelId - Hotel UUID whose reservations are queried.
+   * @param organizationId - Organization UUID used for access validation.
+   * @param filters - Search filters for lifecycle dates, status, guest, and channel metadata.
+   * @param pagination - Page and limit values for result slicing.
+   * @returns Paginated reservation summaries for operational lists.
+   * @throws {NotFoundError} When the hotel is not found in organization scope.
+   */
   async search(
     hotelId: string,
     organizationId: string,
@@ -407,6 +484,24 @@ export class ReservationsService {
   // UPDATE
   // ============================================================================
 
+  /**
+   * Updates mutable reservation fields and recalculates financials when stay dates change.
+   *
+   * Date edits trigger fresh availability checks and nightly repricing so totals, tax, and balance
+   * stay aligned with the updated stay window.
+   *
+   * @param id - Reservation UUID to update.
+   * @param organizationId - Organization UUID used for ownership checks.
+   * @param hotelId - Hotel UUID used for scope checks.
+   * @param input - Partial reservation fields to modify.
+   * @param updatedBy - Optional actor identifier stored in `modifiedBy`.
+   * @returns Updated reservation mapped to API response format.
+   * @throws {NotFoundError} When reservation is missing or outside provided scope.
+   * @throws {ForbiddenError} When reservation belongs to another organization.
+   * @throws {ConflictError} When reservation state disallows updates or new dates lack inventory.
+   * @throws {BadRequestError} When resulting stay length is invalid.
+   * @remarks Complexity: O(N) repricing work when dates change, where `N` is resulting nights.
+   */
   async update(
     id: string,
     organizationId: string,
@@ -512,6 +607,22 @@ export class ReservationsService {
   // CHECK-IN
   // ============================================================================
 
+  /**
+   * Performs reservation check-in with support for controller and internal call signatures.
+   *
+   * It validates reservation state, resolves or auto-assigns a room, verifies room conflicts,
+   * delegates atomic persistence to the repository, and returns refreshed reservation data.
+   *
+   * @param id - Reservation UUID.
+   * @param organizationId - Organization UUID used for ownership checks.
+   * @param hotelId - Hotel UUID or check-in payload when called through shorthand signature.
+   * @param input - Check-in payload or legacy actor value based on call signature.
+   * @param _checkedInBy - Optional actor identifier recorded in check-in metadata.
+   * @returns Checked-in reservation response.
+   * @throws {NotFoundError} When reservation or reservation-room records are missing.
+   * @throws {ForbiddenError} When reservation belongs to another organization.
+   * @throws {ConflictError} When lifecycle state or room availability blocks check-in.
+   */
   async checkIn(
     id: string,
     organizationId: string,
@@ -611,6 +722,19 @@ export class ReservationsService {
   // CHECK-OUT
   // ============================================================================
 
+  /**
+   * Performs reservation check-out, settlement validation, and room release.
+   *
+   * @param id - Reservation UUID.
+   * @param organizationId - Organization UUID used for ownership checks.
+   * @param hotelId - Hotel UUID used for scope checks.
+   * @param input - Checkout payload containing late-checkout and settlement fields.
+   * @param _checkedOutBy - Optional actor identifier recorded in checkout metadata.
+   * @returns Checked-out reservation response.
+   * @throws {NotFoundError} When reservation or assigned room data is missing.
+   * @throws {ForbiddenError} When reservation belongs to another organization.
+   * @throws {ConflictError} When guest is not checked in or outstanding balance is unresolved.
+   */
   async checkOut(
     id: string,
     organizationId: string,
@@ -687,6 +811,20 @@ export class ReservationsService {
   // ROOM ASSIGNMENT
   // ============================================================================
 
+  /**
+   * Assigns or reassigns a physical room to an existing reservation.
+   *
+   * @param id - Reservation UUID.
+   * @param organizationId - Organization UUID used for ownership checks.
+   * @param hotelId - Hotel UUID used for scope checks.
+   * @param input - Assignment payload containing target room and override options.
+   * @param assignedBy - Optional actor identifier used in assignment history.
+   * @returns Reservation response after assignment changes.
+   * @throws {NotFoundError} When reservation, reservation-room, or target room is missing.
+   * @throws {ForbiddenError} When reservation belongs to another organization.
+   * @throws {BadRequestError} When room type does not match reservation requirements.
+   * @throws {ConflictError} When room conflicts exist and `force` is not enabled.
+   */
   async assignRoom(
     id: string,
     organizationId: string,
@@ -751,6 +889,17 @@ export class ReservationsService {
     return this.findById(id, organizationId);
   }
 
+  /**
+   * Removes room assignment for a reservation that has not been checked in.
+   *
+   * @param id - Reservation UUID.
+   * @param organizationId - Organization UUID used for ownership checks.
+   * @param hotelId - Hotel UUID used for scope checks.
+   * @returns Reservation response with room assignment removed.
+   * @throws {NotFoundError} When reservation or reservation-room is missing.
+   * @throws {ForbiddenError} When reservation belongs to another organization.
+   * @throws {ConflictError} When reservation is currently checked in.
+   */
   async unassignRoom(
     id: string,
     organizationId: string,
@@ -788,6 +937,20 @@ export class ReservationsService {
   // CANCELLATION
   // ============================================================================
 
+  /**
+   * Cancels a reservation and applies policy-based cancellation fees unless waived.
+   *
+   * @param id - Reservation UUID.
+   * @param organizationId - Organization UUID used for ownership checks.
+   * @param hotelId - Hotel UUID used for scope checks.
+   * @param reason - Cancellation reason stored with the reservation.
+   * @param waiveFee - When `true`, skips cancellation fee calculation.
+   * @param cancelledBy - Optional actor identifier recorded as canceller.
+   * @returns Cancelled reservation response.
+   * @throws {NotFoundError} When reservation is missing or outside provided scope.
+   * @throws {ForbiddenError} When reservation belongs to another organization.
+   * @throws {ConflictError} When reservation status does not allow cancellation.
+   */
   async cancel(
     id: string,
     organizationId: string,
@@ -847,6 +1010,19 @@ export class ReservationsService {
   // NO-SHOW
   // ============================================================================
 
+  /**
+   * Marks an eligible confirmed reservation as no-show and optionally charges no-show fees.
+   *
+   * @param id - Reservation UUID.
+   * @param organizationId - Organization UUID used for ownership checks.
+   * @param hotelId - Hotel UUID used for scope checks.
+   * @param input - No-show options including fee behavior and rationale.
+   * @param _markedBy - Optional actor identifier reserved for audit integrations.
+   * @returns Updated reservation response with no-show state.
+   * @throws {NotFoundError} When reservation is missing or outside provided scope.
+   * @throws {ForbiddenError} When reservation belongs to another organization.
+   * @throws {ConflictError} When lifecycle/date rules do not allow no-show processing.
+   */
   async markNoShow(
     id: string,
     organizationId: string,
@@ -901,6 +1077,21 @@ export class ReservationsService {
   // DASHBOARD QUERIES
   // ============================================================================
 
+  /**
+   * Lists today's arrivals for one hotel as reservation responses.
+   *
+   * @param hotelId - Hotel UUID whose arrivals are requested.
+   * @param organizationId - Organization UUID used for access validation.
+   * @returns Arrival reservations mapped to API response format.
+   * @throws {NotFoundError} When the hotel is not found in organization scope.
+   */
+  /**
+   * Returns reservations scheduled to arrive on the current business day.
+   *
+   * @param hotelId - Hotel UUID whose arrivals are requested.
+   * @param organizationId - Organization UUID used to verify hotel scope.
+   * @returns Reservation responses for arrivals with today's check-in date.
+   */
   async getTodayArrivals(hotelId: string, organizationId: string): Promise<ReservationResponse[]> {
     await this.verifyHotelAccess(organizationId, hotelId);
 
@@ -911,6 +1102,21 @@ export class ReservationsService {
     return reservations.map((r) => this.mapToResponse(r));
   }
 
+  /**
+   * Lists today's departures for one hotel as reservation responses.
+   *
+   * @param hotelId - Hotel UUID whose departures are requested.
+   * @param organizationId - Organization UUID used for access validation.
+   * @returns Departure reservations mapped to API response format.
+   * @throws {NotFoundError} When the hotel is not found in organization scope.
+   */
+  /**
+   * Returns reservations scheduled to depart on the current business day.
+   *
+   * @param hotelId - Hotel UUID whose departures are requested.
+   * @param organizationId - Organization UUID used to verify hotel scope.
+   * @returns Reservation responses for departures with today's check-out date.
+   */
   async getTodayDepartures(
     hotelId: string,
     organizationId: string
@@ -924,6 +1130,22 @@ export class ReservationsService {
     return reservations.map((r) => this.mapToResponse(r));
   }
 
+  /**
+   * Lists currently in-house guests with operational front-desk fields.
+   *
+   * @param hotelId - Hotel UUID whose in-house guests are requested.
+   * @param organizationId - Organization UUID used for access validation.
+   * @returns In-house guest rows derived from checked-in reservations.
+   * @throws {NotFoundError} When the hotel is not found in organization scope.
+   */
+  /**
+   * Builds in-house guest summaries for all currently checked-in stays in a hotel.
+   *
+   * @param hotelId - Hotel UUID whose checked-in stays are requested.
+   * @param organizationId - Organization UUID used to verify hotel scope.
+   * @returns Guest-level dashboard rows including room, stay window, balance, and VIP status.
+   * @remarks Complexity: O(n) in number of checked-in reservations returned by the repository.
+   */
   async getInHouseGuests(hotelId: string, organizationId: string): Promise<InHouseGuestResponse[]> {
     await this.verifyHotelAccess(organizationId, hotelId);
 
@@ -950,6 +1172,42 @@ export class ReservationsService {
   // SPLIT/MERGE
   // ============================================================================
 
+  /**
+   * Splits a reservation into two linked stays at a provided split date.
+   *
+   * It validates split boundaries, computes nights for each segment, generates a new confirmation
+   * number, optionally validates a new room type, and delegates atomic persistence to repository.
+   *
+   * @param id - Reservation UUID to split.
+   * @param organizationId - Organization UUID used for ownership checks.
+   * @param hotelId - Hotel UUID used for scope checks.
+   * @param input - Split parameters including split date and optional new room type.
+   * @param splitBy - Optional actor identifier recorded for the new reservation segment.
+   * @returns Original and new reservation responses after split completion.
+   * @throws {NotFoundError} When reservation or requested room type cannot be found.
+   * @throws {ForbiddenError} When reservation belongs to another organization.
+   * @throws {BadRequestError} When split boundaries are invalid or room type context is missing.
+   * @throws {ConflictError} When reservation status does not allow splitting.
+   */
+  /**
+   * Splits a reservation into two bookings at a date that falls within the original stay.
+   *
+   * It validates ownership and status, ensures the split boundary is valid, derives nights for both
+   * parts, generates a new confirmation number, optionally validates a replacement room type, and
+   * delegates the transactional split to the repository.
+   *
+   * @param id - Original reservation UUID to split.
+   * @param organizationId - Organization UUID expected to own the reservation.
+   * @param hotelId - Hotel UUID expected to match the reservation.
+   * @param input - Split payload containing split date and optional new room type.
+   * @param splitBy - Optional actor identifier recorded on the generated booking.
+   * @returns Object containing mapped original and new reservation responses.
+   * @throws {NotFoundError} When reservation or requested replacement room type cannot be found in scope.
+   * @throws {ForbiddenError} When the reservation belongs to another organization.
+   * @throws {ConflictError} When reservation is already checked in and therefore unsplittable.
+   * @throws {BadRequestError} When split date is outside the stay window or no room type can be resolved.
+   * @remarks Complexity: O(1) local calculations plus transactional repository writes for split persistence.
+   */
   async split(
     id: string,
     organizationId: string,
@@ -1089,6 +1347,22 @@ export class ReservationsService {
   // PRIVATE HELPERS
   // ============================================================================
 
+  /**
+   * Verifies that a hotel exists in organization scope.
+   *
+   * @param organizationId - Organization UUID.
+   * @param hotelId - Hotel UUID.
+   * @returns Resolves when the hotel is accessible.
+   * @throws {NotFoundError} When the hotel is not found in the organization.
+   */
+  /**
+   * Verifies the hotel belongs to the organization before serving reservation operations.
+   *
+   * @param organizationId - Organization UUID expected to own the hotel.
+   * @param hotelId - Hotel UUID being accessed.
+   * @returns Resolves when the organization-hotel scope is valid.
+   * @throws {NotFoundError} When the hotel does not exist in the organization scope.
+   */
   private async verifyHotelAccess(organizationId: string, hotelId: string): Promise<void> {
     const exists = await this.hotelRepo.existsInOrganization(organizationId, hotelId);
     if (!exists) {
@@ -1096,6 +1370,42 @@ export class ReservationsService {
     }
   }
 
+  /**
+   * Calculates stay financials from a rate plan using date overrides and fixed tax placeholder.
+   *
+   * It fetches overrides for the stay once, maps them by ISO date key, computes nightly rate/tax
+   * rows, then derives total, tax, and average values for reservation persistence.
+   *
+   * @param _hotelId - Hotel UUID placeholder for future hotel-specific tax logic.
+   * @param _roomTypeId - Room type UUID placeholder for occupancy pricing extensions.
+   * @param ratePlanId - Rate plan UUID used for base pricing and overrides.
+   * @param checkIn - Stay start date.
+   * @param checkOut - Stay end date.
+   * @param _adults - Adult count placeholder for future pricing dimensions.
+   * @param _children - Child count placeholder for future pricing dimensions.
+   * @returns Total, tax, average, and nightly breakdown for reservation totals.
+   * @throws {NotFoundError} When the rate plan does not exist.
+   * @remarks Complexity: O(N) where `N` is stay nights.
+   */
+  /**
+   * Calculates stay pricing by combining rate-plan base rate, per-night overrides, and tax.
+   *
+   * The method loads all overrides in one query, indexes them by business-date string, iterates each
+   * night in the stay, and emits a nightly breakdown plus aggregate totals used by reservation writes.
+   *
+   * @param _hotelId - Hotel UUID placeholder for future hotel-specific pricing logic.
+   * @param _roomTypeId - Room type UUID placeholder for future room-type pricing logic.
+   * @param ratePlanId - Rate plan UUID used to resolve base and override pricing.
+   * @param checkIn - Inclusive check-in date.
+   * @param checkOut - Exclusive check-out date.
+   * @param _adults - Adult occupancy count placeholder for future dynamic pricing.
+   * @param _children - Child occupancy count placeholder for future dynamic pricing.
+   * @returns Pricing totals and nightly breakdown entries used by reservation financial fields.
+   * @throws {NotFoundError} When the referenced rate plan cannot be resolved.
+   * @remarks Complexity: O(n + m) where `n` is nights in stay and `m` is override rows for the range.
+   * @example
+   * const rates = await this.calculateRates(hotelId, roomTypeId, ratePlanId, checkIn, checkOut, 2, 0);
+   */
   private async calculateRates(
     _hotelId: string,
     _roomTypeId: string,
@@ -1154,6 +1464,18 @@ export class ReservationsService {
     };
   }
 
+  /**
+   * Calculates cancellation fee based on policy severity and time before check-in.
+   *
+   * @param reservation - Reservation containing cancellation policy and financial totals.
+   * @returns Cancellation fee amount.
+   */
+  /**
+   * Computes cancellation fee amount from policy strictness and hours remaining before check-in.
+   *
+   * @param reservation - Reservation used to read policy, check-in timestamp, and total amount.
+   * @returns Monetary fee to charge in reservation currency, or `0` when policy grants free cancellation.
+   */
   private calculateCancellationFee(reservation: Reservation): number {
     const now = new Date();
     const checkIn = new Date(reservation.checkInDate);
@@ -1173,6 +1495,18 @@ export class ReservationsService {
     }
   }
 
+  /**
+   * Calculates no-show fee according to cancellation policy.
+   *
+   * @param reservation - Reservation containing policy and financial fields.
+   * @returns No-show fee rounded to two decimals.
+   */
+  /**
+   * Computes no-show fee amount from cancellation policy semantics.
+   *
+   * @param reservation - Reservation used to evaluate no-show fee policy.
+   * @returns Rounded no-show charge in reservation currency units.
+   */
   private calculateNoShowFee(reservation: Reservation): number {
     switch (reservation.cancellationPolicy) {
       case 'NON_REFUNDABLE':
@@ -1183,6 +1517,18 @@ export class ReservationsService {
     }
   }
 
+  /**
+   * Parses an `HH:mm` time string into a Date value on the current day.
+   *
+   * @param timeStr - Time string in 24-hour `HH:mm` format.
+   * @returns Date with parsed hour/minute and zeroed seconds.
+   */
+  /**
+   * Parses an `HH:mm` string into a Date anchored to the current local calendar day.
+   *
+   * @param timeStr - Time string in 24-hour format.
+   * @returns Date with hours/minutes set and seconds/milliseconds reset to zero.
+   */
   private parseTime(timeStr: string): Date {
     const [hours = 0, minutes = 0] = timeStr.split(':').map(Number);
     const date = new Date();
@@ -1190,6 +1536,19 @@ export class ReservationsService {
     return date;
   }
 
+  /**
+   * Maps reservation entities with relations into the public response contract.
+   *
+   * @param reservation - Reservation with guest and room relation data.
+   * @returns Response object grouped by lifecycle, guest, room, and financial sections.
+   */
+  /**
+   * Maps reservation entities and relations into the API response contract.
+   *
+   * @param reservation - Reservation aggregate including guest and reservation-room relations.
+   * @returns Response object containing reservation status, stay dates, room details, and financial totals.
+   * @remarks Complexity: O(r) where `r` is number of associated reservation-room records.
+   */
   private mapToResponse(reservation: ReservationWithRelations): ReservationResponse {
     const primaryGuest = reservation.guest;
 

@@ -13,6 +13,13 @@ export class RoomTypesRepository {
   // CRUD OPERATIONS
   // ============================================================================
 
+  /**
+   * Retrieves a room type by UUID with optional relation expansion.
+   *
+   * @param id - Room type UUID.
+   * @param include - Optional Prisma include graph.
+   * @returns Matching room type or `null` when not found.
+   */
   async findById(id: string, include?: Prisma.RoomTypeInclude): Promise<RoomType | null> {
     return prisma.roomType.findUnique({
       where: { id },
@@ -20,6 +27,13 @@ export class RoomTypesRepository {
     }) as Promise<RoomType | null>;
   }
 
+  /**
+   * Retrieves a room type by hotel and canonical uppercase code.
+   *
+   * @param hotelId - Hotel UUID that scopes room type codes.
+   * @param code - Room type code; normalized to uppercase before lookup.
+   * @returns Matching room type or `null`.
+   */
   async findByCode(hotelId: string, code: string): Promise<RoomType | null> {
     return prisma.roomType.findUnique({
       where: {
@@ -31,6 +45,18 @@ export class RoomTypesRepository {
     }) as Promise<RoomType | null>;
   }
 
+  /**
+   * Lists room types for a hotel with optional feature and lifecycle filters.
+   *
+   * Applies filter clauses for active/bookable flags, view type, and free-text search,
+   * then executes list and count queries concurrently for stable pagination metadata.
+   *
+   * @param hotelId - Hotel UUID.
+   * @param filters - Optional room type filters.
+   * @param pagination - Optional pagination configuration.
+   * @returns Paginated room type rows and total matches.
+   * @remarks Complexity: O(R) for returned rows plus two DB queries (`findMany` + `count`).
+   */
   async findByHotel(
     hotelId: string,
     filters?: {
@@ -81,10 +107,23 @@ export class RoomTypesRepository {
     return { roomTypes: roomTypes as unknown as RoomType[], total };
   }
 
+  /**
+   * Creates a room type.
+   *
+   * @param data - Prisma create payload.
+   * @returns The created room type.
+   */
   async create(data: RoomTypeCreateInput): Promise<RoomType> {
     return prisma.roomType.create({ data }) as unknown as Promise<RoomType>;
   }
 
+  /**
+   * Updates a room type by UUID.
+   *
+   * @param id - Room type UUID.
+   * @param data - Prisma update payload.
+   * @returns The updated room type.
+   */
   async update(id: string, data: RoomTypeUpdateInput): Promise<RoomType> {
     return prisma.roomType.update({
       where: { id },
@@ -92,6 +131,12 @@ export class RoomTypesRepository {
     }) as unknown as Promise<RoomType>;
   }
 
+  /**
+   * Soft-deletes a room type and disables booking usage flags.
+   *
+   * @param id - Room type UUID.
+   * @returns Resolves when the soft-delete update is persisted.
+   */
   async softDelete(id: string): Promise<void> {
     await prisma.roomType.update({
       where: { id },
@@ -108,6 +153,18 @@ export class RoomTypesRepository {
   // IMAGES
   // ============================================================================
 
+  /**
+   * Appends an image to a room type image gallery and normalizes primary ordering.
+   *
+   * When `image.isPrimary` is `true`, existing images are demoted so only one primary
+   * image remains. The resulting gallery is sorted by `order` before persistence.
+   *
+   * @param roomTypeId - Room type UUID.
+   * @param image - Image payload to append.
+   * @returns Updated room type containing the modified `images` JSON.
+   * @throws {Error} When the room type does not exist.
+   * @remarks Complexity: O(I log I) where `I` is image count due to remap and sort.
+   */
   async addImage(roomTypeId: string, image: RoomTypeImage): Promise<RoomType> {
     const roomType = await prisma.roomType.findUnique({
       where: { id: roomTypeId },
@@ -145,6 +202,18 @@ export class RoomTypesRepository {
     }) as unknown as Promise<RoomType>;
   }
 
+  /**
+   * Removes an image URL from a room type gallery and preserves a primary image.
+   *
+   * If the removed image was primary and images remain, the first remaining image is
+   * promoted to primary so downstream UI always has a default hero image.
+   *
+   * @param roomTypeId - Room type UUID.
+   * @param imageUrl - Exact URL to remove from the gallery.
+   * @returns Updated room type containing the modified `images` JSON.
+   * @throws {Error} When the room type does not exist.
+   * @remarks Complexity: O(I) where `I` is image count.
+   */
   async removeImage(roomTypeId: string, imageUrl: string): Promise<RoomType> {
     const roomType = await prisma.roomType.findUnique({
       where: { id: roomTypeId },
@@ -178,6 +247,18 @@ export class RoomTypesRepository {
     }) as unknown as Promise<RoomType>;
   }
 
+  /**
+   * Reassigns display order values for room type images.
+   *
+   * Only images whose URLs are present in `imageOrders` are modified; other images keep
+   * their current order values. The result is re-sorted before persistence.
+   *
+   * @param roomTypeId - Room type UUID.
+   * @param imageOrders - URL-to-order mapping updates.
+   * @returns Updated room type containing reordered images.
+   * @throws {Error} When the room type does not exist.
+   * @remarks Complexity: O(I * O + I log I) where `I` is image count and `O` is order updates.
+   */
   async reorderImages(
     roomTypeId: string,
     imageOrders: { url: string; order: number }[]
@@ -217,6 +298,14 @@ export class RoomTypesRepository {
   // INVENTORY MANAGEMENT
   // ============================================================================
 
+  /**
+   * Retrieves inventory rows for a room type across an inclusive date range.
+   *
+   * @param roomTypeId - Room type UUID.
+   * @param startDate - Inclusive range start date.
+   * @param endDate - Inclusive range end date.
+   * @returns Inventory rows ordered by date ascending.
+   */
   async getInventory(
     roomTypeId: string,
     startDate: Date,
@@ -234,6 +323,18 @@ export class RoomTypesRepository {
     });
   }
 
+  /**
+   * Creates or updates one inventory day and recalculates availability.
+   *
+   * The date is normalized to local midnight before use in the unique key.
+   * Availability is recomputed as `totalRooms - outOfOrder - blocked - sold + overbookingLimit`
+   * and then clamped to zero to avoid negative sellable inventory.
+   *
+   * @param roomTypeId - Room type UUID.
+   * @param input - Inventory update payload for one business date.
+   * @returns The upserted inventory row.
+   * @remarks Complexity: O(1) application work plus two DB lookups (`count` for defaults and sold count).
+   */
   async upsertInventory(
     roomTypeId: string,
     input: RoomTypeInventoryInput
@@ -295,6 +396,20 @@ export class RoomTypesRepository {
     });
   }
 
+  /**
+   * Applies the same inventory updates to each selected day in a date window.
+   *
+   * Generates a date list from `startDate` through `endDate` (inclusive), optionally
+   * filtered by `daysOfWeek`, then upserts each day inside one transaction.
+   *
+   * @param roomTypeId - Room type UUID.
+   * @param startDate - Inclusive window start date.
+   * @param endDate - Inclusive window end date.
+   * @param updates - Partial inventory fields to apply.
+   * @param daysOfWeek - Optional weekday filter (`0` Sunday through `6` Saturday).
+   * @returns Number of upsert operations executed.
+   * @remarks Complexity: O(D) application work and O(D) DB writes, where `D` is selected days.
+   */
   async bulkUpdateInventory(
     roomTypeId: string,
     startDate: Date,
@@ -369,6 +484,16 @@ export class RoomTypesRepository {
     return results.length;
   }
 
+  /**
+   * Retrieves a room type inventory row for a date, creating defaults if missing.
+   *
+   * Missing rows are initialized with current room count, zero sold/out-of-order/blocked,
+   * and unrestricted sales flags (`stopSell`, closed-to-arrival/departure set to `false`).
+   *
+   * @param roomTypeId - Room type UUID.
+   * @param date - Business date to fetch or initialize.
+   * @returns Existing inventory row or a newly created default row.
+   */
   async getOrCreateInventory(
     roomTypeId: string,
     date: Date
@@ -408,6 +533,12 @@ export class RoomTypesRepository {
   // STATS & COUNTS
   // ============================================================================
 
+  /**
+   * Aggregates room operational counts for a room type.
+   *
+   * @param roomTypeId - Room type UUID.
+   * @returns Total, available, occupied, and out-of-order room counts.
+   */
   async getRoomCounts(roomTypeId: string): Promise<{
     total: number;
     available: number;
@@ -446,6 +577,12 @@ export class RoomTypesRepository {
     };
   }
 
+  /**
+   * Counts active physical rooms linked to a room type.
+   *
+   * @param roomTypeId - Room type UUID.
+   * @returns Number of non-deleted rooms.
+   */
   async getDefaultTotalRooms(roomTypeId: string): Promise<number> {
     return prisma.room.count({
       where: {
@@ -455,6 +592,17 @@ export class RoomTypesRepository {
     });
   }
 
+  /**
+   * Counts sold rooms for one room type on a specific business date.
+   *
+   * The method treats stays as overlapping when reservation check-in is on/before the
+   * day end and check-out is after day start, matching overnight occupancy semantics.
+   *
+   * @param roomTypeId - Room type UUID.
+   * @param date - Business date used to build day start/end boundaries.
+   * @returns Number of reservation-room rows considered sold for that date.
+   * @remarks Complexity: O(1) application work plus one aggregate DB count query.
+   */
   async getSoldCount(roomTypeId: string, date: Date): Promise<number> {
     // Count reservations for this room type on this date
     const startOfDay = new Date(date);
@@ -479,6 +627,13 @@ export class RoomTypesRepository {
   // VALIDATION
   // ============================================================================
 
+  /**
+   * Checks whether a room type exists in a hotel and is not soft-deleted.
+   *
+   * @param hotelId - Hotel UUID.
+   * @param roomTypeId - Room type UUID.
+   * @returns `true` when the room type exists in the hotel.
+   */
   async existsInHotel(hotelId: string, roomTypeId: string): Promise<boolean> {
     const count = await prisma.roomType.count({
       where: {
@@ -490,6 +645,12 @@ export class RoomTypesRepository {
     return count > 0;
   }
 
+  /**
+   * Counts active room types for a hotel.
+   *
+   * @param hotelId - Hotel UUID.
+   * @returns Number of non-deleted room types in the hotel.
+   */
   async countByHotel(hotelId: string): Promise<number> {
     return prisma.roomType.count({
       where: {
@@ -499,6 +660,12 @@ export class RoomTypesRepository {
     });
   }
 
+  /**
+   * Checks whether a room type has active or future reservations.
+   *
+   * @param roomTypeId - Room type UUID.
+   * @returns `true` when at least one reservation is `CONFIRMED` or `CHECKED_IN` and not checked out.
+   */
   async hasActiveReservations(roomTypeId: string): Promise<boolean> {
     const count = await prisma.reservationRoom.count({
       where: {
@@ -512,6 +679,12 @@ export class RoomTypesRepository {
     return count > 0;
   }
 
+  /**
+   * Checks whether any active rooms are linked to a room type.
+   *
+   * @param roomTypeId - Room type UUID.
+   * @returns `true` when one or more non-deleted rooms reference the room type.
+   */
   async hasRooms(roomTypeId: string): Promise<boolean> {
     const count = await prisma.room.count({
       where: {
