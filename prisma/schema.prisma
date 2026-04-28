@@ -528,7 +528,7 @@ enum POSOrderStatus {
 
 model Organization {
   id   String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  code String @db.VarChar(50)
+  code String @unique @db.VarChar(50)
   name String @db.VarChar(255)
 
   // Legal & Contact
@@ -581,7 +581,6 @@ model Organization {
   communications         Communication[]
   communicationTemplates CommunicationTemplate[]
 
-  @@unique([code], name: "uq_org_code", map: "uq_org_code") // Partial index handled in migration
   @@index([subscriptionStatus], name: "idx_org_subscription_status")
   @@index([createdAt(sort: Desc)], name: "idx_org_created_at")
   @@map("organizations")

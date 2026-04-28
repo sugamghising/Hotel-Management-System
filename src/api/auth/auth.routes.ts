@@ -6,6 +6,7 @@ import {
   ChangePasswordSchema,
   ForgotPasswordSchema,
   LoginSchema,
+  LogoutSchema,
   RefreshTokenSchema,
   RegisterSchema,
   ResetPasswordSchema,
@@ -25,7 +26,7 @@ const loginRateLimiter = createRateLimiter({
 //Routes
 router.post('/login', loginRateLimiter, validate({ body: LoginSchema }), controller.login);
 router.post('/register', validate({ body: RegisterSchema }), controller.register);
-router.post('/logout', controller.logout);
+router.post('/logout', validate({ body: LogoutSchema }), controller.logout);
 
 router.post('/refresh', validate({ body: RefreshTokenSchema }), controller.refresh);
 

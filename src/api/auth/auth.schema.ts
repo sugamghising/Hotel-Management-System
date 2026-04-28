@@ -66,6 +66,10 @@ export const RefreshTokenSchema = z.object({
   deviceFingerprint: z.string().optional(),
 });
 
+export const LogoutSchema = z.object({
+  refreshToken: z.string().min(1, 'Refresh token is required'),
+});
+
 export const ChangePasswordSchema = z.object({
   currentPassword: z.string().min(1, 'Current password is required'),
   newPassword: PasswordSchema,

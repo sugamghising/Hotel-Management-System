@@ -32,6 +32,7 @@ import type {
   User,
   UserWithRoles,
 } from './auth.types';
+import { parseCompositeRefreshToken } from './refresh-token.util';
 
 export class AuthService {
   private authRepo: AuthRepository;
@@ -257,12 +258,12 @@ export class AuthService {
    * @throws {UnauthorizedError} Thrown for malformed, invalid, missing, expired, or mismatched refresh tokens.
    */
   async refreshToken(refreshToken: string, deviceFingerprint?: string): Promise<TokenPair> {
-    //split composite token
-    const [jwtPart, opaquePart] = refreshToken.split('.');
-    if (!jwtPart || !opaquePart) {
+    const parsedToken = parseCompositeRefreshToken(refreshToken);
+    if (!parsedToken) {
       logger.warn('Invalid refresh token format.');
       throw new UnauthorizedError('Invalid refresh token format.');
     }
+    const { jwtPart, opaquePart } = parsedToken;
 
     let payload: RefreshTokenPayload;
     try {
@@ -331,10 +332,10 @@ export class AuthService {
    * @returns Resolves after best-effort revocation; no error is thrown for unknown tokens.
    */
   async logout(refreshToken: string): Promise<void> {
-    const [, opaquePart] = refreshToken.split('.');
-    if (!opaquePart) return;
+    const parsedToken = parseCompositeRefreshToken(refreshToken);
+    if (!parsedToken) return;
 
-    const tokenHash = hashToken(opaquePart);
+    const tokenHash = hashToken(parsedToken.opaquePart);
     const storedToken = await this.authRepo.findRefreshTokenByHash(tokenHash);
 
     if (storedToken) {
@@ -353,9 +354,9 @@ export class AuthService {
     let exceptId: string | undefined;
 
     if (exceptCurrentToken) {
-      const [, opaquePart] = exceptCurrentToken.split('.');
-      if (opaquePart) {
-        const tokenHash = hashToken(opaquePart);
+      const parsedToken = parseCompositeRefreshToken(exceptCurrentToken);
+      if (parsedToken) {
+        const tokenHash = hashToken(parsedToken.opaquePart);
         const stored = await this.authRepo.findRefreshTokenByHash(tokenHash);
         exceptId = stored?.id;
       }
