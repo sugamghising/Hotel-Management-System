@@ -16,6 +16,7 @@ import {
   hashToken,
   verifyPassword,
 } from '../../core/utils/crypto';
+import { emailProvider } from '../communications/providers/email.provider';
 import { type OrganizationService, organizationService } from '../organizations';
 import { type AuthRepository, authRepository } from './auth.repository';
 import type { LoginInput } from './auth.schema';
@@ -32,6 +33,7 @@ import type {
   User,
   UserWithRoles,
 } from './auth.types';
+import { buildPasswordResetEmailTemplate } from './password-reset-email.template';
 import { parseCompositeRefreshToken } from './refresh-token.util';
 
 export class AuthService {
@@ -428,7 +430,22 @@ export class AuthService {
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
 
     await this.authRepo.setPasswordResetToken(user.id, resetHash, expiresAt);
-    // TODO: Send email with resetToken
+
+    const resetLink = this.buildPasswordResetLink(resetToken);
+    const emailTemplate = buildPasswordResetEmailTemplate({
+      firstName: user.firstName,
+      resetLink,
+      expiresInMinutes: 60,
+    });
+
+    await emailProvider.send({
+      to: user.email,
+      subject: emailTemplate.subject,
+      content: emailTemplate.html,
+      metadata: {
+        text: emailTemplate.text,
+      },
+    });
 
     logger.info(`Password reset requested: ${user.email}`, { userId: user.id });
   }
@@ -624,6 +641,18 @@ export class AuthService {
     };
 
     return jwt.sign(payload, config.jwt.accessSecret);
+  }
+
+  /**
+   * Builds the password reset link by attaching the raw token as a query param.
+   *
+   * @param token - Raw reset token sent to the user.
+   * @returns Absolute password-reset URL for frontend flow.
+   */
+  private buildPasswordResetLink(token: string): string {
+    const resetUrl = new URL(config.auth.passwordResetUrlBase);
+    resetUrl.searchParams.set('token', token);
+    return resetUrl.toString();
   }
 
   /**

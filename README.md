@@ -264,6 +264,18 @@ Full reference lives in `.env.example`. Key settings are below.
 | `JWT_REFRESH_SECRET` | Refresh token signing secret (min 32 chars) |
 | `ENCRYPTION_KEY` | Application encryption key (min 32 chars) |
 
+### SendGrid email configuration
+
+| Variable | Default |
+| --- | --- |
+| `SENDGRID_API_KEY` | _(optional)_ |
+| `SENDGRID_FROM_EMAIL` | _(optional)_ |
+| `SENDGRID_WEBHOOK_SECRET` | _(optional)_ |
+
+Email provider behavior:
+- In **production**, missing `SENDGRID_API_KEY` or `SENDGRID_FROM_EMAIL` causes email sends to fail fast.
+- In **development/test**, missing SendGrid config falls back to stub/log email sending.
+
 ### Core app configuration
 
 | Variable | Default |
@@ -294,6 +306,7 @@ Full reference lives in `.env.example`. Key settings are below.
 | --- | --- |
 | `JWT_ACCESS_EXPIRY` | `15m` |
 | `JWT_REFRESH_EXPIRY` | `7d` |
+| `PASSWORD_RESET_URL_BASE` | `http://localhost:3000/reset-password` |
 | `SUPER_ADMIN_EMAIL` | `admin@hms.local` |
 | `SUPER_ADMIN_PASSWORD` | `SuperAdmin123!@#` |
 | `SYSTEM_USER_ID` | `00000000-0000-0000-0000-000000000000` |

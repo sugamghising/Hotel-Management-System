@@ -39,6 +39,16 @@ export const config = {
     refreshExpiry: env.JWT_REFRESH_EXPIRY,
   },
 
+  auth: {
+    passwordResetUrlBase: env.PASSWORD_RESET_URL_BASE,
+  },
+
+  sendgrid: {
+    apiKey: env.SENDGRID_API_KEY,
+    fromEmail: env.SENDGRID_FROM_EMAIL,
+    webhookSecret: env.SENDGRID_WEBHOOK_SECRET,
+  },
+
   system: {
     userId: env.SYSTEM_USER_ID,
   },
