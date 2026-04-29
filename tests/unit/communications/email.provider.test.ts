@@ -1,14 +1,18 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
-  setApiKey: vi.fn(),
-  send: vi.fn(),
+  brevoClientCtor: vi.fn(),
+  brevoSend: vi.fn(),
 }));
 
-vi.mock('@sendgrid/mail', () => ({
-  default: {
-    setApiKey: mocks.setApiKey,
-    send: mocks.send,
+vi.mock('@getbrevo/brevo', () => ({
+  BrevoClient: class {
+    transactionalEmails = {
+      sendTransacEmail: (payload: unknown): Promise<unknown> => mocks.brevoSend(payload),
+    };
+    constructor(config: unknown) {
+      mocks.brevoClientCtor(config);
+    }
   },
 }));
 
@@ -24,16 +28,16 @@ describe('EmailProvider', () => {
       process.env['NODE_ENV'] = originalNodeEnv;
     }
 
-    mocks.setApiKey.mockReset();
-    mocks.send.mockReset();
+    mocks.brevoClientCtor.mockReset();
+    mocks.brevoSend.mockReset();
   });
 
-  it('uses SendGrid when API key and from address are configured', async () => {
+  it('uses Brevo when API key and from address are configured', async () => {
     process.env['NODE_ENV'] = 'development';
-    mocks.send.mockResolvedValueOnce([{ headers: { 'x-message-id': 'sg_message_123' } }, {}]);
+    mocks.brevoSend.mockResolvedValueOnce({ messageId: 'brevo_message_123' });
 
     const provider = new EmailProvider({
-      apiKey: 'SG.xxxxxx',
+      apiKey: 'brevo_api_key',
       fromAddress: 'noreply@hotel.com',
       sandbox: false,
     });
@@ -44,12 +48,14 @@ describe('EmailProvider', () => {
       content: '<p>Welcome</p>',
     });
 
-    expect(mocks.setApiKey).toHaveBeenCalledWith('SG.xxxxxx');
-    expect(mocks.send).toHaveBeenCalledTimes(1);
-    expect(externalId).toBe('sg_message_123');
+    expect(mocks.brevoClientCtor).toHaveBeenCalledWith(
+      expect.objectContaining({ apiKey: 'brevo_api_key' })
+    );
+    expect(mocks.brevoSend).toHaveBeenCalledTimes(1);
+    expect(externalId).toBe('brevo_message_123');
   });
 
-  it('falls back to stub mode in development when SendGrid config is missing', async () => {
+  it('falls back to stub mode in development when Brevo config is missing', async () => {
     process.env['NODE_ENV'] = 'development';
 
     const provider = new EmailProvider({ sandbox: true });
@@ -61,10 +67,10 @@ describe('EmailProvider', () => {
     });
 
     expect(externalId.startsWith('email_stub_')).toBe(true);
-    expect(mocks.send).not.toHaveBeenCalled();
+    expect(mocks.brevoSend).not.toHaveBeenCalled();
   });
 
-  it('throws in production when SendGrid config is missing', async () => {
+  it('throws in production when Brevo config is missing', async () => {
     process.env['NODE_ENV'] = 'production';
 
     const provider = new EmailProvider({});
@@ -75,6 +81,6 @@ describe('EmailProvider', () => {
         subject: 'Should fail',
         content: 'Missing config',
       })
-    ).rejects.toThrow('SendGrid configuration is required in production');
+    ).rejects.toThrow('Brevo configuration is required in production');
   });
 });

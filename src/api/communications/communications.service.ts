@@ -964,7 +964,7 @@ export class CommunicationsService {
       req.headers['x-signature'] ??
       req.headers['x-provider-signature'] ??
       req.headers['x-twilio-signature'] ??
-      req.headers['x-sendgrid-signature'];
+      req.headers['x-brevo-signature'];
 
     const signature = Array.isArray(signatureHeader)
       ? (signatureHeader[0] ?? '')

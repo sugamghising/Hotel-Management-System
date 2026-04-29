@@ -28,7 +28,6 @@ describe('AuthService forgotPassword email flow', () => {
   let orgService: Pick<OrganizationService, 'findByCode'>;
 
   beforeEach(() => {
-    mocks.generateRandomToken.mockResolvedValue?.(undefined);
     mocks.generateRandomToken.mockReturnValue('raw-reset-token');
     mocks.hashToken.mockReturnValue('hashed-reset-token');
     mocks.emailSend.mockResolvedValue('email_external_id');

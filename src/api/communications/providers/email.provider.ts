@@ -1,11 +1,11 @@
-import sgMail, { type MailDataRequired } from '@sendgrid/mail';
+import { BrevoClient } from '@getbrevo/brevo';
 import { logger } from '../../../core';
 import { CommunicationChannel } from '../../../generated/prisma';
 import type { ProviderPayload } from '../communications.types';
 import type { ICommunicationProvider, ProviderConfig } from './provider.interface';
 
 /**
- * Implements email delivery with SendGrid and development/test stub fallback.
+ * Implements email delivery with Brevo and development/test stub fallback.
  */
 export class EmailProvider implements ICommunicationProvider {
   readonly channel = CommunicationChannel.EMAIL;
@@ -21,11 +21,11 @@ export class EmailProvider implements ICommunicationProvider {
   }
 
   async send(payload: ProviderPayload): Promise<string> {
-    if (!this.hasRequiredSendGridConfig()) {
+    if (!this.hasRequiredBrevoConfig()) {
       const runtimeEnv = process.env['NODE_ENV'] ?? 'development';
       if (runtimeEnv === 'production') {
         throw new Error(
-          'SendGrid configuration is required in production. Set SENDGRID_API_KEY and SENDGRID_FROM_EMAIL.'
+          'Brevo configuration is required in production. Set BREVO_API_KEY and BREVO_FROM_EMAIL.'
         );
       }
       return this.sendStub(payload);
@@ -34,34 +34,29 @@ export class EmailProvider implements ICommunicationProvider {
     const apiKey = this.config.apiKey;
     const configuredFrom = this.config.fromAddress;
     if (!apiKey || !configuredFrom) {
-      throw new Error('SendGrid configuration unexpectedly missing');
+      throw new Error('Brevo configuration unexpectedly missing');
     }
 
     const fromAddress = payload.from ?? configuredFrom;
-    const message: MailDataRequired = {
-      to: payload.to,
-      from: fromAddress,
-      subject: payload.subject ?? 'Hotel communication',
-      text: this.toPlainText(payload.content),
-      html: payload.content,
-      ...(this.config.sandbox
-        ? {
-            mailSettings: {
-              sandboxMode: {
-                enable: true,
-              },
-            },
-          }
-        : {}),
-    };
-
-    sgMail.setApiKey(apiKey);
+    const brevo = new BrevoClient({ apiKey });
 
     try {
-      const [response] = await sgMail.send(message);
-      const externalId = this.extractMessageId(response) ?? this.generateExternalId('email_sg');
+      const response = await brevo.transactionalEmails.sendTransacEmail({
+        sender: {
+          email: fromAddress,
+        },
+        to: [
+          {
+            email: payload.to,
+          },
+        ],
+        subject: payload.subject ?? 'Hotel communication',
+        htmlContent: payload.content,
+        textContent: this.toPlainText(payload.content),
+      });
+      const externalId = this.extractMessageId(response) ?? this.generateExternalId('email_brevo');
 
-      logger.info('📧 [SENDGRID] Email sent', {
+      logger.info('📧 [BREVO] Email sent', {
         to: payload.to,
         subject: payload.subject,
         from: fromAddress,
@@ -72,19 +67,19 @@ export class EmailProvider implements ICommunicationProvider {
       return externalId;
     } catch (error) {
       const providerErrorMessage = this.extractErrorMessage(error);
-      logger.error('📧 [SENDGRID] Failed to send email', {
+      logger.error('📧 [BREVO] Failed to send email', {
         to: payload.to,
         subject: payload.subject,
         error: providerErrorMessage,
       });
-      throw new Error(`SendGrid delivery failed: ${providerErrorMessage}`);
+      throw new Error(`Brevo delivery failed: ${providerErrorMessage}`);
     }
   }
 
   private async sendStub(payload: ProviderPayload): Promise<string> {
     const externalId = this.generateExternalId('email_stub');
 
-    logger.info('📧 [EMAIL STUB] SendGrid config missing; using stub send', {
+    logger.info('📧 [EMAIL STUB] Brevo config missing; using stub send', {
       to: payload.to,
       subject: payload.subject,
       from: payload.from ?? this.config.fromAddress ?? 'noreply@hotel.com',
@@ -112,16 +107,16 @@ export class EmailProvider implements ICommunicationProvider {
     }
 
     logger.warn(
-      '📧 [SENDGRID] Webhook signature verification is not implemented; rejecting webhook in non-sandbox mode'
+      '📧 [BREVO] Webhook signature verification is not implemented; rejecting webhook in non-sandbox mode'
     );
     return false;
   }
 
-  private hasRequiredSendGridConfig(): boolean {
+  private hasRequiredBrevoConfig(): boolean {
     return Boolean(this.config.apiKey && this.config.fromAddress);
   }
 
-  private generateExternalId(prefix: 'email_stub' | 'email_sg'): string {
+  private generateExternalId(prefix: 'email_stub' | 'email_brevo'): string {
     return `${prefix}_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
   }
 
@@ -131,29 +126,31 @@ export class EmailProvider implements ICommunicationProvider {
     }
 
     const responseLike = response as {
-      headers?: Record<string, unknown> | { get?: (name: string) => string | null };
+      messageId?: unknown;
+      data?: {
+        messageId?: unknown;
+      };
+      body?: {
+        messageId?: unknown;
+      };
     };
-    const { headers } = responseLike;
 
-    if (!headers) {
-      return null;
+    if (typeof responseLike.messageId === 'string' && responseLike.messageId.length > 0) {
+      return responseLike.messageId;
     }
 
-    if ('get' in headers && typeof headers.get === 'function') {
-      const value = headers.get('x-message-id');
-      return typeof value === 'string' && value.length > 0 ? value : null;
+    if (
+      typeof responseLike.data?.messageId === 'string' &&
+      responseLike.data.messageId.length > 0
+    ) {
+      return responseLike.data.messageId;
     }
 
-    if (typeof headers === 'object') {
-      const headerRecord = headers as Record<string, unknown>;
-      const candidate = headerRecord['x-message-id'] ?? headerRecord['X-Message-Id'];
-      if (typeof candidate === 'string') {
-        return candidate;
-      }
-      if (Array.isArray(candidate)) {
-        const first = candidate[0];
-        return typeof first === 'string' ? first : null;
-      }
+    if (
+      typeof responseLike.body?.messageId === 'string' &&
+      responseLike.body.messageId.length > 0
+    ) {
+      return responseLike.body.messageId;
     }
 
     return null;
@@ -183,12 +180,10 @@ const runtimeEnv = process.env['NODE_ENV'] ?? 'development';
 
 const emailProviderConfig: ProviderConfig = {
   sandbox: runtimeEnv !== 'production',
-  ...(process.env['SENDGRID_API_KEY'] ? { apiKey: process.env['SENDGRID_API_KEY'] } : {}),
-  ...(process.env['SENDGRID_FROM_EMAIL']
-    ? { fromAddress: process.env['SENDGRID_FROM_EMAIL'] }
-    : {}),
-  ...(process.env['SENDGRID_WEBHOOK_SECRET']
-    ? { webhookSecret: process.env['SENDGRID_WEBHOOK_SECRET'] }
+  ...(process.env['BREVO_API_KEY'] ? { apiKey: process.env['BREVO_API_KEY'] } : {}),
+  ...(process.env['BREVO_FROM_EMAIL'] ? { fromAddress: process.env['BREVO_FROM_EMAIL'] } : {}),
+  ...(process.env['BREVO_WEBHOOK_SECRET']
+    ? { webhookSecret: process.env['BREVO_WEBHOOK_SECRET'] }
     : {}),
 };
 

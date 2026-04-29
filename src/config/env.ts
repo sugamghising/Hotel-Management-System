@@ -52,10 +52,10 @@ const envSchema = z.object({
   // Encryption
   ENCRYPTION_KEY: z.string().min(32, 'ENCRYPTION_KEY must be at least 32 characters'),
 
-  // SendGrid (optional in development/test, required in production for real email delivery)
-  SENDGRID_API_KEY: z.string().optional(),
-  SENDGRID_FROM_EMAIL: z.string().email('Invalid SENDGRID_FROM_EMAIL').optional(),
-  SENDGRID_WEBHOOK_SECRET: z.string().optional(),
+  // Brevo (optional in development/test, required in production for real email delivery)
+  BREVO_API_KEY: z.string().optional(),
+  BREVO_FROM_EMAIL: z.string().email('Invalid BREVO_FROM_EMAIL').optional(),
+  BREVO_WEBHOOK_SECRET: z.string().optional(),
 
   // Redis (optional)
   REDIS_HOST: z.string().default('localhost'),

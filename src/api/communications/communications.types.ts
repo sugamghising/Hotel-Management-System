@@ -335,7 +335,7 @@ export interface WebhookPayload {
 }
 
 export interface EmailWebhookPayload extends WebhookPayload {
-  provider: 'sendgrid' | 'ses' | 'mailgun' | 'postmark';
+  provider: 'brevo' | 'ses' | 'mailgun' | 'postmark';
   email?: string;
   reason?: string;
 }

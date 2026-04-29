@@ -43,10 +43,10 @@ export const config = {
     passwordResetUrlBase: env.PASSWORD_RESET_URL_BASE,
   },
 
-  sendgrid: {
-    apiKey: env.SENDGRID_API_KEY,
-    fromEmail: env.SENDGRID_FROM_EMAIL,
-    webhookSecret: env.SENDGRID_WEBHOOK_SECRET,
+  brevo: {
+    apiKey: env.BREVO_API_KEY,
+    fromEmail: env.BREVO_FROM_EMAIL,
+    webhookSecret: env.BREVO_WEBHOOK_SECRET,
   },
 
   system: {
