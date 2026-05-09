@@ -257,7 +257,7 @@ export const AnalyticsQuerySchema = z.object({
 export const EmailWebhookSchema = z
   .object({
     // Generic schema - actual structure depends on provider
-    // Providers: Brevo, SES, Mailgun, Postmark, etc.
+    // Providers: Resend, SES, Mailgun, Postmark, etc.
     externalId: z.string().optional(),
     event: z.string().optional(),
     timestamp: z.unknown().optional(),

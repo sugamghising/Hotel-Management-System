@@ -1,11 +1,11 @@
-import { BrevoClient } from '@getbrevo/brevo';
+import { Resend } from 'resend';
 import { logger } from '../../../core';
 import { CommunicationChannel } from '../../../generated/prisma';
 import type { ProviderPayload } from '../communications.types';
 import type { ICommunicationProvider, ProviderConfig } from './provider.interface';
 
 /**
- * Implements email delivery with Brevo and development/test stub fallback.
+ * Implements email delivery with Resend and development/test stub fallback.
  */
 export class EmailProvider implements ICommunicationProvider {
   readonly channel = CommunicationChannel.EMAIL;
@@ -21,11 +21,11 @@ export class EmailProvider implements ICommunicationProvider {
   }
 
   async send(payload: ProviderPayload): Promise<string> {
-    if (!this.hasRequiredBrevoConfig()) {
+    if (!this.hasRequiredResendConfig()) {
       const runtimeEnv = process.env['NODE_ENV'] ?? 'development';
       if (runtimeEnv === 'production') {
         throw new Error(
-          'Brevo configuration is required in production. Set BREVO_API_KEY and BREVO_FROM_EMAIL.'
+          'Resend configuration is required in production. Set RESEND_API_KEY and RESEND_FROM_EMAIL.'
         );
       }
       return this.sendStub(payload);
@@ -34,29 +34,28 @@ export class EmailProvider implements ICommunicationProvider {
     const apiKey = this.config.apiKey;
     const configuredFrom = this.config.fromAddress;
     if (!apiKey || !configuredFrom) {
-      throw new Error('Brevo configuration unexpectedly missing');
+      throw new Error('Resend configuration unexpectedly missing');
     }
 
     const fromAddress = payload.from ?? configuredFrom;
-    const brevo = new BrevoClient({ apiKey });
+    const resend = new Resend(apiKey);
 
     try {
-      const response = await brevo.transactionalEmails.sendTransacEmail({
-        sender: {
-          email: fromAddress,
-        },
-        to: [
-          {
-            email: payload.to,
-          },
-        ],
+      const response = await resend.emails.send({
+        from: fromAddress,
+        to: payload.to,
         subject: payload.subject ?? 'Hotel communication',
-        htmlContent: payload.content,
-        textContent: this.toPlainText(payload.content),
+        html: payload.content,
+        text: this.resolveTextContent(payload),
       });
-      const externalId = this.extractMessageId(response) ?? this.generateExternalId('email_brevo');
+      const resendError = this.extractResendError(response);
+      if (resendError) {
+        throw new Error(resendError);
+      }
 
-      logger.info('📧 [BREVO] Email sent', {
+      const externalId = this.extractMessageId(response) ?? this.generateExternalId('email_resend');
+
+      logger.info('📧 [RESEND] Email sent', {
         to: payload.to,
         subject: payload.subject,
         from: fromAddress,
@@ -67,19 +66,19 @@ export class EmailProvider implements ICommunicationProvider {
       return externalId;
     } catch (error) {
       const providerErrorMessage = this.extractErrorMessage(error);
-      logger.error('📧 [BREVO] Failed to send email', {
+      logger.error('📧 [RESEND] Failed to send email', {
         to: payload.to,
         subject: payload.subject,
         error: providerErrorMessage,
       });
-      throw new Error(`Brevo delivery failed: ${providerErrorMessage}`);
+      throw new Error(`Resend delivery failed: ${providerErrorMessage}`);
     }
   }
 
   private async sendStub(payload: ProviderPayload): Promise<string> {
     const externalId = this.generateExternalId('email_stub');
 
-    logger.info('📧 [EMAIL STUB] Brevo config missing; using stub send', {
+    logger.info('📧 [EMAIL STUB] Resend config missing; using stub send', {
       to: payload.to,
       subject: payload.subject,
       from: payload.from ?? this.config.fromAddress ?? 'noreply@hotel.com',
@@ -107,16 +106,16 @@ export class EmailProvider implements ICommunicationProvider {
     }
 
     logger.warn(
-      '📧 [BREVO] Webhook signature verification is not implemented; rejecting webhook in non-sandbox mode'
+      '📧 [RESEND] Webhook signature verification is not implemented; rejecting webhook in non-sandbox mode'
     );
     return false;
   }
 
-  private hasRequiredBrevoConfig(): boolean {
+  private hasRequiredResendConfig(): boolean {
     return Boolean(this.config.apiKey && this.config.fromAddress);
   }
 
-  private generateExternalId(prefix: 'email_stub' | 'email_brevo'): string {
+  private generateExternalId(prefix: 'email_stub' | 'email_resend'): string {
     return `${prefix}_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
   }
 
@@ -126,17 +125,28 @@ export class EmailProvider implements ICommunicationProvider {
     }
 
     const responseLike = response as {
+      id?: unknown;
       messageId?: unknown;
       data?: {
+        id?: unknown;
         messageId?: unknown;
       };
       body?: {
+        id?: unknown;
         messageId?: unknown;
       };
     };
 
+    if (typeof responseLike.id === 'string' && responseLike.id.length > 0) {
+      return responseLike.id;
+    }
+
     if (typeof responseLike.messageId === 'string' && responseLike.messageId.length > 0) {
       return responseLike.messageId;
+    }
+
+    if (typeof responseLike.data?.id === 'string' && responseLike.data.id.length > 0) {
+      return responseLike.data.id;
     }
 
     if (
@@ -156,6 +166,41 @@ export class EmailProvider implements ICommunicationProvider {
     return null;
   }
 
+  private extractResendError(response: unknown): string | null {
+    if (!response || typeof response !== 'object') {
+      return null;
+    }
+
+    const responseLike = response as {
+      error?: unknown;
+    };
+    const error = responseLike.error;
+
+    if (!error) {
+      return null;
+    }
+
+    if (typeof error === 'string') {
+      return error;
+    }
+
+    if (error instanceof Error) {
+      return error.message;
+    }
+
+    if (typeof error === 'object') {
+      const errorLike = error as { message?: unknown; name?: unknown };
+      if (typeof errorLike.message === 'string' && errorLike.message.length > 0) {
+        return errorLike.message;
+      }
+      if (typeof errorLike.name === 'string' && errorLike.name.length > 0) {
+        return errorLike.name;
+      }
+    }
+
+    return 'Unknown provider error';
+  }
+
   private extractErrorMessage(error: unknown): string {
     if (error instanceof Error) {
       return error.message;
@@ -166,6 +211,14 @@ export class EmailProvider implements ICommunicationProvider {
     }
 
     return 'Unknown provider error';
+  }
+
+  private resolveTextContent(payload: ProviderPayload): string {
+    const metadataText = payload.metadata?.['text'];
+    if (typeof metadataText === 'string' && metadataText.trim().length > 0) {
+      return metadataText;
+    }
+    return this.toPlainText(payload.content);
   }
 
   private toPlainText(content: string): string {
@@ -180,10 +233,10 @@ const runtimeEnv = process.env['NODE_ENV'] ?? 'development';
 
 const emailProviderConfig: ProviderConfig = {
   sandbox: runtimeEnv !== 'production',
-  ...(process.env['BREVO_API_KEY'] ? { apiKey: process.env['BREVO_API_KEY'] } : {}),
-  ...(process.env['BREVO_FROM_EMAIL'] ? { fromAddress: process.env['BREVO_FROM_EMAIL'] } : {}),
-  ...(process.env['BREVO_WEBHOOK_SECRET']
-    ? { webhookSecret: process.env['BREVO_WEBHOOK_SECRET'] }
+  ...(process.env['RESEND_API_KEY'] ? { apiKey: process.env['RESEND_API_KEY'] } : {}),
+  ...(process.env['RESEND_FROM_EMAIL'] ? { fromAddress: process.env['RESEND_FROM_EMAIL'] } : {}),
+  ...(process.env['RESEND_WEBHOOK_SECRET']
+    ? { webhookSecret: process.env['RESEND_WEBHOOK_SECRET'] }
     : {}),
 };
 

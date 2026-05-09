@@ -1,3 +1,4 @@
+import { NotFoundError } from '../../core/errors';
 import { prisma } from '../../database/prisma';
 import type { Prisma, UserRole } from '../../generated/prisma';
 import type { UserCreateInput, UserUpdateInput } from '../auth/auth.repository';
@@ -202,17 +203,45 @@ export class UserRepository {
   }
 
   /**
+   * Finds a user-role assignment by identifier.
+   *
+   * @param roleAssignmentId - User-role assignment UUID.
+   * @returns Assignment identifier and organization scope, or `null` if missing.
+   */
+  async findRoleAssignmentById(
+    roleAssignmentId: string
+  ): Promise<{ id: string; organizationId: string } | null> {
+    return prisma.userRole.findUnique({
+      where: { id: roleAssignmentId },
+      select: { id: true, organizationId: true },
+    });
+  }
+
+  /**
    * Removes a user-role assignment by its identifier.
    *
    * @param roleAssignmentId - User-role assignment UUID.
    * @returns Resolves when deletion completes.
    */
   async removeRole(roleAssignmentId: string): Promise<void> {
-    await prisma.userRole.delete({
-      where: {
-        id: roleAssignmentId,
-      },
-    });
+    try {
+      await prisma.userRole.delete({
+        where: {
+          id: roleAssignmentId,
+        },
+      });
+    } catch (error: unknown) {
+      const code =
+        error && typeof error === 'object' && 'code' in error
+          ? (error as { code?: string }).code
+          : undefined;
+
+      if (code === 'P2025') {
+        throw new NotFoundError(`Role assignment '${roleAssignmentId}' not found`);
+      }
+
+      throw error;
+    }
   }
 
   /**

@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import { BadRequestError, ConflictError, NotFoundError, logger } from '../../core';
 import { hashPassword } from '../../core/utils/crypto';
 import type { Prisma } from '../../generated/prisma';
+import { type AuthRepository, authRepository } from '../auth/auth.repository';
 import { type OrganizationService, organizationService } from '../organizations';
 import { type UserRepository, userRepository } from './user.repository';
 import type { AssignRoleInput, CreateUserInput } from './user.schema';
@@ -30,19 +31,23 @@ export function generateTemporaryPassword(): string {
 export class UserService {
   private userRepo: UserRepository;
   private orgService: OrganizationService;
+  private authRepo: AuthRepository;
 
   /**
    * Creates a user service with repository and organization-service dependencies.
    *
    * @param userRepo - Repository used for user persistence operations.
    * @param orgService - Service used for organization-level validations.
+   * @param authRepo - Repository used for token/session revocation operations.
    */
   constructor(
     userRepo: UserRepository = userRepository,
-    orgService: OrganizationService = organizationService
+    orgService: OrganizationService = organizationService,
+    authRepo: AuthRepository = authRepository
   ) {
     this.userRepo = userRepo;
     this.orgService = orgService;
+    this.authRepo = authRepo;
   }
 
   // ============================================================================
@@ -324,8 +329,8 @@ export class UserService {
 
     await this.userRepo.softDelete(id);
 
-    // Revoke all sessions
-    // Note: This would need to be done via auth repository or service
+    // Revoke all active refresh tokens so deleted users cannot reuse existing sessions.
+    await this.authRepo.revokeAllUserTokens(id);
 
     logger.info(`User deleted: ${user.email}`, { userId: id });
   }
@@ -384,12 +389,20 @@ export class UserService {
    * Removes a user-role assignment.
    *
    * @param roleAssignmentId - User-role assignment UUID.
-   * @param _organizationId - Reserved organization scope parameter.
+   * @param organizationId - Organization UUID scope.
    * @returns Resolves when the assignment is removed.
+   * @throws {NotFoundError} Thrown when the role assignment does not exist.
+   * @throws {BadRequestError} Thrown when the role assignment is outside the organization scope.
    */
-  async removeRole(roleAssignmentId: string, _organizationId: string): Promise<void> {
-    // Verify the assignment belongs to this organization
-    // Would need to fetch the assignment first
+  async removeRole(roleAssignmentId: string, organizationId: string): Promise<void> {
+    const roleAssignment = await this.userRepo.findRoleAssignmentById(roleAssignmentId);
+    if (!roleAssignment) {
+      throw new NotFoundError(`Role assignment '${roleAssignmentId}' not found`);
+    }
+
+    if (roleAssignment.organizationId !== organizationId) {
+      throw new BadRequestError('Role assignment does not belong to the organization.');
+    }
 
     await this.userRepo.removeRole(roleAssignmentId);
 

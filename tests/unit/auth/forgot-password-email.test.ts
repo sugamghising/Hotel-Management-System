@@ -79,6 +79,9 @@ describe('AuthService forgotPassword email flow', () => {
     expect(mocks.emailSend).toHaveBeenCalledWith(
       expect.objectContaining({
         to: user.email,
+        metadata: expect.objectContaining({
+          text: expect.any(String),
+        }),
       })
     );
   });
@@ -114,5 +117,32 @@ describe('AuthService forgotPassword email flow', () => {
 
     expect(authRepo.setPasswordResetToken).not.toHaveBeenCalled();
     expect(mocks.emailSend).not.toHaveBeenCalled();
+  });
+
+  it('does not throw when email provider fails for an existing user', async () => {
+    const user = {
+      id: '00000000-0000-0000-0000-000000000020',
+      organizationId: '00000000-0000-0000-0000-000000000001',
+      email: 'user@example.com',
+      firstName: 'Jane',
+    } as User;
+
+    vi.mocked(orgService.findByCode).mockResolvedValue({
+      id: '00000000-0000-0000-0000-000000000001',
+      code: 'ORG001',
+    } as Awaited<ReturnType<OrganizationService['findByCode']>>);
+    vi.mocked(authRepo.findUserByEmail).mockResolvedValue(user);
+    mocks.emailSend.mockRejectedValueOnce(
+      new Error('Resend delivery failed: Status code: 403 permission_denied')
+    );
+
+    const service = new AuthService(
+      authRepo as unknown as AuthRepository,
+      orgService as unknown as OrganizationService
+    );
+
+    await expect(service.forgotPassword('user@example.com', 'ORG001')).resolves.toBeUndefined();
+    expect(authRepo.setPasswordResetToken).toHaveBeenCalledTimes(1);
+    expect(mocks.emailSend).toHaveBeenCalledTimes(1);
   });
 });

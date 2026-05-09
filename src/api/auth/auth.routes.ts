@@ -4,6 +4,7 @@ import { authMiddleware } from '../../core/middleware/auth';
 import { AuthController } from './auth.controller';
 import {
   ChangePasswordSchema,
+  DisableMfaSchema,
   ForgotPasswordSchema,
   LoginSchema,
   LogoutSchema,
@@ -48,7 +49,7 @@ router.post(
 router.post('/logout-all', controller.logoutAll);
 router.post('/mfa/set-up', controller.setupMfa);
 router.post('/mfa/verify', validate({ body: VerifyMfaSchema }), controller.verifyMfa);
-router.post('/mfa/disable', controller.disableMfa);
+router.post('/mfa/disable', validate({ body: DisableMfaSchema }), controller.disableMfa);
 
 router.get('/me', controller.me);
 

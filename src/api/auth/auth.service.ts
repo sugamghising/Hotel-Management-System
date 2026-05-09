@@ -169,7 +169,10 @@ export class AuthService {
 
     await this.authRepo.recordSuccessfulLogin(user.id, ipAddress);
 
-    logger.info(`User logged in: ${user.email}`, { userId: user.id, orgId: org.id });
+    logger.info(`User logged in: ${user.email}`, {
+      userId: user.id,
+      orgId: org.id,
+    });
 
     return {
       user: this.mapToPublicUser(user),
@@ -238,7 +241,10 @@ export class AuthService {
     });
 
     //TODO: SEND VERIFICATION MAIL
-    logger.info(`User registered: ${user.email}`, { userId: user.id, orgId: input.organizationId });
+    logger.info(`User registered: ${user.email}`, {
+      userId: user.id,
+      orgId: input.organizationId,
+    });
 
     return user;
   }
@@ -285,7 +291,9 @@ export class AuthService {
     const storedToken = await this.authRepo.findRefreshTokenByHash(tokenHash);
 
     if (!storedToken) {
-      logger.warn('Refresh token not found in database', { userId: payload.sub });
+      logger.warn('Refresh token not found in database', {
+        userId: payload.sub,
+      });
       throw new UnauthorizedError('Refresh Token not found or Expired.');
     }
 
@@ -405,7 +413,8 @@ export class AuthService {
    * Creates and stores a password-reset token for a known organization/email pair.
    *
    * The method intentionally returns without error for unknown organizations or
-   * users to avoid account-enumeration leaks.
+   * users to avoid account-enumeration leaks. Email-delivery failures are logged
+   * but not surfaced to the caller for the same reason.
    *
    * @param email - Email address requesting reset.
    * @param organizationCode - Organization code that scopes the user lookup.
@@ -438,14 +447,26 @@ export class AuthService {
       expiresInMinutes: 60,
     });
 
-    await emailProvider.send({
-      to: user.email,
-      subject: emailTemplate.subject,
-      content: emailTemplate.html,
-      metadata: {
-        text: emailTemplate.text,
-      },
-    });
+    try {
+      await emailProvider.send({
+        to: user.email,
+        subject: emailTemplate.subject,
+        content: emailTemplate.html,
+        metadata: {
+          text: emailTemplate.text,
+        },
+        ...(config.resend.fromEmail ? { from: config.resend.fromEmail } : {}),
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.error('Password reset email delivery failed', {
+        userId: user.id,
+        email: user.email,
+        organizationCode,
+        error: errorMessage,
+      });
+      return;
+    }
 
     logger.info(`Password reset requested: ${user.email}`, { userId: user.id });
   }

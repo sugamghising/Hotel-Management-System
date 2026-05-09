@@ -504,7 +504,7 @@ export class CommunicationsController {
     }
 
     // Parse provider-specific payload
-    // This is a generic handler - actual parsing depends on the provider (Brevo, SES, etc.)
+    // This is a generic handler - actual parsing depends on the provider (Resend, SES, etc.)
     const body = req.body as Record<string, unknown>;
 
     // Extract common fields (provider-specific parsing would go here)
@@ -523,7 +523,12 @@ export class CommunicationsController {
 
     if (externalId && event) {
       const statusMap: Record<string, string> = {
-        // Brevo
+        // Resend
+        'email.delivered': 'delivered',
+        'email.opened': 'opened',
+        'email.bounced': 'bounced',
+        'email.complained': 'failed',
+        // Generic
         delivered: 'delivered',
         open: 'opened',
         bounce: 'bounced',

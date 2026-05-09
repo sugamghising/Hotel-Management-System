@@ -43,10 +43,10 @@ export const config = {
     passwordResetUrlBase: env.PASSWORD_RESET_URL_BASE,
   },
 
-  brevo: {
-    apiKey: env.BREVO_API_KEY,
-    fromEmail: env.BREVO_FROM_EMAIL,
-    webhookSecret: env.BREVO_WEBHOOK_SECRET,
+  resend: {
+    apiKey: env.RESEND_API_KEY,
+    fromEmail: env.RESEND_FROM_EMAIL,
+    webhookSecret: env.RESEND_WEBHOOK_SECRET,
   },
 
   system: {

@@ -35,7 +35,6 @@
   },
   "dependencies": {
     "@asteasolutions/zod-to-openapi": "^7.3.4",
-    "@getbrevo/brevo": "^5.0.4",
     "@prisma/adapter-pg": "^7.3.0",
     "@prisma/client": "^7.3.0",
     "bcrypt": "^6.0.0",
@@ -50,6 +49,7 @@
     "jsonwebtoken": "^9.0.3",
     "pg": "^8.18.0",
     "qrcode": "^1.5.4",
+    "resend": "^6.12.2",
     "speakeasy": "^2.0.0",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1",

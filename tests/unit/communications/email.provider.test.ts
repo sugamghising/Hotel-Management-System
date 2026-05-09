@@ -1,17 +1,17 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
-  brevoClientCtor: vi.fn(),
-  brevoSend: vi.fn(),
+  resendCtor: vi.fn(),
+  resendSend: vi.fn(),
 }));
 
-vi.mock('@getbrevo/brevo', () => ({
-  BrevoClient: class {
-    transactionalEmails = {
-      sendTransacEmail: (payload: unknown): Promise<unknown> => mocks.brevoSend(payload),
+vi.mock('resend', () => ({
+  Resend: class {
+    emails = {
+      send: (payload: unknown): Promise<unknown> => mocks.resendSend(payload),
     };
-    constructor(config: unknown) {
-      mocks.brevoClientCtor(config);
+    constructor(apiKey: unknown) {
+      mocks.resendCtor(apiKey);
     }
   },
 }));
@@ -28,16 +28,16 @@ describe('EmailProvider', () => {
       process.env['NODE_ENV'] = originalNodeEnv;
     }
 
-    mocks.brevoClientCtor.mockReset();
-    mocks.brevoSend.mockReset();
+    mocks.resendCtor.mockReset();
+    mocks.resendSend.mockReset();
   });
 
-  it('uses Brevo when API key and from address are configured', async () => {
+  it('uses Resend when API key and from address are configured', async () => {
     process.env['NODE_ENV'] = 'development';
-    mocks.brevoSend.mockResolvedValueOnce({ messageId: 'brevo_message_123' });
+    mocks.resendSend.mockResolvedValueOnce({ data: { id: 'resend_message_123' }, error: null });
 
     const provider = new EmailProvider({
-      apiKey: 'brevo_api_key',
+      apiKey: 'resend_api_key',
       fromAddress: 'noreply@hotel.com',
       sandbox: false,
     });
@@ -48,14 +48,42 @@ describe('EmailProvider', () => {
       content: '<p>Welcome</p>',
     });
 
-    expect(mocks.brevoClientCtor).toHaveBeenCalledWith(
-      expect.objectContaining({ apiKey: 'brevo_api_key' })
-    );
-    expect(mocks.brevoSend).toHaveBeenCalledTimes(1);
-    expect(externalId).toBe('brevo_message_123');
+    expect(mocks.resendCtor).toHaveBeenCalledWith('resend_api_key');
+    expect(mocks.resendSend).toHaveBeenCalledTimes(1);
+    expect(externalId).toBe('resend_message_123');
   });
 
-  it('falls back to stub mode in development when Brevo config is missing', async () => {
+  it('prefers metadata text content when provided', async () => {
+    process.env['NODE_ENV'] = 'development';
+    mocks.resendSend.mockResolvedValueOnce({ data: { id: 'resend_message_456' }, error: null });
+
+    const provider = new EmailProvider({
+      apiKey: 'resend_api_key',
+      fromAddress: 'noreply@hotel.com',
+      sandbox: false,
+    });
+
+    await provider.send({
+      to: 'guest@example.com',
+      subject: 'Reset password',
+      content: '<p>HTML body</p>',
+      metadata: {
+        text: 'Plain text body',
+      },
+    });
+
+    expect(mocks.resendSend).toHaveBeenCalledWith(
+      expect.objectContaining({
+        from: 'noreply@hotel.com',
+        to: 'guest@example.com',
+        subject: 'Reset password',
+        html: '<p>HTML body</p>',
+        text: 'Plain text body',
+      })
+    );
+  });
+
+  it('falls back to stub mode in development when Resend config is missing', async () => {
     process.env['NODE_ENV'] = 'development';
 
     const provider = new EmailProvider({ sandbox: true });
@@ -67,10 +95,10 @@ describe('EmailProvider', () => {
     });
 
     expect(externalId.startsWith('email_stub_')).toBe(true);
-    expect(mocks.brevoSend).not.toHaveBeenCalled();
+    expect(mocks.resendSend).not.toHaveBeenCalled();
   });
 
-  it('throws in production when Brevo config is missing', async () => {
+  it('throws in production when Resend config is missing', async () => {
     process.env['NODE_ENV'] = 'production';
 
     const provider = new EmailProvider({});
@@ -81,6 +109,6 @@ describe('EmailProvider', () => {
         subject: 'Should fail',
         content: 'Missing config',
       })
-    ).rejects.toThrow('Brevo configuration is required in production');
+    ).rejects.toThrow('Resend configuration is required in production');
   });
 });

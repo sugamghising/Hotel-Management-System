@@ -264,17 +264,17 @@ Full reference lives in `.env.example`. Key settings are below.
 | `JWT_REFRESH_SECRET` | Refresh token signing secret (min 32 chars) |
 | `ENCRYPTION_KEY` | Application encryption key (min 32 chars) |
 
-### Brevo email configuration
+### Resend email configuration
 
 | Variable | Default |
 | --- | --- |
-| `BREVO_API_KEY` | _(optional)_ |
-| `BREVO_FROM_EMAIL` | _(optional)_ |
-| `BREVO_WEBHOOK_SECRET` | _(optional)_ |
+| `RESEND_API_KEY` | _(optional)_ |
+| `RESEND_FROM_EMAIL` | _(optional)_ |
+| `RESEND_WEBHOOK_SECRET` | _(optional)_ |
 
 Email provider behavior:
-- In **production**, missing `BREVO_API_KEY` or `BREVO_FROM_EMAIL` causes email sends to fail fast.
-- In **development/test**, missing Brevo config falls back to stub/log email sending.
+- In **production**, missing `RESEND_API_KEY` or `RESEND_FROM_EMAIL` causes email sends to fail fast.
+- In **development/test**, missing Resend config falls back to stub/log email sending.
 
 ### Core app configuration
 

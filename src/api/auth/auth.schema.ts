@@ -95,6 +95,10 @@ export const VerifyMfaSchema = z.object({
   tempToken: z.string().optional(), // For initial setup verification
 });
 
+export const DisableMfaSchema = z.object({
+  password: z.string().min(1, 'Password is required'),
+});
+
 // ============================================================================
 // USER SCHEMAS (for user management)
 // ============================================================================
@@ -148,5 +152,6 @@ export type ForgotPasswordInput = z.infer<typeof ForgotPasswordSchema>;
 export type ResetPasswordInput = z.infer<typeof ResetPasswordSchema>;
 export type SetupMfaInput = z.infer<typeof SetupMfaSchema>;
 export type VerifyMfaInput = z.infer<typeof VerifyMfaSchema>;
+export type DisableMfaInput = z.infer<typeof DisableMfaSchema>;
 export type UpdateUserInput = z.infer<typeof UpdateUserSchema>;
 export type UserQueryInput = z.infer<typeof UserQuerySchema>;
