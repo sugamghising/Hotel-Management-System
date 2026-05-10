@@ -175,6 +175,60 @@ export class UserRepository {
   // ============================================================================
 
   /**
+   * Finds an active role by identifier.
+   *
+   * @param roleId - Role UUID.
+   * @returns Role identifier and organization scope, or `null` when missing/deleted.
+   */
+  async findRoleById(roleId: string): Promise<{ id: string; organizationId: string } | null> {
+    return prisma.role.findFirst({
+      where: { id: roleId, deletedAt: null },
+      select: { id: true, organizationId: true },
+    });
+  }
+
+  /**
+   * Finds an active hotel by identifier.
+   *
+   * @param hotelId - Hotel UUID.
+   * @returns Hotel identifier and organization scope, or `null` when missing/deleted.
+   */
+  async findHotelById(hotelId: string): Promise<{ id: string; organizationId: string } | null> {
+    return prisma.hotel.findFirst({
+      where: { id: hotelId, deletedAt: null },
+      select: { id: true, organizationId: true },
+    });
+  }
+
+  /**
+   * Checks whether a matching active role assignment already exists.
+   *
+   * @param userId - User UUID.
+   * @param roleId - Role UUID.
+   * @param organizationId - Organization UUID scope.
+   * @param hotelId - Optional hotel UUID scope. Omit for organization-wide assignment.
+   * @returns `true` when an active assignment already exists for the same scope.
+   */
+  async hasActiveRoleAssignment(
+    userId: string,
+    roleId: string,
+    organizationId: string,
+    hotelId?: string
+  ): Promise<boolean> {
+    const count = await prisma.userRole.count({
+      where: {
+        userId,
+        roleId,
+        organizationId,
+        hotelId: hotelId ?? null,
+        OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+      },
+    });
+
+    return count > 0;
+  }
+
+  /**
    * Creates a user-role assignment.
    *
    * @param data - Assignment data including user, role, organization, and optional hotel scope.

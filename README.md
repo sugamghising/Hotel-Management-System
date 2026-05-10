@@ -190,7 +190,7 @@ npm run dev
 Server defaults:
 - API: `http://localhost:3000/api/v1`
 - Health: `http://localhost:3000/health`
-- Swagger UI: `http://localhost:3000/api-do`
+- Swagger UI: `http://localhost:3000/api-docs`
 
 ---
 

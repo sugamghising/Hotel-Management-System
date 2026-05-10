@@ -52,6 +52,7 @@ export class HotelService {
    * @param input - Validated hotel creation payload.
    * @param createdBy - Optional user UUID stored in audit fields.
    * @returns API-facing hotel response.
+   * @throws {BadRequestError} Thrown when organization hotel limits are exceeded.
    * @throws {ConflictError} Thrown when hotel code already exists in the organization.
    */
   async create(
@@ -62,13 +63,10 @@ export class HotelService {
     //Check Organization exists and has capacity
     await this.orgService.findById(organizationId);
 
-    // TODO: Implement limit checking when checkLimits method is available
-    // const limitCheck = await this.orgService.checkLimits(organizationId);
-    // if (!limitCheck.hotels.canAdd) {
-    //     throw new BadRequestError(
-    //         `Hotel limit reached: ${limitCheck.hotels.used}/${limitCheck.hotels.max}`
-    //     );
-    // }
+    const limitCheck = await this.orgService.validateLimits(organizationId, 'hotel', 1);
+    if (!limitCheck.valid) {
+      throw new BadRequestError(limitCheck.message || 'Organization hotel limit exceeded');
+    }
 
     // Check code uniqueness within organization
     const existing = await this.hotelRepo.findByCode(organizationId, input.code);
