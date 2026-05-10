@@ -1,32 +1,43 @@
+import 'dotenv/config';
+import { PrismaPg } from '@prisma/adapter-pg';
+import { Pool } from 'pg';
 import { PrismaClient } from '../src/generated/prisma/client.js';
 
-const prisma = new PrismaClient();
+const pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+});
+
+const prisma = new PrismaClient({
+    adapter: new PrismaPg(pool),
+});
 
 async function main() {
     console.log('🌱 Starting database seed...');
 
     // Create default organization
-    const org = await prisma.organization.upsert({
-        where: { code: 'DEMO' },
-        update: {},
-        create: {
-            code: 'DEMO',
-            name: 'Demo Hotel Group',
-            legalName: 'Demo Hotel Group Ltd',
-            email: 'admin@demohotels.com',
-            phone: '+1-555-0100',
-            organizationType: 'CHAIN',
-            subscriptionTier: 'PRO',
-            subscriptionStatus: 'ACTIVE',
-            maxHotels: 5,
-            maxRooms: 500,
-            maxUsers: 50,
-            settings: {
-                timezone: 'America/New_York',
-                currency: 'USD',
+    const org =
+        (await prisma.organization.findFirst({
+            where: { code: 'DEMO' },
+        })) ??
+        (await prisma.organization.create({
+            data: {
+                code: 'DEMO',
+                name: 'Demo Hotel Group',
+                legalName: 'Demo Hotel Group Ltd',
+                email: 'admin@demohotels.com',
+                phone: '+1-555-0100',
+                organizationType: 'CHAIN',
+                subscriptionTier: 'PRO',
+                subscriptionStatus: 'ACTIVE',
+                maxHotels: 5,
+                maxRooms: 500,
+                maxUsers: 50,
+                settings: {
+                    timezone: 'America/New_York',
+                    currency: 'USD',
+                },
             },
-        },
-    });
+        }));
 
     console.log('✅ Organization created:', org.name);
 
@@ -42,7 +53,7 @@ async function main() {
         create: {
             organizationId: org.id,
             email: 'admin@demohotels.com',
-            passwordHash: '$2b$10$YourHashedPasswordHere', // Replace with actual hash
+            passwordHash: '$2b$12$TSMmRGM7oC1NEqf1QJ0NxOn3JJqoX2CWygLHuGvfkfZ4M2pObalnC',
             firstName: 'System',
             lastName: 'Administrator',
             emailVerified: true,
@@ -95,72 +106,87 @@ async function main() {
 
     // Create room types
     const roomTypes = await Promise.all([
-        prisma.roomType.upsert({
-            where: { id: '' }, // Will create new
-            update: {},
-            create: {
-                organizationId: org.id,
-                hotelId: hotel.id,
-                code: 'STD',
-                name: 'Standard Room',
-                description: 'Comfortable standard room with city view',
-                baseOccupancy: 2,
-                maxOccupancy: 2,
-                maxAdults: 2,
-                maxChildren: 1,
-                sizeSqm: 25,
-                bedTypes: ['QUEEN'],
-                amenities: ['WIFI', 'TV', 'AC', 'MINIBAR'],
-                defaultCleaningTime: 30,
-                isActive: true,
-                isBookable: true,
-                displayOrder: 1,
-            },
-        }),
-        prisma.roomType.upsert({
-            where: { id: '' },
-            update: {},
-            create: {
-                organizationId: org.id,
-                hotelId: hotel.id,
-                code: 'DLX',
-                name: 'Deluxe Room',
-                description: 'Spacious deluxe room with premium amenities',
-                baseOccupancy: 2,
-                maxOccupancy: 3,
-                maxAdults: 2,
-                maxChildren: 2,
-                sizeSqm: 35,
-                bedTypes: ['KING'],
-                amenities: ['WIFI', 'TV', 'AC', 'MINIBAR', 'SAFE', 'BALCONY'],
-                defaultCleaningTime: 45,
-                isActive: true,
-                isBookable: true,
-                displayOrder: 2,
-            },
-        }),
-        prisma.roomType.upsert({
-            where: { id: '' },
-            update: {},
-            create: {
-                organizationId: org.id,
-                hotelId: hotel.id,
-                code: 'STE',
-                name: 'Executive Suite',
-                description: 'Luxury suite with separate living area',
-                baseOccupancy: 2,
-                maxOccupancy: 4,
-                maxAdults: 3,
-                maxChildren: 2,
-                sizeSqm: 55,
-                bedTypes: ['KING', 'SOFA_BED'],
-                amenities: ['WIFI', 'TV', 'AC', 'MINIBAR', 'SAFE', 'BALCONY', 'JACUZZI'],
-                defaultCleaningTime: 60,
-                isActive: true,
-                isBookable: true,
-                displayOrder: 3,
-            },
-        }),
+        (async () => {
+            const existing = await prisma.roomType.findFirst({
+                where: { hotelId: hotel.id, code: 'STD' },
+            });
+            if (existing) return existing;
+
+            return prisma.roomType.create({
+                data: {
+                    organizationId: org.id,
+                    hotelId: hotel.id,
+                    code: 'STD',
+                    name: 'Standard Room',
+                    description: 'Comfortable standard room with city view',
+                    baseOccupancy: 2,
+                    maxOccupancy: 2,
+                    maxAdults: 2,
+                    maxChildren: 1,
+                    sizeSqm: 25,
+                    bedTypes: ['QUEEN'],
+                    amenities: ['WIFI', 'TV', 'AC', 'MINIBAR'],
+                    defaultCleaningTime: 30,
+                    isActive: true,
+                    isBookable: true,
+                    displayOrder: 1,
+                },
+            });
+        })(),
+        (async () => {
+            const existing = await prisma.roomType.findFirst({
+                where: { hotelId: hotel.id, code: 'DLX' },
+            });
+            if (existing) return existing;
+
+            return prisma.roomType.create({
+                data: {
+                    organizationId: org.id,
+                    hotelId: hotel.id,
+                    code: 'DLX',
+                    name: 'Deluxe Room',
+                    description: 'Spacious deluxe room with premium amenities',
+                    baseOccupancy: 2,
+                    maxOccupancy: 3,
+                    maxAdults: 2,
+                    maxChildren: 2,
+                    sizeSqm: 35,
+                    bedTypes: ['KING'],
+                    amenities: ['WIFI', 'TV', 'AC', 'MINIBAR', 'SAFE', 'BALCONY'],
+                    defaultCleaningTime: 45,
+                    isActive: true,
+                    isBookable: true,
+                    displayOrder: 2,
+                },
+            });
+        })(),
+        (async () => {
+            const existing = await prisma.roomType.findFirst({
+                where: { hotelId: hotel.id, code: 'STE' },
+            });
+            if (existing) return existing;
+
+            return prisma.roomType.create({
+                data: {
+                    organizationId: org.id,
+                    hotelId: hotel.id,
+                    code: 'STE',
+                    name: 'Executive Suite',
+                    description: 'Luxury suite with separate living area',
+                    baseOccupancy: 2,
+                    maxOccupancy: 4,
+                    maxAdults: 3,
+                    maxChildren: 2,
+                    sizeSqm: 55,
+                    bedTypes: ['KING', 'SOFA_BED'],
+                    amenities: ['WIFI', 'TV', 'AC', 'MINIBAR', 'SAFE', 'BALCONY', 'JACUZZI'],
+                    defaultCleaningTime: 60,
+                    isActive: true,
+                    isBookable: true,
+                    displayOrder: 3,
+                },
+            });
+        })(),
     ]);
 
     console.log('✅ Room types created:', roomTypes.length);
@@ -727,4 +753,5 @@ main()
     })
     .finally(async () => {
         await prisma.$disconnect();
+        await pool.end();
     });

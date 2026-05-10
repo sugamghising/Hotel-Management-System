@@ -16,6 +16,7 @@ import {
   hashToken,
   verifyPassword,
 } from '../../core/utils/crypto';
+import { emailProvider } from '../communications/providers/email.provider';
 import { type OrganizationService, organizationService } from '../organizations';
 import { type AuthRepository, authRepository } from './auth.repository';
 import type { LoginInput } from './auth.schema';
@@ -32,6 +33,8 @@ import type {
   User,
   UserWithRoles,
 } from './auth.types';
+import { buildPasswordResetEmailTemplate } from './password-reset-email.template';
+import { parseCompositeRefreshToken } from './refresh-token.util';
 
 export class AuthService {
   private authRepo: AuthRepository;
@@ -166,7 +169,10 @@ export class AuthService {
 
     await this.authRepo.recordSuccessfulLogin(user.id, ipAddress);
 
-    logger.info(`User logged in: ${user.email}`, { userId: user.id, orgId: org.id });
+    logger.info(`User logged in: ${user.email}`, {
+      userId: user.id,
+      orgId: org.id,
+    });
 
     return {
       user: this.mapToPublicUser(user),
@@ -235,7 +241,10 @@ export class AuthService {
     });
 
     //TODO: SEND VERIFICATION MAIL
-    logger.info(`User registered: ${user.email}`, { userId: user.id, orgId: input.organizationId });
+    logger.info(`User registered: ${user.email}`, {
+      userId: user.id,
+      orgId: input.organizationId,
+    });
 
     return user;
   }
@@ -257,12 +266,12 @@ export class AuthService {
    * @throws {UnauthorizedError} Thrown for malformed, invalid, missing, expired, or mismatched refresh tokens.
    */
   async refreshToken(refreshToken: string, deviceFingerprint?: string): Promise<TokenPair> {
-    //split composite token
-    const [jwtPart, opaquePart] = refreshToken.split('.');
-    if (!jwtPart || !opaquePart) {
+    const parsedToken = parseCompositeRefreshToken(refreshToken);
+    if (!parsedToken) {
       logger.warn('Invalid refresh token format.');
       throw new UnauthorizedError('Invalid refresh token format.');
     }
+    const { jwtPart, opaquePart } = parsedToken;
 
     let payload: RefreshTokenPayload;
     try {
@@ -282,7 +291,9 @@ export class AuthService {
     const storedToken = await this.authRepo.findRefreshTokenByHash(tokenHash);
 
     if (!storedToken) {
-      logger.warn('Refresh token not found in database', { userId: payload.sub });
+      logger.warn('Refresh token not found in database', {
+        userId: payload.sub,
+      });
       throw new UnauthorizedError('Refresh Token not found or Expired.');
     }
 
@@ -331,10 +342,10 @@ export class AuthService {
    * @returns Resolves after best-effort revocation; no error is thrown for unknown tokens.
    */
   async logout(refreshToken: string): Promise<void> {
-    const [, opaquePart] = refreshToken.split('.');
-    if (!opaquePart) return;
+    const parsedToken = parseCompositeRefreshToken(refreshToken);
+    if (!parsedToken) return;
 
-    const tokenHash = hashToken(opaquePart);
+    const tokenHash = hashToken(parsedToken.opaquePart);
     const storedToken = await this.authRepo.findRefreshTokenByHash(tokenHash);
 
     if (storedToken) {
@@ -353,9 +364,9 @@ export class AuthService {
     let exceptId: string | undefined;
 
     if (exceptCurrentToken) {
-      const [, opaquePart] = exceptCurrentToken.split('.');
-      if (opaquePart) {
-        const tokenHash = hashToken(opaquePart);
+      const parsedToken = parseCompositeRefreshToken(exceptCurrentToken);
+      if (parsedToken) {
+        const tokenHash = hashToken(parsedToken.opaquePart);
         const stored = await this.authRepo.findRefreshTokenByHash(tokenHash);
         exceptId = stored?.id;
       }
@@ -402,7 +413,8 @@ export class AuthService {
    * Creates and stores a password-reset token for a known organization/email pair.
    *
    * The method intentionally returns without error for unknown organizations or
-   * users to avoid account-enumeration leaks.
+   * users to avoid account-enumeration leaks. Email-delivery failures are logged
+   * but not surfaced to the caller for the same reason.
    *
    * @param email - Email address requesting reset.
    * @param organizationCode - Organization code that scopes the user lookup.
@@ -427,7 +439,34 @@ export class AuthService {
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
 
     await this.authRepo.setPasswordResetToken(user.id, resetHash, expiresAt);
-    // TODO: Send email with resetToken
+
+    const resetLink = this.buildPasswordResetLink(resetToken);
+    const emailTemplate = buildPasswordResetEmailTemplate({
+      firstName: user.firstName,
+      resetLink,
+      expiresInMinutes: 60,
+    });
+
+    try {
+      await emailProvider.send({
+        to: user.email,
+        subject: emailTemplate.subject,
+        content: emailTemplate.html,
+        metadata: {
+          text: emailTemplate.text,
+        },
+        ...(config.resend.fromEmail ? { from: config.resend.fromEmail } : {}),
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.error('Password reset email delivery failed', {
+        userId: user.id,
+        email: user.email,
+        organizationCode,
+        error: errorMessage,
+      });
+      return;
+    }
 
     logger.info(`Password reset requested: ${user.email}`, { userId: user.id });
   }
@@ -623,6 +662,18 @@ export class AuthService {
     };
 
     return jwt.sign(payload, config.jwt.accessSecret);
+  }
+
+  /**
+   * Builds the password reset link by attaching the raw token as a query param.
+   *
+   * @param token - Raw reset token sent to the user.
+   * @returns Absolute password-reset URL for frontend flow.
+   */
+  private buildPasswordResetLink(token: string): string {
+    const resetUrl = new URL(config.auth.passwordResetUrlBase);
+    resetUrl.searchParams.set('token', token);
+    return resetUrl.toString();
   }
 
   /**

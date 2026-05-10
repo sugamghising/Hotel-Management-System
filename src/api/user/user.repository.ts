@@ -1,3 +1,4 @@
+import { NotFoundError } from '../../core/errors';
 import { prisma } from '../../database/prisma';
 import type { Prisma, UserRole } from '../../generated/prisma';
 import type { UserCreateInput, UserUpdateInput } from '../auth/auth.repository';
@@ -174,6 +175,60 @@ export class UserRepository {
   // ============================================================================
 
   /**
+   * Finds an active role by identifier.
+   *
+   * @param roleId - Role UUID.
+   * @returns Role identifier and organization scope, or `null` when missing/deleted.
+   */
+  async findRoleById(roleId: string): Promise<{ id: string; organizationId: string } | null> {
+    return prisma.role.findFirst({
+      where: { id: roleId, deletedAt: null },
+      select: { id: true, organizationId: true },
+    });
+  }
+
+  /**
+   * Finds an active hotel by identifier.
+   *
+   * @param hotelId - Hotel UUID.
+   * @returns Hotel identifier and organization scope, or `null` when missing/deleted.
+   */
+  async findHotelById(hotelId: string): Promise<{ id: string; organizationId: string } | null> {
+    return prisma.hotel.findFirst({
+      where: { id: hotelId, deletedAt: null },
+      select: { id: true, organizationId: true },
+    });
+  }
+
+  /**
+   * Checks whether a matching active role assignment already exists.
+   *
+   * @param userId - User UUID.
+   * @param roleId - Role UUID.
+   * @param organizationId - Organization UUID scope.
+   * @param hotelId - Optional hotel UUID scope. Omit for organization-wide assignment.
+   * @returns `true` when an active assignment already exists for the same scope.
+   */
+  async hasActiveRoleAssignment(
+    userId: string,
+    roleId: string,
+    organizationId: string,
+    hotelId?: string
+  ): Promise<boolean> {
+    const count = await prisma.userRole.count({
+      where: {
+        userId,
+        roleId,
+        organizationId,
+        hotelId: hotelId ?? null,
+        OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+      },
+    });
+
+    return count > 0;
+  }
+
+  /**
    * Creates a user-role assignment.
    *
    * @param data - Assignment data including user, role, organization, and optional hotel scope.
@@ -202,17 +257,45 @@ export class UserRepository {
   }
 
   /**
+   * Finds a user-role assignment by identifier.
+   *
+   * @param roleAssignmentId - User-role assignment UUID.
+   * @returns Assignment identifier and organization scope, or `null` if missing.
+   */
+  async findRoleAssignmentById(
+    roleAssignmentId: string
+  ): Promise<{ id: string; organizationId: string } | null> {
+    return prisma.userRole.findUnique({
+      where: { id: roleAssignmentId },
+      select: { id: true, organizationId: true },
+    });
+  }
+
+  /**
    * Removes a user-role assignment by its identifier.
    *
    * @param roleAssignmentId - User-role assignment UUID.
    * @returns Resolves when deletion completes.
    */
   async removeRole(roleAssignmentId: string): Promise<void> {
-    await prisma.userRole.delete({
-      where: {
-        id: roleAssignmentId,
-      },
-    });
+    try {
+      await prisma.userRole.delete({
+        where: {
+          id: roleAssignmentId,
+        },
+      });
+    } catch (error: unknown) {
+      const code =
+        error && typeof error === 'object' && 'code' in error
+          ? (error as { code?: string }).code
+          : undefined;
+
+      if (code === 'P2025') {
+        throw new NotFoundError(`Role assignment '${roleAssignmentId}' not found`);
+      }
+
+      throw error;
+    }
   }
 
   /**
@@ -280,20 +363,25 @@ export class UserRepository {
   }
 
   // ============================================================================
-  // PERMISSIONS (via view)
+  // PERMISSIONS
   // ============================================================================
 
   /**
    * Retrieves distinct permission codes granted to a user through role assignments.
    *
    * @param userId - User UUID.
-   * @returns Permission code list from `v_user_permissions`.
+   * @returns Permission code list from active role assignments.
    */
   async getUserPermissions(userId: string): Promise<string[]> {
     const result = await prisma.$queryRaw<{ permission_code: string }[]>`
-      SELECT DISTINCT permission_code 
-      FROM v_user_permissions 
-      WHERE user_id = ${userId}::uuid
+      SELECT DISTINCT p.code AS permission_code
+      FROM user_roles ur
+      INNER JOIN roles r ON r.id = ur.role_id
+      INNER JOIN role_permissions rp ON rp.role_id = r.id
+      INNER JOIN permissions p ON p.id = rp.permission_id
+      WHERE ur.user_id = ${userId}::uuid
+        AND (ur.expires_at IS NULL OR ur.expires_at > NOW())
+        AND r.deleted_at IS NULL
     `;
     return result.map((r) => r.permission_code);
   }

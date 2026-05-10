@@ -63,7 +63,7 @@ export class OrganizationRepository {
    * @returns The matching organization, or `null` when no row exists.
    */
   async findByCode(code: string) {
-    return prisma.organization.findUnique({
+    return prisma.organization.findFirst({
       where: { code },
     });
   }

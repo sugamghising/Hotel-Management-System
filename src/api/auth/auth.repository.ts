@@ -329,20 +329,25 @@ export class AuthRepository {
   }
 
   // ============================================================================
-  // PERMISSIONS (via view or direct query)
+  // PERMISSIONS
   // ============================================================================
 
   /**
    * Returns distinct permission codes granted to a user.
    *
    * @param userId - User UUID.
-   * @returns Permission code list from the `v_user_permissions` view.
+   * @returns Permission code list from active role assignments.
    */
   async getUserPermissions(userId: string): Promise<string[]> {
     const result = await prisma.$queryRaw<{ permission_code: string }[]>`
-      SELECT DISTINCT permission_code 
-      FROM v_user_permissions 
-      WHERE user_id = ${userId}::uuid
+      SELECT DISTINCT p.code AS permission_code
+      FROM user_roles ur
+      INNER JOIN roles r ON r.id = ur.role_id
+      INNER JOIN role_permissions rp ON rp.role_id = r.id
+      INNER JOIN permissions p ON p.id = rp.permission_id
+      WHERE ur.user_id = ${userId}::uuid
+        AND (ur.expires_at IS NULL OR ur.expires_at > NOW())
+        AND r.deleted_at IS NULL
     `;
     return result.map((r) => r.permission_code);
   }

@@ -2,6 +2,7 @@ import type { NextFunction, Request, Response } from 'express';
 import { ServiceResponse, handleServiceResponse } from '../../common';
 import { UnauthorizedError, asyncHandler } from '../../core';
 import type {
+  DisableMfaInput,
   ForgotPasswordInput,
   RefreshTokenInput,
   ResetPasswordInput,
@@ -264,7 +265,7 @@ export class AuthController {
    * @param res - Express response used by `handleServiceResponse`.
    */
   disableMfa = asyncHandler(async (req: Request, res: Response, _next: NextFunction) => {
-    const { password } = req.body;
+    const { password } = req.body as DisableMfaInput;
     if (!req.user) {
       throw new UnauthorizedError('User not authenticated');
     }

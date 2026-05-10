@@ -7,6 +7,7 @@ export {
   ResetPasswordSchema,
   SetupMfaSchema,
   VerifyMfaSchema,
+  DisableMfaSchema,
   UpdateUserSchema,
   UserQuerySchema,
   UserIdParamSchema,
@@ -21,6 +22,7 @@ export {
   type ResetPasswordInput,
   type SetupMfaInput,
   type VerifyMfaInput,
+  type DisableMfaInput,
   type UpdateUserInput,
   type UserQueryInput,
 } from './auth.schema';

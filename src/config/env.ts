@@ -44,9 +44,18 @@ const envSchema = z.object({
   JWT_REFRESH_SECRET: z.string().min(32, 'JWT_REFRESH_SECRET must be at least 32 characters'),
   JWT_ACCESS_EXPIRY: z.string().default('15m'),
   JWT_REFRESH_EXPIRY: z.string().default('7d'),
+  PASSWORD_RESET_URL_BASE: z
+    .string()
+    .url('Invalid PASSWORD_RESET_URL_BASE')
+    .default('http://localhost:3000/reset-password'),
 
   // Encryption
   ENCRYPTION_KEY: z.string().min(32, 'ENCRYPTION_KEY must be at least 32 characters'),
+
+  // Resend (optional in development/test, required in production for real email delivery)
+  RESEND_API_KEY: z.string().optional(),
+  RESEND_FROM_EMAIL: z.string().email('Invalid RESEND_FROM_EMAIL').optional(),
+  RESEND_WEBHOOK_SECRET: z.string().optional(),
 
   // Redis (optional)
   REDIS_HOST: z.string().default('localhost'),

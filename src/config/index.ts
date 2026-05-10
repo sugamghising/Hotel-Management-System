@@ -39,6 +39,16 @@ export const config = {
     refreshExpiry: env.JWT_REFRESH_EXPIRY,
   },
 
+  auth: {
+    passwordResetUrlBase: env.PASSWORD_RESET_URL_BASE,
+  },
+
+  resend: {
+    apiKey: env.RESEND_API_KEY,
+    fromEmail: env.RESEND_FROM_EMAIL,
+    webhookSecret: env.RESEND_WEBHOOK_SECRET,
+  },
+
   system: {
     userId: env.SYSTEM_USER_ID,
   },

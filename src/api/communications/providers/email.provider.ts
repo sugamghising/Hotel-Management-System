@@ -1,13 +1,11 @@
+import { Resend } from 'resend';
 import { logger } from '../../../core';
 import { CommunicationChannel } from '../../../generated/prisma';
 import type { ProviderPayload } from '../communications.types';
 import type { ICommunicationProvider, ProviderConfig } from './provider.interface';
 
 /**
- * Implements a stub email provider used in development and automated tests.
- *
- * The provider simulates dispatch by logging payload metadata and returning a
- * generated external ID instead of contacting real vendor APIs.
+ * Implements email delivery with Resend and development/test stub fallback.
  */
 export class EmailProvider implements ICommunicationProvider {
   readonly channel = CommunicationChannel.EMAIL;
@@ -22,20 +20,65 @@ export class EmailProvider implements ICommunicationProvider {
     this.config = config;
   }
 
-  /**
-   * Simulates email delivery and returns a synthetic provider message ID.
-   *
-   * Side effects:
-   * - Writes structured info/debug logs including content preview.
-   * - Introduces a short async delay to mimic provider network latency.
-   *
-   * @param payload - Outbound email payload.
-   * @returns Generated external message ID for status correlation.
-   */
   async send(payload: ProviderPayload): Promise<string> {
-    const externalId = `email_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    if (!this.hasRequiredResendConfig()) {
+      const runtimeEnv = process.env['NODE_ENV'] ?? 'development';
+      if (runtimeEnv === 'production') {
+        throw new Error(
+          'Resend configuration is required in production. Set RESEND_API_KEY and RESEND_FROM_EMAIL.'
+        );
+      }
+      return this.sendStub(payload);
+    }
 
-    logger.info('📧 [EMAIL STUB] Sending email', {
+    const apiKey = this.config.apiKey;
+    const configuredFrom = this.config.fromAddress;
+    if (!apiKey || !configuredFrom) {
+      throw new Error('Resend configuration unexpectedly missing');
+    }
+
+    const fromAddress = payload.from ?? configuredFrom;
+    const resend = new Resend(apiKey);
+
+    try {
+      const response = await resend.emails.send({
+        from: fromAddress,
+        to: payload.to,
+        subject: payload.subject ?? 'Hotel communication',
+        html: payload.content,
+        text: this.resolveTextContent(payload),
+      });
+      const resendError = this.extractResendError(response);
+      if (resendError) {
+        throw new Error(resendError);
+      }
+
+      const externalId = this.extractMessageId(response) ?? this.generateExternalId('email_resend');
+
+      logger.info('📧 [RESEND] Email sent', {
+        to: payload.to,
+        subject: payload.subject,
+        from: fromAddress,
+        externalId,
+        sandbox: this.config.sandbox ?? false,
+      });
+
+      return externalId;
+    } catch (error) {
+      const providerErrorMessage = this.extractErrorMessage(error);
+      logger.error('📧 [RESEND] Failed to send email', {
+        to: payload.to,
+        subject: payload.subject,
+        error: providerErrorMessage,
+      });
+      throw new Error(`Resend delivery failed: ${providerErrorMessage}`);
+    }
+  }
+
+  private async sendStub(payload: ProviderPayload): Promise<string> {
+    const externalId = this.generateExternalId('email_stub');
+
+    logger.info('📧 [EMAIL STUB] Resend config missing; using stub send', {
       to: payload.to,
       subject: payload.subject,
       from: payload.from ?? this.config.fromAddress ?? 'noreply@hotel.com',
@@ -44,10 +87,8 @@ export class EmailProvider implements ICommunicationProvider {
       sandbox: this.config.sandbox ?? true,
     });
 
-    // Simulate async send with small delay
     await new Promise((resolve) => setTimeout(resolve, 50));
 
-    // Log truncated content for debugging
     logger.debug('📧 [EMAIL STUB] Content preview', {
       externalId,
       preview: payload.content.substring(0, 200),
@@ -56,31 +97,147 @@ export class EmailProvider implements ICommunicationProvider {
     return externalId;
   }
 
-  /**
-   * Verifies inbound webhook signatures for email events.
-   *
-   * In sandbox mode the method accepts all signatures to simplify local testing.
-   * In non-sandbox mode this stub rejects all requests and logs a warning until
-   * a real signature algorithm (for example SendGrid HMAC verification) is wired.
-   *
-   * @param signature - Signature header value from provider webhook request.
-   * @param _body - Raw webhook body, currently unused by the stub.
-   * @returns `true` in sandbox mode; otherwise `false`.
-   */
   verifyWebhookSignature(signature: string, _body: string): boolean {
-    // Stub: accept any signature in dev mode
     if (this.config.sandbox) {
-      logger.debug('📧 [EMAIL STUB] Webhook signature verification (sandbox mode)', { signature });
+      logger.debug('📧 [EMAIL STUB] Webhook signature verification (sandbox mode)', {
+        signature,
+      });
       return true;
     }
 
-    // In production, implement actual signature verification
-    // e.g., for SendGrid: verify HMAC-SHA256 signature
     logger.warn(
-      '📧 [EMAIL STUB] Webhook signature verification not implemented; rejecting webhook in non-sandbox mode'
+      '📧 [RESEND] Webhook signature verification is not implemented; rejecting webhook in non-sandbox mode'
     );
     return false;
   }
+
+  private hasRequiredResendConfig(): boolean {
+    return Boolean(this.config.apiKey && this.config.fromAddress);
+  }
+
+  private generateExternalId(prefix: 'email_stub' | 'email_resend'): string {
+    return `${prefix}_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+  }
+
+  private extractMessageId(response: unknown): string | null {
+    if (!response || typeof response !== 'object') {
+      return null;
+    }
+
+    const responseLike = response as {
+      id?: unknown;
+      messageId?: unknown;
+      data?: {
+        id?: unknown;
+        messageId?: unknown;
+      };
+      body?: {
+        id?: unknown;
+        messageId?: unknown;
+      };
+    };
+
+    if (typeof responseLike.id === 'string' && responseLike.id.length > 0) {
+      return responseLike.id;
+    }
+
+    if (typeof responseLike.messageId === 'string' && responseLike.messageId.length > 0) {
+      return responseLike.messageId;
+    }
+
+    if (typeof responseLike.data?.id === 'string' && responseLike.data.id.length > 0) {
+      return responseLike.data.id;
+    }
+
+    if (
+      typeof responseLike.data?.messageId === 'string' &&
+      responseLike.data.messageId.length > 0
+    ) {
+      return responseLike.data.messageId;
+    }
+
+    if (
+      typeof responseLike.body?.messageId === 'string' &&
+      responseLike.body.messageId.length > 0
+    ) {
+      return responseLike.body.messageId;
+    }
+
+    return null;
+  }
+
+  private extractResendError(response: unknown): string | null {
+    if (!response || typeof response !== 'object') {
+      return null;
+    }
+
+    const responseLike = response as {
+      error?: unknown;
+    };
+    const error = responseLike.error;
+
+    if (!error) {
+      return null;
+    }
+
+    if (typeof error === 'string') {
+      return error;
+    }
+
+    if (error instanceof Error) {
+      return error.message;
+    }
+
+    if (typeof error === 'object') {
+      const errorLike = error as { message?: unknown; name?: unknown };
+      if (typeof errorLike.message === 'string' && errorLike.message.length > 0) {
+        return errorLike.message;
+      }
+      if (typeof errorLike.name === 'string' && errorLike.name.length > 0) {
+        return errorLike.name;
+      }
+    }
+
+    return 'Unknown provider error';
+  }
+
+  private extractErrorMessage(error: unknown): string {
+    if (error instanceof Error) {
+      return error.message;
+    }
+
+    if (typeof error === 'string') {
+      return error;
+    }
+
+    return 'Unknown provider error';
+  }
+
+  private resolveTextContent(payload: ProviderPayload): string {
+    const metadataText = payload.metadata?.['text'];
+    if (typeof metadataText === 'string' && metadataText.trim().length > 0) {
+      return metadataText;
+    }
+    return this.toPlainText(payload.content);
+  }
+
+  private toPlainText(content: string): string {
+    return content
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
 }
 
-export const emailProvider = new EmailProvider({ sandbox: true });
+const runtimeEnv = process.env['NODE_ENV'] ?? 'development';
+
+const emailProviderConfig: ProviderConfig = {
+  sandbox: runtimeEnv !== 'production',
+  ...(process.env['RESEND_API_KEY'] ? { apiKey: process.env['RESEND_API_KEY'] } : {}),
+  ...(process.env['RESEND_FROM_EMAIL'] ? { fromAddress: process.env['RESEND_FROM_EMAIL'] } : {}),
+  ...(process.env['RESEND_WEBHOOK_SECRET']
+    ? { webhookSecret: process.env['RESEND_WEBHOOK_SECRET'] }
+    : {}),
+};
+
+export const emailProvider = new EmailProvider(emailProviderConfig);

@@ -1,8 +1,12 @@
 import crypto from 'node:crypto';
+import { config } from '../../config';
 import { BadRequestError, ConflictError, NotFoundError, logger } from '../../core';
 import { hashPassword } from '../../core/utils/crypto';
 import type { Prisma } from '../../generated/prisma';
+import { type AuthRepository, authRepository } from '../auth/auth.repository';
+import { emailProvider } from '../communications/providers/email.provider';
 import { type OrganizationService, organizationService } from '../organizations';
+import { buildUserWelcomeEmailTemplate } from './user-welcome-email.template';
 import { type UserRepository, userRepository } from './user.repository';
 import type { AssignRoleInput, CreateUserInput } from './user.schema';
 import type {
@@ -30,19 +34,23 @@ export function generateTemporaryPassword(): string {
 export class UserService {
   private userRepo: UserRepository;
   private orgService: OrganizationService;
+  private authRepo: AuthRepository;
 
   /**
    * Creates a user service with repository and organization-service dependencies.
    *
    * @param userRepo - Repository used for user persistence operations.
    * @param orgService - Service used for organization-level validations.
+   * @param authRepo - Repository used for token/session revocation operations.
    */
   constructor(
     userRepo: UserRepository = userRepository,
-    orgService: OrganizationService = organizationService
+    orgService: OrganizationService = organizationService,
+    authRepo: AuthRepository = authRepository
   ) {
     this.userRepo = userRepo;
     this.orgService = orgService;
+    this.authRepo = authRepo;
   }
 
   // ============================================================================
@@ -86,9 +94,13 @@ export class UserService {
 
     // Validate manager if provided
     if (input.managerId) {
-      const managerExists = await this.userRepo.existsById(input.managerId);
-      if (!managerExists) {
+      const manager = await this.userRepo.findById(input.managerId);
+      if (!manager) {
         throw new NotFoundError('Manager not Found');
+      }
+
+      if (manager.organizationId !== organizationId) {
+        throw new BadRequestError('Manager does not belong to the organization.');
       }
     }
 
@@ -130,7 +142,31 @@ export class UserService {
       throw new NotFoundError('Failed to retrieve user after creation');
     }
 
-    // TODO: Send welcome email with temporary password
+    const welcomeEmailTemplate = buildUserWelcomeEmailTemplate({
+      firstName: user.firstName,
+      temporaryPassword,
+    });
+
+    try {
+      await emailProvider.send({
+        to: user.email,
+        subject: welcomeEmailTemplate.subject,
+        content: welcomeEmailTemplate.html,
+        metadata: {
+          text: welcomeEmailTemplate.text,
+        },
+        ...(config.resend.fromEmail ? { from: config.resend.fromEmail } : {}),
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.error('Welcome email delivery failed', {
+        userId: user.id,
+        email: user.email,
+        organizationId,
+        createdBy: createdByUserId,
+        error: errorMessage,
+      });
+    }
 
     logger.info(`User created: ${user.email}`, {
       userId: user.id,
@@ -269,12 +305,18 @@ export class UserService {
       ...(input.employeeId !== undefined && { employeeId: input.employeeId }),
       ...(input.department !== undefined && { department: input.department }),
       ...(input.jobTitle !== undefined && { jobTitle: input.jobTitle }),
-      ...(input.employmentType !== undefined && { employmentType: input.employmentType }),
+      ...(input.employmentType !== undefined && {
+        employmentType: input.employmentType,
+      }),
       ...(input.hireDate !== undefined && { hireDate: input.hireDate }),
-      ...(input.terminationDate !== undefined && { terminationDate: input.terminationDate }),
+      ...(input.terminationDate !== undefined && {
+        terminationDate: input.terminationDate,
+      }),
       ...(input.managerId !== undefined && { managerId: input.managerId }),
       ...(input.status !== undefined && { status: input.status }),
-      ...(input.languageCode !== undefined && { languageCode: input.languageCode }),
+      ...(input.languageCode !== undefined && {
+        languageCode: input.languageCode,
+      }),
       ...(input.timezone !== undefined && { timezone: input.timezone }),
       ...(input.preferences !== undefined && {
         preferences: input.preferences as Prisma.InputJsonValue,
@@ -324,8 +366,8 @@ export class UserService {
 
     await this.userRepo.softDelete(id);
 
-    // Revoke all sessions
-    // Note: This would need to be done via auth repository or service
+    // Revoke all active refresh tokens so deleted users cannot reuse existing sessions.
+    await this.authRepo.revokeAllUserTokens(id);
 
     logger.info(`User deleted: ${user.email}`, { userId: id });
   }
@@ -342,8 +384,9 @@ export class UserService {
    * @param assignedBy - User UUID performing the assignment.
    * @param input - Role assignment payload.
    * @returns Resolves when assignment is created.
-   * @throws {NotFoundError} Thrown when target user is missing.
-   * @throws {BadRequestError} Thrown when user is outside the organization scope.
+   * @throws {NotFoundError} Thrown when target user, role, or hotel (when scoped) is missing.
+   * @throws {BadRequestError} Thrown when user/role/hotel is outside the organization scope.
+   * @throws {ConflictError} Thrown when the same active assignment already exists.
    */
   async assignRole(
     userId: string,
@@ -361,8 +404,36 @@ export class UserService {
       throw new BadRequestError('User does not belong to the organization.');
     }
 
-    // Verify role exists (would need role repository)
-    // For now, assume role exists
+    const role = await this.userRepo.findRoleById(input.roleId);
+    if (!role) {
+      throw new NotFoundError(`Role '${input.roleId}' not found`);
+    }
+
+    if (role.organizationId !== organizationId) {
+      throw new BadRequestError('Role does not belong to the organization.');
+    }
+
+    if (input.hotelId) {
+      const hotel = await this.userRepo.findHotelById(input.hotelId);
+      if (!hotel) {
+        throw new NotFoundError(`Hotel '${input.hotelId}' not found`);
+      }
+
+      if (hotel.organizationId !== organizationId) {
+        throw new BadRequestError('Hotel does not belong to the organization.');
+      }
+    }
+
+    const assignmentExists = await this.userRepo.hasActiveRoleAssignment(
+      userId,
+      input.roleId,
+      organizationId,
+      input.hotelId
+    );
+
+    if (assignmentExists) {
+      throw new ConflictError('Role is already assigned to this user for the selected scope.');
+    }
 
     await this.userRepo.assignRole({
       userId,
@@ -384,12 +455,20 @@ export class UserService {
    * Removes a user-role assignment.
    *
    * @param roleAssignmentId - User-role assignment UUID.
-   * @param _organizationId - Reserved organization scope parameter.
+   * @param organizationId - Organization UUID scope.
    * @returns Resolves when the assignment is removed.
+   * @throws {NotFoundError} Thrown when the role assignment does not exist.
+   * @throws {BadRequestError} Thrown when the role assignment is outside the organization scope.
    */
-  async removeRole(roleAssignmentId: string, _organizationId: string): Promise<void> {
-    // Verify the assignment belongs to this organization
-    // Would need to fetch the assignment first
+  async removeRole(roleAssignmentId: string, organizationId: string): Promise<void> {
+    const roleAssignment = await this.userRepo.findRoleAssignmentById(roleAssignmentId);
+    if (!roleAssignment) {
+      throw new NotFoundError('Role assignment not found');
+    }
+
+    if (roleAssignment.organizationId !== organizationId) {
+      throw new BadRequestError('Role assignment does not belong to the organization.');
+    }
 
     await this.userRepo.removeRole(roleAssignmentId);
 

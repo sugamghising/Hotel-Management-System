@@ -504,13 +504,13 @@ export class CommunicationsController {
     }
 
     // Parse provider-specific payload
-    // This is a generic handler - actual parsing depends on the provider (SendGrid, SES, etc.)
+    // This is a generic handler - actual parsing depends on the provider (Resend, SES, etc.)
     const body = req.body as Record<string, unknown>;
 
     // Extract common fields (provider-specific parsing would go here)
     const externalId =
       (body['externalId'] as string) ||
-      (body['sg_message_id'] as string) ||
+      (body['messageId'] as string) ||
       (body['MessageId'] as string) ||
       '';
     const event =
@@ -523,7 +523,12 @@ export class CommunicationsController {
 
     if (externalId && event) {
       const statusMap: Record<string, string> = {
-        // SendGrid
+        // Resend
+        'email.delivered': 'delivered',
+        'email.opened': 'opened',
+        'email.bounced': 'bounced',
+        'email.complained': 'failed',
+        // Generic
         delivered: 'delivered',
         open: 'opened',
         bounce: 'bounced',
